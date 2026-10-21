@@ -297,7 +297,15 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
   const at = toXY(Date.parse(p.opened_at) / 1000, p.entry_price);
   const inView = (v: number | null): v is number => v !== null && v >= 0 && v <= H;
   const pnl = quote != null ? pnlOf(p, quote) : 0;
-  const keyFor = (price: number): keyof Bracket => ((price > p.entry_price) === (p.side === "long") ? "tp" : "sl");
+  // Stop or target is decided against the LIVE price, not your entry, so a stop can trail past your
+  // entry into profit (a short's stop dragged below entry is still a stop while it's above price).
+  const ref = quote ?? p.entry_price;
+  const keyFor = (price: number): keyof Bracket => ((price > ref) === (p.side === "long") ? "tp" : "sl");
+  // Never let a level sit on the wrong side of the live price: it would fire on the next check.
+  const clampFor = (key: keyof Bracket, price: number) => {
+    const t = tickOf(ref), above = (key === "tp") === (p.side === "long");
+    return above ? Math.max(price, snap(ref) + t) : Math.min(price, snap(ref) - t);
+  };
 
   const start = (e: ReactPointerEvent, fixed?: keyof Bracket) => {
     if (!onSet) return;
@@ -312,15 +320,14 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
       moved = true;
       const raw = priceOf(Math.max(0, Math.min(H, ev.clientY - top)));
       if (raw == null) return;
-      const price = snap(raw);
-      if (fixed && keyFor(price) !== fixed) return; // a set line can't cross the entry
-      setDrag({ price, key: fixed ?? keyFor(price) });
+      const key = fixed ?? keyFor(snap(raw));
+      setDrag({ price: clampFor(key, snap(raw)), key });   // a set line stops one tick short of the price
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
       if (!moved) { if (fixed && ev.type === "pointerup") setOpen((o) => (o === fixed ? null : fixed)); return; }
       setDrag((dr) => {
-        if (dr && Math.abs(dr.price - p.entry_price) >= tickOf(p.entry_price) && ev.type === "pointerup") { onSet({ [dr.key]: dr.price }); buzz(10); setOpen(null); }
+        if (dr && ev.type === "pointerup") { onSet({ [dr.key]: clampFor(dr.key, dr.price) }); buzz(10); setOpen(null); }
         return null;
       });
     };

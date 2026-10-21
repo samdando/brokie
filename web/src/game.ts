@@ -172,6 +172,13 @@ export class Game {
   // ---- Ticket 14: SL/TP dragged off the entry line. Kept on this device and enforced while the
   // app is open (the server has no bracket orders yet). ----
   setBracket(id: string, b: Bracket) {
+    // Safety net: never store a level the live price is already past (it would fire on the next check).
+    const p = (this.state.me?.positions ?? []).find((x) => x.id === id); const q = p && this.quote(p.market)?.price;
+    if (p && q != null) {
+      const long = p.side === "long";
+      if (b.sl != null && (long ? q <= b.sl : q >= b.sl)) return;
+      if (b.tp != null && (long ? q >= b.tp : q <= b.tp)) return;
+    }
     const brackets = { ...this.state.brackets, [id]: { ...this.state.brackets[id], ...b } };
     write(BRACKET_KEY, JSON.stringify(brackets)); this.set({ brackets });
   }

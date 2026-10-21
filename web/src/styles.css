@@ -333,7 +333,7 @@ a { color: var(--lime); }
 .bracket { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--bc); z-index: 4; pointer-events: none !important; --bc: var(--lime); }
 .bracket.sl { --bc: var(--red); }
 .bracket.live { border-top-style: solid; }
-.bracket-tag { position: absolute; left: 6px; transform: translateY(-50%); pointer-events: auto; cursor: ns-resize; display: inline-flex; gap: 4px; align-items: center;
+.bracket-tag { position: absolute; right: 6px;   /* right edge, so it never sits under your position pill on the left */ transform: translateY(-50%); pointer-events: auto; cursor: ns-resize; display: inline-flex; gap: 4px; align-items: center;
   font: 800 9px var(--mono); padding: 3px 7px; border-radius: 99px; background: rgba(12,14,11,.9); color: var(--bc); box-shadow: inset 0 0 0 1px var(--bc); }
 .bracket.live .bracket-tag { background: var(--bc); color: var(--bg); transform: translateY(-50%) scale(1.08); }
 .bracket-x { color: inherit; font-size: 9px; padding: 0 0 0 4px; opacity: .8; }
