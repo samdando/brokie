@@ -448,3 +448,18 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--lime); ou
 html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-b)); }
 .season-result .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .season-result .bar i { display: block; height: 100%; }
+
+/* Social feedback stays above fills; motion is brief and never blocks trading. */
+.player-link { font-weight: inherit; color: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; padding: 4px 0; }
+.player-link:hover { color: var(--lime); }
+.receipt-link { overflow-wrap: anywhere; font-size: 12px; }
+.shared-receipt { padding-top: calc(24px + var(--safe-t)); }
+.shared-receipt a { text-decoration: none; }
+.event.live { animation: event-arrival 1.1s ease-out 2; }
+@keyframes event-arrival { 0%,100% { box-shadow: 0 0 0 0 transparent; } 35% { box-shadow: 0 0 0 3px var(--c, var(--lime)), 0 0 20px color-mix(in srgb, var(--c, var(--lime)) 20%, transparent); } }
+@media (prefers-reduced-motion: no-preference) {
+  .app > .stack { animation: screen-arrival .18s ease-out; }
+  .panel, .market, .tab, .chip, .big-btn, .squad-chip { transition: background-color .16s, border-color .16s, color .16s, box-shadow .16s; }
+  .big-btn:active, .market:active, .squad-chip:active { transform: scale(.98); }
+  @keyframes screen-arrival { from { opacity: .45; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+}

@@ -6,7 +6,7 @@ import type { ToXY } from "./Chart";
 import type { Bubble, Market, Side } from "./types";
 import { MARKETS, direction } from "./types";
 
-interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
+interface Placed { b: Bubble; x: number; y: number; anchorY: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
 
 const FLIP_MS = 1100;
 const MAX_MARKS = 2;    // closed trades kept on the chart
@@ -16,17 +16,22 @@ const MAX_LABELS = 1;   // of those, how many show their P&L text
 export function useFreshIds(ids: string[]): Set<string> {
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const deadlines = useRef(new Map<string, number>());
   const key = ids.join("|");
   useEffect(() => {
     if (seen.current === null) { seen.current = new Set(ids); return; }
-    const added = ids.filter((id) => !seen.current!.has(id));
-    if (!added.length) return;
-    added.forEach((id) => seen.current!.add(id));
-    setFresh((f) => new Set([...f, ...added]));
-    const t = setTimeout(() => setFresh((f) => { const n = new Set(f); added.forEach((id) => n.delete(id)); return n; }), FLIP_MS);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const added = ids.filter(id => !seen.current!.has(id));
+    added.forEach(id => { seen.current!.add(id); deadlines.current.set(id, Date.now() + FLIP_MS); });
+    if (added.length) setFresh(new Set(deadlines.current.keys()));
   }, [key]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      let changed = false;
+      for (const [id, until] of deadlines.current) if (until <= Date.now()) { deadlines.current.delete(id); changed = true; }
+      if (changed) setFresh(new Set(deadlines.current.keys()));
+    }, 150);
+    return () => clearInterval(timer);
+  }, []);
   return fresh;
 }
 
@@ -77,11 +82,20 @@ const pctOf = (b: Bubble, mark: number, mkt: Market) => {
   return { pnl, pct: b.equity ? (pnl / b.equity) * 100 : 0 };
 };
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine }:
-  { hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
+export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now }:
+  { now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
   const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
-  const fresh = useFreshIds(merged.map((b) => b.id));
+  const [fresh, setFresh] = useState(new Set<string>());
+  const entryExpiry = useRef(new Map<string, number>());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      let changed = false;
+      for (const [id, until] of entryExpiry.current) if (until <= Date.now()) { entryExpiry.current.delete(id); changed = true; }
+      if (changed) setFresh(new Set(entryExpiry.current.keys()));
+    }, 150);
+    return () => clearInterval(timer);
+  }, []);
   const seenExit = useRef<Set<string>>(new Set());
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
@@ -100,11 +114,19 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       bubbles.filter((b) => b.state === "closed").forEach((b) => seenExit.current.add(b.id));
       return;
     }
-    for (const b of opens) if (!seenOpen.current.has(b.id)) { seenOpen.current.add(b.id); if (!b.is_you) onEnter(b); }
+    for (const b of opens) if (!seenOpen.current.has(b.id)) {
+      seenOpen.current.add(b.id);
+      const age = now - Date.parse(b.opened_at);
+      if (age < -5000 || age > 15000) continue;
+      const marker = merged.find(m => m.handle === b.handle && m.side === b.side);
+      if (marker) { entryExpiry.current.set(marker.id, Date.now() + FLIP_MS); setFresh(new Set(entryExpiry.current.keys())); }
+      if (!b.is_you) onEnter(b);
+    }
     const fresh: Exit[] = [];
     for (const b of bubbles.filter((x) => x.state === "closed")) {
       if (seenExit.current.has(b.id)) continue;
       seenExit.current.add(b.id);
+      if (now - Date.parse(b.at) > 15000 || now - Date.parse(b.at) < -5000) continue;
       const at = toXY(Date.parse(b.at) / 1000, b.exit_price ?? b.entry_price);
       if (!at) continue;
       const kind = b.reason === "blown" ? "rekt" : (b.pnl ?? 0) >= 0 ? "win" : "loss";
@@ -113,7 +135,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     if (fresh.length) {
       setExits((e) => [...e, ...fresh].slice(-MAX_FX));
     }
-  }, [bubbles, market, onEnter, toXY]);
+  }, [bubbles, market, onEnter, toXY, now, merged]);
 
   useEffect(() => {
     if (!exits.length) return;
@@ -141,7 +163,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       // Trades opened before the visible window hug the edge instead of clipping off-screen.
       const min = r + 6, max = Math.max(min, width - r - 6);
       const x = Math.min(max, Math.max(min, at.x));
-      out.push({ b, x, y: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null, hedged: false });
+      out.push({ b, x, y: Math.max(r + 8, at.y - r - 14), anchorY: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null, hedged: false });
     }
     // A player holding a long and a short at once is hedged: show both bubbles, flagged.
     const sides = new Map<string, Set<string>>();
@@ -203,6 +225,9 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
           <span className="lime">{longs}▲</span><span className="red">{shorts}▼</span>
         </div>
       )}
+      <svg width={width} height="100%" aria-hidden="true" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+        {placed.map(p => <g key={p.b.id}><line x1={p.x} y1={p.y + p.r + 6} x2={p.x} y2={p.anchorY} stroke="var(--muted)" strokeWidth="1" /><circle cx={p.x} cy={p.anchorY} r="2" fill="var(--muted)" /></g>)}
+      </svg>
       {groups.map((g) => {
         const key = g.map((p) => p.b.id).join("|");
         if (g.length > 1 && expanded !== key && !g.some((p) => fresh.has(p.b.id))) {
@@ -248,7 +273,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       })}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
-        return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: at.y }} />;
+        return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: Math.max(24, at.y - 30) }} />;
       })}
     </>
   );

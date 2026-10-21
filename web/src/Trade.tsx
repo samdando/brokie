@@ -1,3 +1,4 @@
+import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
@@ -107,8 +108,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => game.setBracket(id, b)} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          overlay={(toXY, width) => crowd && (
-            <BubbleLayer hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
+          overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && (
+            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity(`@${b.handle} · ${b.side === "long" ? "Long" : "Short"} ${b.quantity} micros`); }} />
           )} />
         <div className="chips" style={{ marginTop: 10 }}>
@@ -234,7 +235,7 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
       <span className={`av ${e.is_you ? "you" : ""}`} style={{ width: 33, height: 33 }}>{e.handle[0].toUpperCase()}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="row" style={{ gap: 6 }}>
-          <b style={{ fontSize: 12 }}>{e.is_you ? "You" : `@${e.handle}`}</b>
+          <b style={{ fontSize: 12 }}><PlayerLink handle={e.handle}>{e.is_you ? "You" : `@${e.handle}`}</PlayerLink></b>
           <span className="muted" style={{ fontSize: 9 }}>{ago(e.at)}</span>
           {(e.kind === "opened" || e.kind === "closed") && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600 }} className={e.side === "long" ? "lime" : "red"}>{MARKETS[e.market].title} {e.side === "long" ? "↑" : "↓"}</span>}
         </div>
@@ -329,7 +330,7 @@ function BubbleSheet({ b, onClose, quote }: { b: Bubble | null; onClose: () => v
       <div className="stack" style={{ gap: 16 }}>
         <div className="row" style={{ gap: 12 }}>
           <span className={`av ${b.is_you ? "you" : ""}`} style={{ width: 46, height: 46, fontSize: 16, boxShadow: `0 0 0 2px ${b.side === "long" ? "var(--lime)" : "var(--red)"}` }}>{b.handle[0].toUpperCase()}</span>
-          <div><b style={{ fontSize: 18 }}>{b.is_you ? "You" : `@${b.handle}`}</b><div className="muted" style={{ fontSize: 12 }}>{b.side === "long" ? "Long ▲" : "Short ▼"} {m.title} × {b.quantity}</div></div>
+          <div><b style={{ fontSize: 18 }}><PlayerLink handle={b.handle}>{b.is_you ? "You" : `@${b.handle}`}</PlayerLink></b><div className="muted" style={{ fontSize: 12 }}>{b.side === "long" ? "Long ▲" : "Short ▼"} {m.title} × {b.quantity}</div></div>
         </div>
         <div className="detail"><span>Entry</span><span>{px(b.entry_price)}</span></div>
         <div className="detail"><span>Open P&amp;L</span><span className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}</span></div>

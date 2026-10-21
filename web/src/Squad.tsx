@@ -1,3 +1,4 @@
+import { PlayerLink } from "./Profiles";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
@@ -184,7 +185,7 @@ function Leaderboard() {
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i === 0 && r.return_pct > 0 ? "👑" : String(i + 1).padStart(2, "0")}</span>
             <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>@{r.handle} {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
+              <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
                 {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
                 {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}

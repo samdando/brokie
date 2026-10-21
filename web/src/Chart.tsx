@@ -305,9 +305,10 @@ function MyPosition({ p, quote, toXY, yOf, width, sizePct, fresh, hedged }:
       <svg width={width} height={H} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
         {y != null && inView(qY) && <line x1={x} y1={y} x2={width - 2} y2={qY!} stroke={pnl >= 0 ? "var(--lime)" : "var(--red)"} strokeWidth="1.2" strokeDasharray="1.5 3.5" opacity="0.8" />}
       </svg>
+      {y != null && inView(y) && <svg width={width} height={H} aria-hidden="true" style={{position:"absolute",inset:0,pointerEvents:"none"}}><line x1={x} y1={Math.max(d + 8, y - 8)} x2={x} y2={y} stroke="var(--lime)" strokeWidth="1" /><circle cx={x} cy={y} r="2" fill="var(--lime)" /></svg>}
       {y != null && inView(y) && (
         <CoinBubble side={p.side} initial="S" size={d} qty={p.quantity} me fresh={fresh} hedged={hedged}
-          style={{ left: x, top: y, pointerEvents: "none", zIndex: 3 }}
+          style={{ left: x, top: Math.max(d / 2 + 8, y - d / 2 - 14), pointerEvents: "none", zIndex: 3 }}
           testId="my-bubble" label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}`} />
       )}
       {inView(qY) && !hedged && (

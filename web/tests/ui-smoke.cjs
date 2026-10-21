@@ -5,11 +5,13 @@ const assert=require('node:assert/strict');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const page=await browser.newPage({viewport:{width:393,height:852},deviceScaleFactor:1});
 const errors=[];page.on('pageerror',e=>{errors.push(e.message); console.error('PAGE ERROR',e.message)});
+await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
 await page.goto('http://127.0.0.1:5173');
 await page.evaluate(async()=>{
  const {game}=await import('/src/game.ts'); window.testGame=game;
  for(const name of ['setActive','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles']) game[name]=async()=>{};
  game.checkBrackets=async()=>[];
+ game.api.rpc=async(name,args)=>name==='share_trade'?'10000000-0000-0000-0000-000000000001':{...game.state.lifetime,handle:args?.p_handle || 'sam'};
  const now=new Date().toISOString(); const start=Math.floor(Date.now()/60000)-100;
  const candles=Array.from({length:100},(_,i)=>({index:start+i,open:29600+i,high:29610+i,low:29590+i,close:29605+i}));
  const rules={status:'active',start_balance:100000,peak_equity:100000,day_start_equity:100000,daily_loss_pct:5,max_dd_pct:10,daily_floor:95000,drawdown_floor:90000,target:110000,funded:false,resets_used:0,trading_days:1,qualify_days:5,equity:99900};
@@ -25,6 +27,7 @@ await page.locator('.compact-rules summary').click();await page.getByTestId('met
 await page.getByRole('button',{name:'Chart info'}).click();await page.locator('.chart-help').waitFor({state:"visible"});
 await page.getByTestId('tab-squad').click();await shot('squad');
 assert(await page.locator('[data-testid="leader-row"]').count()===5);
+await page.getByRole('button',{name:"View @ankits's profile"}).click();await page.getByTestId('player-profile').waitFor();await page.getByText('Max drawdown',{exact:true}).waitFor();await page.getByRole('button',{name:'Done',exact:true}).click();
 assert(await page.getByTestId('invite-code').count()===0);
 await page.getByRole('button',{name:'Invite / manage'}).click();await page.getByTestId('invite-code').waitFor({state:"visible"});await page.getByRole('button',{name:'Done',exact:true}).click();
 await page.locator('.chat-preview').evaluate(el=>el.scrollIntoView({block:'center'})); await page.locator('.chat-preview').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Done',exact:true}).click();
@@ -34,7 +37,7 @@ await page.getByRole('button',{name:'Put it into practice'}).click();await page.
 await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,status:'locked'},cash:94995}})});
 assert(await page.getByTestId('go-long').isDisabled());await shot('locked');
 await page.getByRole('button',{name:'Review your trades'}).click();await shot('you');
-await page.getByTestId('receipt').click();await page.getByText('Trade details',{exact:true}).waitFor({state:"visible"});await page.getByTestId('share-card').waitFor({state:"visible"});await shot('receipt');await page.getByRole('button',{name:'Done',exact:true}).click();
+await page.getByTestId('receipt').click();await page.getByText('Trade details',{exact:true}).waitFor({state:"visible"});await page.getByTestId('prepare-card').click();await page.getByTestId('share-card').waitFor({state:"visible"});await shot('receipt');await page.getByRole('button',{name:'Done',exact:true}).click();
 await page.getByRole('tab',{name:'Lifetime',exact:true}).click();await page.getByTestId('lifetime').waitFor({state:"visible"});await shot('lifetime');
 for(const width of [320,430]) {await page.setViewportSize({width,height:852}); for(const tab of ['trade','squad','learn','you']){await page.getByTestId('tab-'+tab).click();await shot(tab+'-'+width);}}
 assert.deepEqual(errors,[]); console.log('PASS: 3 mobile widths, navigation, risk disclosure, chart info, squad management/chat, feed grouping, completion, lockout, receipts, lifetime; no runtime errors.');await browser.close();

@@ -61,6 +61,9 @@ export class Backend {
   rpc<T = unknown>(name: string, params: Record<string, unknown> = {}): Promise<T> {
     return this.raw(`rest/v1/rpc/${name}`, params, true) as Promise<T>;
   }
+  publicRPC<T>(name: "shared_trade", params: Record<string, unknown>): Promise<T> {
+    return this.raw(`rest/v1/rpc/${name}`, params, false) as Promise<T>;
+  }
   fn<T = unknown>(name: string, body: Record<string, unknown>): Promise<T> {
     return this.raw(`functions/v1/${name}`, body, true) as Promise<T>;
   }

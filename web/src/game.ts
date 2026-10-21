@@ -21,6 +21,7 @@ export interface GameState {
   clockOffset: number;
   freshBackupCode: string | null;
   bubbles: Bubble[];
+  bubbleScope: string | null;
   lifetime: Lifetime | null;
   global: GlobalBoard | null;
   chat: ChatMsg[];
@@ -65,12 +66,13 @@ export class Game {
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
-    clockOffset: 0, freshBackupCode: null, bubbles: [], lifetime: null,
+    clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
     global: null, chat: [], events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
   private submitting = false;
+  private bubbleRequest = 0;
   private listeners = new Set<() => void>();
   private timer: number | null = null;
   private beat = 0;
@@ -255,7 +257,9 @@ export class Game {
 
   selectSquad(id: string | null) {
     write(SQUAD_KEY, id);
-    this.set({ squadId: id, leaderboard: [], feed: [], chat: [] });
+    this.bubbleRequest++;
+    this.set({ squadId: id, leaderboard: [], feed: [], chat: [], bubbles: [], bubbleScope: null });
+    void this.refreshBubbles();
     void this.refreshBoard();
   }
 
@@ -287,14 +291,16 @@ export class Game {
     } catch { /* keep last */ }
   }
 
-  setMarket(m: Market) { write(MARKET_KEY, m); this.set({ market: m, bubbles: [] }); void this.refreshCandles(m); void this.refreshBubbles(); }
+  setMarket(m: Market) { if (m === this.state.market) return; this.bubbleRequest++; write(MARKET_KEY, m); this.set({ market: m, bubbles: [], bubbleScope: null }); void this.refreshCandles(m); void this.refreshBubbles(); }
 
   async refreshBubbles() {
     if (this.state.phase !== "ready") return;
     const market = this.state.market;
+    const squad = this.squad?.id ?? null;
+    const request = ++this.bubbleRequest;
     try {
-      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: this.squad?.id ?? null });
-      if (this.state.market === market) this.set({ bubbles });
+      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad });
+      if (request === this.bubbleRequest && this.state.market === market && this.squad?.id === (squad ?? undefined)) this.set({ bubbles, bubbleScope: `${market}:${squad ?? ""}` });
     } catch { /* keep last */ }
   }
 

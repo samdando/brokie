@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
+import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, Trade, pnlOf } from "./types";
 
 export function YouScreen({ toast }: { toast: (m: string) => void }) {
@@ -57,7 +58,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
       <InstallTip />
       <div className="mono muted" style={{ fontSize: 10, textAlign: "center", lineHeight: 1.8 }}>BROKIE / 0.2 WEB<br />All the market. None of the rent money.</div>
       <HandleSheet open={edit} onClose={() => setEdit(false)} toast={toast} />
-      <TradeCardSheet trade={card} handle={me.handle} onClose={() => setCard(null)} />
+      <TradeCardSheet key={card?.id ?? "closed"} trade={card} handle={me.handle} onClose={() => setCard(null)} />
     </div>
   );
 }
@@ -132,45 +133,30 @@ function InstallTip() {
 
 // ---------- Trade cards (drawn on a canvas so they can be shared as an image)
 
-function drawCard(t: Trade, handle: string): HTMLCanvasElement {
-  const W = 1020, H = 1275, c = document.createElement("canvas");
-  c.width = W; c.height = H;
-  const g = c.getContext("2d")!;
-  const tint = t.pnl >= 0 ? "#D6FE59" : "#FF7D8B";
-  g.fillStyle = "#0C0E0B"; g.fillRect(0, 0, W, H);
-  const rg = g.createRadialGradient(W, 0, 10, W, 0, 1100); rg.addColorStop(0, tint + "3A"); rg.addColorStop(1, "#0C0E0B00");
-  g.fillStyle = rg; g.fillRect(0, 0, W, H);
-  const round = "ui-rounded, 'SF Pro Rounded', Nunito, system-ui, sans-serif", mono = "ui-monospace, Menlo, monospace";
-  g.fillStyle = "#fff"; g.font = `900 66px ${round}`; g.fillText("brokie", 72, 140);
-  g.fillStyle = "#D6FE59"; g.beginPath(); g.arc(72 + g.measureText("brokie").width + 18, 128, 9, 0, 7); g.fill();
-  g.font = `800 24px ${mono}`; g.fillStyle = "#D6FE59"; g.fillText("PAPER TRADE", W - 290, 130);
-  const m = MARKETS[t.market];
-  g.fillStyle = "#fff"; g.font = `800 46px ${round}`; g.fillText(`${t.side.toUpperCase()} ${m.title} ×${t.quantity}`, 72, 560);
-  g.fillStyle = "#969D8D"; g.font = `500 30px system-ui`; g.fillText(`${m.subtitle} · ${m.symbol}`, 72, 610);
-  g.fillStyle = tint; g.font = `700 160px ${round}`; g.fillText(signedMoney(t.pnl), 66, 790);
-  const move = (t.exit_price - t.entry_price) * (t.side === "long" ? 1 : -1);
-  g.fillStyle = "rgba(255,255,255,.7)"; g.font = `500 32px ${mono}`;
-  g.fillText(`${px(t.entry_price)} → ${px(t.exit_price)}  ·  ${move >= 0 ? "+" : "−"}${px(Math.abs(move))} pts`, 72, 860);
-  g.fillStyle = "#fff"; g.font = `700 38px system-ui`; g.fillText(`@${handle}`, 72, 1130);
-  g.fillStyle = "#969D8D"; g.font = `500 26px system-ui`; g.fillText("Fake money. Real bragging rights.", 72, 1190);
-  g.font = `500 28px system-ui`; const when = new Date(t.closed_at).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  g.fillText(when, W - 72 - g.measureText(when).width, 1130);
-  return c;
-}
-
 function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handle: string; onClose: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
-  useEffect(() => {
-    if (!trade) { setUrl(null); setBlob(null); return; }
-    const canvas = drawCard(trade, handle);
-    setUrl(canvas.toDataURL("image/png"));
-    canvas.toBlob((b) => setBlob(b), "image/png");
-  }, [trade, handle]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [link, setLink] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { setUrl(null); setBlob(null); setError(""); setLink(""); setCopied(false); }, [trade?.id]);
+  async function prepare() {
+    if (!trade || busy) return;
+    setBusy(true); setError("");
+    try {
+      const token = await game.api.rpc<string>("share_trade", {p_trade:trade.id});
+      const target = receiptURL(token);
+      const canvas = await drawTradeImage(trade,handle,target);
+      const image = await new Promise<Blob>((resolve,reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error("Couldn't create the image.")),"image/png"));
+      setUrl(canvas.toDataURL("image/png")); setBlob(image); setLink(target);
+    } catch { setError("Couldn't create the share card. Please try again once sharing is available."); }
+    finally { setBusy(false); }
+  }
   async function share() {
     if (!blob) return;
     const file = new File([blob], "brokie-trade.png", { type: "image/png" });
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: "Brokie trade" }); return; } catch { return; } }
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: "Brokie trade", text: link }); return; } catch { return; } }
     const a = document.createElement("a"); a.href = url!; a.download = "brokie-trade.png"; a.click();
   }
   return (
@@ -179,7 +165,8 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
         <div className="row between"><Eyebrow>Trade details</Eyebrow><button className="lime" style={{ fontWeight: 700, fontSize: 13 }} onClick={onClose}>Done</button></div>
         {trade && <div className="stack" style={{ gap: 12 }}><h3 className="h3">{MARKETS[trade.market].title} · {trade.side} · {trade.quantity} micros</h3><div className="detail"><span>Result</span><span className={trade.pnl >= 0 ? "lime" : "red"}>{signedMoney(trade.pnl)}</span></div><div className="detail"><span>Entry → exit</span><span>{px(trade.entry_price)} → {px(trade.exit_price)}</span></div><div className="detail"><span>Closed</span><span>{new Date(trade.closed_at).toLocaleString()}</span></div><div className="detail"><span>Reason</span><span>{trade.reason.replace(/_/g, " ")}</span></div></div>}
         {url && <img src={url} alt="Trade card" className="card-preview" />}
-        <Button onClick={share} disabled={!blob} id="share-card">Share to the group chat ↗</Button>
+        {!blob ? <><div className="muted" style={{fontSize:12}}>Create a public receipt link and an image with a QR code. Anyone with the link can view this trade.</div><Button onClick={prepare} busy={busy} id="prepare-card">Create trade image + QR ↗</Button></> : <><Button onClick={share} id="share-card">Share trade image ↗</Button><Button variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError("Couldn't copy the link. Use the link below."); } }}>{copied ? "Copied ✓" : "Copy receipt link"}</Button><a className="receipt-link" href={link}>{link}</a></>}
+        {error && <div className="err" role="alert">{error}</div>}
       </div>
     </Sheet>
   );

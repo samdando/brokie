@@ -5,6 +5,8 @@ import { SquadScreen } from "./Squad";
 import { LearnScreen } from "./Learn";
 import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
+import { Profiles } from "./Profiles";
+import { SharedTradePage } from "./SharedTrade";
 import { EventStrip, FlashOverlay } from "./Events";
 import { FeedbackSheet } from "./Social";
 import { useVoice, voice, ROOMS } from "./voice";
@@ -19,7 +21,8 @@ export function App() {
   const now = useNow(30_000);
   const [fb, setFb] = useState(false);
   const [reviewHistory, setReviewHistory] = useState(false);
-  useEffect(() => { void game.start(); }, []);
+  const sharedToken = new URLSearchParams(location.search).get("trade");
+  useEffect(() => { if (!sharedToken) void game.start(); }, [sharedToken]);
   useEffect(() => {
     const onVis = () => game.setActive(!document.hidden);
     document.addEventListener("visibilitychange", onVis);
@@ -33,13 +36,15 @@ export function App() {
     }
   }, [tab, reviewHistory]);
 
+  if (sharedToken) return <SharedTradePage token={sharedToken} />;
+
   if (st.phase === "unconfigured") return <Centered title="Brokie isn't connected yet" body="This build has no server address. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY and rebuild." />;
   if (st.phase === "connecting" && !st.me) return <Centered title="" body="" spinner />;
   if (st.phase === "needsHandle") return <><Onboarding /><BackupCodeSheet /></>;
   if (!st.me) return <Centered title="Can't reach Brokie" body={st.error ?? "Check your connection."} retry />;
 
   return (
-    <>
+    <Profiles>
       <div className="app">
         <div className="header">
           <div className="wordmark">brokie<i /></div>
@@ -64,7 +69,7 @@ export function App() {
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
-    </>
+    </Profiles>
   );
 }
 
