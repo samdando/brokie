@@ -362,14 +362,15 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const label = side === "long" ? "BUY" : "SELL";
     const hedge = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
     const partial = st.opposite === "partial" && hedge;
+    const sign = side === "long" ? "+" : "−";   // BUY adds, SELL subtracts
     return (
       <button type="button" className={`spam-btn ${side} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
         onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
         onAnimationEnd={() => setSquash(null)} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
-        <span className="spam-sub">{n ? (partial ? `−${n}` : `x${n}`) : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `+${TAP_SIZE} per tap` : "\u00a0"}</span>
-        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">{partial ? "−" : "+"}{TAP_SIZE}</span>)}
+        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `${sign}${TAP_SIZE} per tap` : "\u00a0"}</span>
+        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">{sign}{TAP_SIZE}</span>)}
       </button>
     );
   };
