@@ -5,7 +5,7 @@ import type { Bubble, Rules } from "./types";
 import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
-import { BrokieChart } from "./Chart";
+import { BrokieChart, CHART_SMALL } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
@@ -20,6 +20,10 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
   const [chartInfo, setChartInfo] = useState(false);
+  // Fuko: a bigger chart option. Tall mode uses most of the screen; remembered per device.
+  const [big, setBig] = useState(() => { try { return localStorage.getItem("brokie.bigChart") === "on"; } catch { return false; } });
+  const bigH = typeof window === "undefined" ? 480 : Math.round(Math.max(380, Math.min(window.innerHeight * 0.62, 620)));
+  const toggleBig = () => { const v = !big; setBig(v); try { localStorage.setItem("brokie.bigChart", v ? "on" : "off"); } catch { /* */ } };
   const [activity, setActivity] = useState<{ text: string; n: number } | null>(null);
   useEffect(() => { setActivity(null); }, [st.market, st.squadId]);
   useEffect(() => { if (!activity) return; const t = setTimeout(() => setActivity(null), 5000); return () => clearTimeout(t); }, [activity]);
@@ -109,7 +113,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </span>
         </div>
         {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
-        <BrokieChart handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+        <BrokieChart height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
@@ -125,7 +129,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           ))}
           <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
-          <button className={`chip lime ${crowd ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={crowd} data-testid="crowd-toggle"
+          <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
+            aria-label={big ? "Smaller chart" : "Bigger chart"} onClick={toggleBig}>{big ? "⤡" : "⤢"}</button>
+          <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
             aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
             onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>
             <span className="crowd-chip">👥{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span>

@@ -7,7 +7,9 @@ import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
 const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#969D8D";
-const H = 256;            // chart height in px (includes the time axis)
+export const CHART_SMALL = 256;   // chart height in px (includes the time axis)
+// One chart on screen at a time, so its height lives here and the overlay pieces read it.
+let H = CHART_SMALL;
 const VIEW_BARS = 60;     // bars shown when snapped to live
 const ANIM_MS = 450;      // forming-candle tween (C4)
 
@@ -17,10 +19,11 @@ export type ToXY = (unixSeconds: number, price: number) => { x: number; y: numbe
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?" }:
-  { handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", height = CHART_SMALL }:
+  { height?: number; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
+  H = height;
   const [, setFrame] = useState(0);
   const [plotWidth, setPlotWidth] = useState(0);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -113,6 +116,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       c.remove(); chart.current = null; series.current = null; quoteLine.current = null; lines.current = [];
     };
   }, []);
+
+  useEffect(() => { chart.current?.applyOptions({ height }); requestFrame.current(); }, [height]);
 
   /** Snap the view back to the newest bars (double-tap / Live button). */
   const goLive = useCallback(() => {
