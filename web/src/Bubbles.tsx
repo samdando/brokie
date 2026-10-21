@@ -69,7 +69,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       if (!at) continue;
       const { pnl, pct } = quote ? pctOf(b, quote, market) : { pnl: 0, pct: 0 };
       const sizePct = Number.isFinite(b.size_pct) ? Math.max(0, b.size_pct ?? 0) : 0;
-      const r = Math.max(14, Math.min(24, 14 + sizePct * 0.5));
+      const r = Math.max(11, Math.min(17, 11 + sizePct * 0.3));
       const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.1) : 1;
       const mark = quote === null ? null : toXY(Date.parse(b.opened_at) / 1000, quote);
       // Trades opened before the visible window hug the edge instead of clipping off-screen.
