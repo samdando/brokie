@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
 import { isConfigured } from "./config";
-import type { Bubble, Candle, FeedEvent, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
+import type { Bubble, Candle, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -22,10 +22,21 @@ export interface GameState {
   freshBackupCode: string | null;
   bubbles: Bubble[];
   lifetime: Lifetime | null;
+  global: GlobalBoard | null;
+  chat: ChatMsg[];
+  events: EventsFeed | null;
+  flash: Flash | null;
+  qty: number;
 }
 
 const SQUAD_KEY = "brokie.squad";
 const MARKET_KEY = "brokie.market";
+const QTY_KEY = "brokie.qty";
+const SEEN_KEY = "brokie.seen";
+const SEASON_KEY = "brokie.lastSeason";
+export const QTY_CHOICES = [1, 5, 10];
+export const EMOJIS = ["🔥", "💀", "🚀", "📈", "📉", "😂", "🫡", "💎", "🤡", "🙏", "👀", "🐂", "🐻"];
+export const clampQty = (n: unknown) => { const v = Math.round(Number(n)); return Number.isFinite(v) ? Math.min(10, Math.max(1, v)) : 1; };
 const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const write = (k: string, v: string | null) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* ignore */ } };
 
@@ -35,7 +46,10 @@ export class Game {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], lifetime: null,
+    global: null, chat: [], events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
   };
+  private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
+  private submitting = false;
   private listeners = new Set<() => void>();
   private timer: number | null = null;
   private beat = 0;
@@ -75,6 +89,7 @@ export class Game {
       try { await this.refreshState(); } catch { /* keep going */ }
       if (this.beat % 3 === 0) { await this.refreshBoard(); await this.refreshCandles(); }
       if (this.beat % 12 === 0) await this.refreshSquads();
+      if (this.beat % 6 === 0) await this.refreshEvents();
       this.beat++;
       this.timer = window.setTimeout(tick, 5000);
     };
@@ -85,6 +100,17 @@ export class Game {
   async refreshState() {
     const me = await this.api.rpc<MyState>("my_state");
     this.set({ me, clockOffset: Date.parse(me.server_time) - Date.now() });
+    this.checkSeason(me);
+  }
+
+  private checkSeason(me: MyState) {
+    const n = me.season_number;
+    if (n == null) return;
+    const last = read(SEASON_KEY);
+    write(SEASON_KEY, String(n));
+    if (last !== null && Number(last) !== n) {
+      this.raise({ key: `season:${n}`, tone: "lime", title: `Season ${n} is live`, sub: "Fresh $100k. Everyone's equal again. Go." });
+    }
   }
 
   async claimHandle(handle: string) {
@@ -108,13 +134,20 @@ export class Game {
   }
   dismissBackupCode() { this.set({ freshBackupCode: null }); }
 
+  setQty(n: number) { const q = clampQty(n); write(QTY_KEY, String(q)); this.set({ qty: q }); }
+
   async open(side: Side, quantity: number): Promise<string | null> {
+    if (this.submitting) return "One order at a time.";
+    const q = Math.round(quantity);
+    if (!Number.isInteger(q) || q < 1 || q > 10) return "Pick 1 to 10 micros.";
+    this.submitting = true;
     try {
-      await this.api.rpc("open_position", { p_market: this.state.market, p_side: side, p_quantity: quantity });
+      await this.api.rpc("open_position", { p_market: this.state.market, p_side: side, p_quantity: q });
       await this.refreshState();
       void this.refreshBoard();
       return null;
     } catch (e) { return (e as Error).message; }
+    finally { this.submitting = false; }
   }
 
   async close(id: string): Promise<{ pnl?: number; error?: string }> {
@@ -137,7 +170,7 @@ export class Game {
 
   selectSquad(id: string | null) {
     write(SQUAD_KEY, id);
-    this.set({ squadId: id, leaderboard: [], feed: [] });
+    this.set({ squadId: id, leaderboard: [], feed: [], chat: [] });
     void this.refreshBoard();
   }
 
@@ -206,6 +239,79 @@ export class Game {
     const open = last?.close ?? q.price;
     return [...bars, { index: bucket, open, high: Math.max(open, q.price), low: Math.min(open, q.price), close: q.price }];
   }
+
+
+  // ---------- Global board, chat, feedback, events ----------
+  async refreshGlobal() {
+    try { this.set({ global: await this.api.rpc<GlobalBoard>("global_leaderboard", { p_limit: 50 }) }); } catch { /* keep last */ }
+  }
+  async setGlobalVisibility(show: boolean) {
+    await this.api.rpc("set_global_visibility", { p_show: show });
+    await this.refreshGlobal();
+  }
+
+  async refreshChat() {
+    const squad = this.squad;
+    if (!squad) return;
+    try {
+      const msgs = await this.api.rpc<ChatMsg[]>("squad_chat", { p_squad: squad.id, p_after: 0, p_limit: 50 });
+      if (this.squad?.id === squad.id) this.set({ chat: msgs });
+    } catch { /* keep last */ }
+  }
+  async sendMessage(body: string, kind: "text" | "emoji" = "text"): Promise<string | null> {
+    const squad = this.squad;
+    if (!squad) return "Join a squad first.";
+    try {
+      await this.api.rpc("send_message", { p_squad: squad.id, p_body: body, p_kind: kind });
+      void this.refreshChat();
+      return null;
+    } catch (e) { return (e as Error).message; }
+  }
+
+  async submitFeedback(kind: FeedbackKind, message: string): Promise<string | null> {
+    try {
+      await this.api.rpc("submit_feedback", { p_kind: kind, p_message: message, p_context: `web ${innerWidth}x${innerHeight} S${this.state.me?.season_number ?? ""}` });
+      return null;
+    } catch (e) { return (e as Error).message; }
+  }
+
+  async refreshEvents() {
+    try {
+      const events = await this.api.rpc<EventsFeed>("events_feed");
+      this.set({ events });
+      this.alertFor(events);
+    } catch { /* keep last */ }
+  }
+
+  /** Flash once per event per phase. If several land together, the most important one wins; the strip shows the rest. */
+  private alertFor(feed: EventsFeed) {
+    const now = this.now();
+    const rank = (e: EventItem, phase: string) => (phase === "live" ? 10 : 0) + (e.kind === "session" ? 0 : e.impact === "high" ? 3 : e.impact === "med" ? 2 : 1);
+    let best: { score: number; flash: Flash } | null = null;
+    for (const e of feed.active) {
+      const phase = e.phase ?? "live";
+      const key = `${e.id}:${e.at}:${phase}`;
+      if (this.seen.has(key)) continue;
+      this.seen.add(key);
+      const age = now - Date.parse(e.at);
+      if (phase === "live" && age > 120_000) continue;   // already underway when you opened the app
+      const tone = e.kind === "session" ? "lime" : e.impact === "high" ? "red" : e.impact === "med" ? "gold" : "lime";
+      const mins = Math.max(1, Math.round((Date.parse(e.at) - now) / 60_000));
+      const flash: Flash = phase === "soon"
+        ? { key, tone, title: `${e.title} in ${mins} min`, sub: e.body || "Tighten up. Volatility incoming." }
+        : { key, tone, title: e.kind === "session" ? `${e.title}!` : `${e.title} is OUT`, sub: e.body || "Prices can jump. Watch your risk." };
+      const score = rank(e, phase);
+      if (!best || score > best.score) best = { score, flash };
+    }
+    write(SEEN_KEY, JSON.stringify([...this.seen].slice(-60)));
+    if (best) this.raise(best.flash);
+  }
+
+  private raise(f: Flash) {
+    this.set({ flash: f });
+    try { navigator.vibrate?.([70, 40, 70]); } catch { /* unsupported */ }
+  }
+  dismissFlash() { this.set({ flash: null }); }
 
   async voiceCredentials(room: string) {
     const squad = this.squad;

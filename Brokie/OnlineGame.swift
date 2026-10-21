@@ -174,7 +174,8 @@ final class OnlineGame: ObservableObject {
             marketOpen[quote.market] = state.serverTime.timeIntervalSince(quote.quotedAt) < 45
         }
         engine.applyServerState(cash: state.cash, protectionCredit: state.protectionCredit, liquidations: state.liquidations,
-                                positions: state.positions.map(\.position), closedTrades: state.trades.map(\.closedTrade))
+                                positions: state.positions.map(\.position), closedTrades: state.trades.map(\.closedTrade),
+                                baseline: state.rules?.startBalance)
     }
 
     // MARK: Trading (server fills)

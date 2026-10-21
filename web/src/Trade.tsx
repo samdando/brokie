@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
-import { game, useGame } from "./game";
+import { QTY_CHOICES, game, useGame } from "./game";
+import { EmojiBar, } from "./Social";
+import { shareInvite } from "./Squad";
 import { BrokieChart, vibeOf } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, money, px, signedMoney } from "./ui";
 import { MARKETS, Market, Side, pnlOf } from "./types";
@@ -14,6 +16,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [ticket, setTicket] = useState<Side | null>(null);
   const [closing, setClosing] = useState<string | null>(null);
+  const [pnlInfo, setPnlInfo] = useState(false);
   const mark = (m: Market) => game.quote(m)?.price ?? null;
   const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
@@ -51,7 +54,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
             {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
           </div>
-          <div className="muted" style={{ fontSize: 9, marginTop: 5 }}>Season P&amp;L · equity vs starting balance</div>
+          <button className="muted info-link" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="How is this P&L calculated?">Season P&amp;L · equity vs starting balance ⓘ</button>
         </div>
         <div className="tagline" style={{ textAlign: "right", fontSize: 10, fontWeight: 500, paddingBottom: 6, lineHeight: 1.7 }}>
           <div>100% fake money.</div><div className="muted">100% real bragging rights.</div>
@@ -109,6 +112,13 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         </div>
       </div>
 
+      <div className="size-row" role="radiogroup" aria-label="Order size in micro contracts" data-testid="size-chips">
+        <span className="eyebrow" style={{ fontSize: 8 }}>Size</span>
+        {QTY_CHOICES.map((n) => (
+          <button key={n} role="radio" aria-checked={st.qty === n} className={`chip lime ${st.qty === n ? "on" : ""}`} onClick={() => game.setQty(n)} data-testid={`size-${n}`}>{n} micro{n === 1 ? "" : "s"}</button>
+        ))}
+        <span className="mono muted" style={{ fontSize: 10, marginLeft: "auto" }}>{money(MARKETS[market].pointValue * st.qty, 0)}/pt</span>
+      </div>
       <div className="row" style={{ gap: 12 }}>
         <Button onClick={() => setTicket("long")} id="go-long" disabled={rules?.status === "blown" || rules?.status === "locked"}>↗ Go long</Button>
         <Button variant="short" onClick={() => setTicket("short")} id="go-short" disabled={rules?.status === "blown" || rules?.status === "locked"}>↘ Go short</Button>
@@ -130,7 +140,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
               <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{MARKETS[p.market].title} · {p.side === "long" ? "Long" : "Short"}</div>
-                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{p.quantity} micro · at {px(p.entry_price)}</div>
+                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{p.quantity} micro · at {px(p.entry_price)} · open P&amp;L</div>
               </div>
               <span className={`mono ${pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 600 }}>{signedMoney(pnl)}</span>
               <button className="x-btn" aria-label="Close position" onClick={() => close(p.id, MARKETS[p.market].title)} disabled={!!closing} data-testid="close-position">
@@ -141,25 +151,66 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         })}
       </div>
 
-      <Pit goSquad={goSquad} />
+      <Pit goSquad={goSquad} toast={toast} />
 
       <OrderSheet side={ticket} onClose={() => setTicket(null)} toast={toast} equity={equity} />
       <BubbleSheet b={picked} onClose={() => setPicked(null)} quote={quote} />
+      <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
   );
 }
 
-function Pit({ goSquad }: { goSquad: () => void }) {
+function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; onClose: () => void; equity: number; unrealized: number; base: number }) {
+  const st = useGame();
+  const me = st.me!;
+  const realized = equity - base - unrealized;
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <div className="stack" style={{ gap: 14 }}>
+        <div className="row between"><Eyebrow>How your P&amp;L adds up</Eyebrow><button className="muted" onClick={onClose} aria-label="Close">✕</button></div>
+        <div className="detail"><span>Starting balance</span><span>{money(base, 0)}</span></div>
+        <div className="detail"><span>Closed trades (realized)</span><span className={realized >= 0 ? "lime" : "red"} data-testid="pnl-realized">{signedMoney(realized)}</span></div>
+        <div className="detail"><span>Open positions (unrealized)</span><span className={unrealized >= 0 ? "lime" : "red"} data-testid="pnl-unrealized">{signedMoney(unrealized)}</span></div>
+        {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit (included above)</span><span>{money(me.protection_credit)}</span></div>}
+        <div className="detail"><b>Season P&amp;L (equity − start)</b><b className={equity - base >= 0 ? "lime" : "red"}>{signedMoney(equity - base)}</b></div>
+        <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          The big number up top is your whole account: cash plus what your open trades are worth right now. Each position row shows only <b>that trade's</b> open P&amp;L, so the rows won't add up to the season number once you've closed trades.
+          Prices are the live midpoint, and practice fills don't charge spread or commission. Your Receipts list shows the latest 50 closed trades; the totals here cover the whole season.
+        </div>
+        <Button variant="ghost" onClick={onClose}>Got it</Button>
+      </div>
+    </Sheet>
+  );
+}
+
+function Pit({ goSquad, toast }: { goSquad: () => void; toast: (m: string) => void }) {
   const st = useGame();
   const squad = game.squad;
+  const [busy, setBusy] = useState(false);
+  async function invite() {
+    if (!squad || busy) return;
+    setBusy(true);
+    const r = await shareInvite(squad);
+    setBusy(false);
+    if (r === "copied") toast("Invite copied. Paste it in the group chat.");
+    else if (r === "failed") toast(`Couldn't copy. Your code is ${squad.invite_code}.`);
+  }
   return (
     <div className="stack" style={{ gap: 12 }}>
       <div className="row between"><h2 className="h2">The pit</h2><span className="eyebrow">{squad?.name ?? "Your squad"}</span></div>
       {!squad ? (
-        <button className="panel lime" style={{ padding: 16, fontSize: 12, textAlign: "left" }} onClick={goSquad}>Start or join a squad to see your mates' trades ↗</button>
+        <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
+          <b style={{ fontSize: 13 }}>It's quiet. Trading is better with mates.</b>
+          <div className="muted" style={{ fontSize: 12 }}>Start a squad to get an invite link, then send it to the group chat.</div>
+          <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={goSquad} data-testid="pit-start-squad">Start a squad to invite friends ↗</button>
+        </div>
       ) : st.feed.length === 0 ? (
-        <div className="panel muted" style={{ padding: 16, fontSize: 12 }}>Quiet in here. Be the first to make a move.</div>
+        <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
+          <span className="muted" style={{ fontSize: 12 }}>Quiet in here. Be the first to make a move{squad.member_count === 1 ? ", or bring your mates." : "."}</span>
+          {squad.member_count === 1 && <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={invite} disabled={busy} data-testid="pit-invite">{busy ? <span className="spinner" /> : "Invite friends ↗"}</button>}
+        </div>
       ) : st.feed.slice(0, 5).map((e) => <FeedRow key={`${e.kind}-${e.id}`} e={e} />)}
+      {squad && <EmojiBar compact onSent={(e) => { if (e) toast(e); }} />}
     </div>
   );
 }
@@ -190,7 +241,8 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
 
 function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClose: () => void; toast: (m: string) => void; equity: number }) {
   const st = useGame();
-  const [qty, setQty] = useState(1);
+  const qty = st.qty;
+  const setQty = (n: number) => game.setQty(n);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (!side) return null;
@@ -202,7 +254,7 @@ function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClo
     setBusy(true); setErr(null);
     const e = await game.open(side!, qty);
     setBusy(false);
-    if (e) setErr(e); else { toast(`${side === "long" ? "Long" : "Short"} ${m.title} opened. You're in.`); setQty(1); onClose(); }
+    if (e) setErr(e); else { toast(`${side === "long" ? "Long" : "Short"} ${m.title} opened. You're in.`); onClose(); }
   }
   return (
     <Sheet open onClose={onClose}>
@@ -215,7 +267,7 @@ function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClo
         <div className="muted" style={{ fontSize: 13 }}>{side === "long" ? "Think it goes up? You're in the right place." : "Think it goes down? Put your paper on it."}</div>
         <div><Eyebrow>Micro contracts</Eyebrow>
           <div className="qty" style={{ marginTop: 11 }}>
-            {[1, 2, 3, 5, 10].map((n) => <button key={n} data-testid={`quantity-${n}`} onClick={() => { setQty(n); setErr(null); }} style={qty === n ? { background: color, color: "var(--bg)" } : undefined}>{n}</button>)}
+            {[1, 2, 3, 5, 10].map((n) => <button key={n} aria-pressed={qty === n} data-testid={`quantity-${n}`} onClick={() => { setQty(n); setErr(null); }} style={qty === n ? { background: color, color: "var(--bg)" } : undefined}>{n}</button>)}
           </div>
         </div>
         <div className="stack" style={{ gap: 13 }}>

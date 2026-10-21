@@ -5,6 +5,8 @@ import { SquadScreen } from "./Squad";
 import { LearnScreen } from "./Learn";
 import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
+import { EventStrip, FlashOverlay } from "./Events";
+import { FeedbackSheet } from "./Social";
 import { useVoice, voice, ROOMS } from "./voice";
 import { Icon, countdown, useNow, useToast } from "./ui";
 
@@ -15,6 +17,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has("join") ? "squad" : "trade"));
   const [toast, setToast] = useToast();
   const now = useNow(30_000);
+  const [fb, setFb] = useState(false);
   useEffect(() => { void game.start(); }, []);
   useEffect(() => {
     const onVis = () => game.setActive(!document.hidden);
@@ -34,8 +37,10 @@ export function App() {
         <div className="header">
           <div className="wordmark">brokie<i /></div>
           <span className="pill-btn" data-testid="season-pill">S{st.me.season_number ?? ""} · {countdown(st.me.season_ends_at, now + st.clockOffset).toUpperCase()} LEFT</span>
+          <button className="icon-btn" onClick={() => setFb(true)} aria-label="Send feedback" data-testid="feedback-btn">💬</button>
           <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
         </div>
+        <EventStrip />
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
         {tab === "trade" && <TradeScreen toast={setToast} goSquad={() => setTab("squad")} />}
         {tab === "squad" && <SquadScreen />}
@@ -49,6 +54,8 @@ export function App() {
         ))}
       </div></nav>
       {toast && <div className="toast" data-testid="toast">{toast}</div>}
+      <FlashOverlay />
+      <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
     </>
   );

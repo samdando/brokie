@@ -86,11 +86,27 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     return gs;
   }, [placed]);
 
+  // Closed trades stay on the chart: entry → exit line with the result at the exit.
+  const marks = useMemo(() => {
+    const out: { b: Bubble; x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (const b of bubbles) {
+      if (b.state !== "closed" || b.exit_price === null) continue;
+      const a = toXY(Date.parse(b.opened_at) / 1000, b.entry_price);
+      const z = toXY(Date.parse(b.at) / 1000, b.exit_price);
+      if (!z) continue;
+      out.push({ b, x1: a?.x ?? z.x, y1: a?.y ?? z.y, x2: z.x, y2: z.y });
+    }
+    return out.slice(-12);
+  }, [bubbles, toXY, width]);
+
   const longs = placed.filter((p) => p.b.side === "long").length, shorts = placed.length - longs;
 
   return (
     <>
       <svg width={width} height="100%" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {marks.map((m) => <line key={`l-${m.b.id}`} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2}
+          stroke={(m.b.pnl ?? 0) >= 0 ? "var(--lime)" : "var(--red)"} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.55" />)}
+        {marks.map((m) => <circle key={`c-${m.b.id}`} cx={m.x1} cy={m.y1} r="2.5" fill="var(--muted)" />)}
         {placed.map((p) => p.markY !== null && <line key={p.b.id} x1={p.x} y1={p.y} x2={p.x} y2={p.markY}
           stroke={p.b.side === "long" ? "var(--lime)" : "var(--red)"} strokeWidth="1" strokeDasharray="2 4" opacity="0.4" />)}
       </svg>
@@ -133,6 +149,15 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
           {g.length > 1 && <button type="button" className="cluster cluster-collapse" style={{ left: centerX, top: centerY + 47 }}
             onClick={() => setExpanded(null)} aria-label="Collapse trade cluster" aria-expanded={true}>Collapse</button>}
         </Fragment>;
+      })}
+      {marks.map((m) => {
+        const pnl = m.b.pnl ?? 0;
+        const label = m.b.reason === "blown" ? "💀" : `${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`;
+        const right = m.x2 > width - 60;
+        return <span key={`x-${m.b.id}`} className={`exit-mark ${pnl >= 0 ? "win" : "loss"} ${m.b.is_you ? "me" : ""} ${right ? "left" : ""}`}
+          style={{ left: m.x2, top: m.y2 }} data-testid="exit-mark" title={`@${m.b.handle} closed ${m.b.side} ×${m.b.quantity}`}>
+          <i aria-hidden="true">✕</i><span>{m.b.is_you ? "" : `@${m.b.handle} `}{label}</span>
+        </span>;
       })}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);

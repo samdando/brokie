@@ -236,15 +236,16 @@ final class TradingEngine: ObservableObject {
     }
 
     /// Replaces the account with the server's copy (the source of truth online).
+    /// `baseline` is the account's real starting balance ($100k in online seasons).
     func applyServerState(cash: Double, protectionCredit: Double, liquidations: Int,
-                          positions: [Position], closedTrades: [ClosedTrade]) {
+                          positions: [Position], closedTrades: [ClosedTrade], baseline: Double? = nil) {
         guard serverAuthoritative else { return }
         balance = cash
         self.protectionCredit = protectionCredit
         liquidationCount = liquidations
         self.positions = positions
         self.closedTrades = closedTrades
-        realizedPnL = cash - Self.startingBalance
+        realizedPnL = cash - (baseline ?? Self.startingBalance)
     }
 
     /// Advances one synthetic tick. The caller owns the timer and scene lifecycle.

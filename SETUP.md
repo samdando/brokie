@@ -72,3 +72,15 @@ Send the **Project URL** and **anon/publishable key**. Claude puts them into `Br
 - **Supabase** pauses a free project after about a week with no activity. Click **Resume project** in the dashboard to wake it. The 10-second price feed counts as activity while markets are open.
 - **LiveKit**: 5,000 voice minutes a month (for example, 4 mates × 40 hours).
 - **Apple**: the free account runs the app on *your* iPhone (re-run from Xcode every 7 days). Getting it onto mates' iPhones (TestFlight) needs the US$99/yr developer program. Hold off on that until you've proven people come back.
+
+## v3: global board, chat, feedback, events
+
+Run `backend/v3.sql` in the Supabase SQL editor after `schema.sql` and `seasons_v2.sql` (safe to re-run).
+
+- **Feedback** lands in the `feedback` table (Table editor → feedback). Players can't read it.
+- **Events** (CPI, NFP, FOMC, anything): add a row to the `events` table.
+  `event_at` is the release time. Players get a countdown from `lead_minutes` before, a colour flash at release,
+  and it stays live for `duration_minutes`. Example:
+  `insert into events (kind, impact, title, body, market, event_at) values ('econ','high','US CPI','Inflation print','gold','2026-11-12 23:30+10');`
+- Weekday session opens (Sydney, Tokyo, London, Wall Street) flash automatically, DST-proof.
+- Chat: 140 chars, 5 messages / 10 s, emoji quick-send. Opting out of the global board is in Squad → Global.

@@ -2,15 +2,22 @@ import { useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
 import { Button, Eyebrow, Sheet, countdown, money, signedMoney, useNow } from "./ui";
+import { ChatCard, GlobalBoard } from "./Social";
 
 export function SquadScreen() {
   const st = useGame();
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<"squad" | "global">(() => { try { return localStorage.getItem("brokie.board") === "global" ? "global" : "squad"; } catch { return "squad"; } });
+  const pick = (v: "squad" | "global") => { setView(v); try { localStorage.setItem("brokie.board", v); } catch { /* ignore */ } };
   const squad = game.squad;
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div><h1 className="title">{"Good friends.\nQuestionable trades."}</h1><div className="muted" style={{ fontSize: 13 }}>Bragging rights are the only payout.</div></div>
-      {st.squads.length === 0 ? <SquadStarter /> : (
+      <div className="seg" role="tablist" aria-label="Leaderboard">
+        <button role="tab" aria-selected={view === "squad"} className={view === "squad" ? "on" : ""} onClick={() => pick("squad")} data-testid="seg-squad">My squad</button>
+        <button role="tab" aria-selected={view === "global"} className={view === "global" ? "on" : ""} onClick={() => pick("global")} data-testid="seg-global">🌍 Global</button>
+      </div>
+      {view === "global" ? <GlobalBoard /> : st.squads.length === 0 ? <SquadStarter /> : (
         <>
           <div className="hscroll">
             {st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}
@@ -18,6 +25,7 @@ export function SquadScreen() {
           </div>
           {squad && <SquadCard />}
           {squad && <VoiceCard />}
+          {squad && <ChatCard />}
           {squad && <Leaderboard />}
         </>
       )}
@@ -26,16 +34,27 @@ export function SquadScreen() {
   );
 }
 
+/** Shares the real invitation for a squad: native share sheet, else clipboard. */
+export async function shareInvite(squad: { invite_code: string }): Promise<"shared" | "copied" | "cancelled" | "failed"> {
+  const link = `${location.origin}${location.pathname}?join=${squad.invite_code}`;
+  const text = `Join my squad on Brokie 📈 Paper-trade Gold, NAS & ES with real prices and fake money. Code: ${squad.invite_code}`;
+  if (navigator.share) {
+    try { await navigator.share({ title: "Brokie", text, url: link }); return "shared"; }
+    catch (e) { if ((e as Error).name === "AbortError") return "cancelled"; /* else fall through to copy */ }
+  }
+  try { await navigator.clipboard.writeText(`${text}\n${link}`); return "copied"; } catch { return "failed"; }
+}
+
 function SquadCard() {
   const squad = game.squad!;
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const link = `${location.origin}${location.pathname}?join=${squad.invite_code}`;
-  const text = `Join my squad on Brokie 📈 Paper-trade Gold, NAS & ES with real prices and fake money. Code: ${squad.invite_code}`;
+  const [note, setNote] = useState<string | null>(null);
   async function invite() {
-    if (navigator.share) { try { await navigator.share({ title: "Brokie", text, url: link }); return; } catch { /* cancelled */ } }
-    await navigator.clipboard?.writeText(`${text}\n${link}`).catch(() => undefined);
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
+    const r = await shareInvite(squad);
+    if (r === "cancelled") return;
+    setNote(r === "failed" ? "Couldn't copy. Send the code above instead." : null);
+    if (r === "copied") { setCopied(true); setTimeout(() => setCopied(false), 2000); }
   }
   return (
     <div className="panel stack" style={{ gap: 18 }}>
@@ -46,6 +65,7 @@ function SquadCard() {
         <div style={{ flex: 1 }}><div className="eyebrow" style={{ fontSize: 8 }}>Invite code</div><div className="code" data-testid="invite-code">{squad.invite_code}</div></div>
         <button className="big-btn lime" style={{ width: "auto", padding: "0 16px", height: 42, fontSize: 13 }} onClick={invite}>{copied ? "Copied ✓" : "Invite ↗"}</button>
       </div>
+      {note && <div className="err" role="status">{note}</div>}
       {squad.member_count === 1 && <div className="muted" style={{ fontSize: 12 }}>It's just you so far. Send the code to the group chat.</div>}
       <Sheet open={confirm} onClose={() => setConfirm(false)}>
         <div className="stack" style={{ gap: 16 }}>

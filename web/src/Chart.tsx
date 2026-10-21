@@ -20,6 +20,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const lastKey = useRef("");
   const lastCount = useRef(0);
   const requestFrame = useRef<() => void>(() => {});
+  const plotRef = useRef(0);
 
   useEffect(() => {
     if (!host.current) return;
@@ -44,8 +45,11 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     const refreshOverlay = () => {
       cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(() => {
-        // timeScale.width() is the plot width: it excludes the price-axis labels.
-        setPlotWidth(c.timeScale().width());
+        // timeScale().width() is 0 while the time axis is hidden, so measure the plot directly:
+        // chart width minus the price-axis labels.
+        const w = Math.max(0, (host.current?.clientWidth ?? 0) - c.priceScale("right").width());
+        plotRef.current = w;
+        setPlotWidth(w);
         setFrame((f) => f + 1);
       });
     };
@@ -111,7 +115,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     if (index < 0) return null;
     const fraction = (secs - bucket * bucketSeconds) / bucketSeconds;
     const x = c.timeScale().logicalToCoordinate((index + fraction) as Logical);
-    if (x === null || x < 0 || x > c.timeScale().width()) return null;
+    if (x === null || x < 0 || x > plotRef.current) return null;
     return { x, y, clamped: false };
   };
 

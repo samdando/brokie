@@ -23,13 +23,14 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         </div>
       </div>
       <div className="row" style={{ gap: 10 }}>
-        {[["Closed trades", String(me.trades.length)], ["Win rate", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Season P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
+        {[["Recent trades", String(me.trades.length)], ["Recent win rate", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
           <div key={k} className="panel" style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
         ))}
       </div>
       <div className="panel stack" style={{ gap: 14, padding: 18, borderRadius: 16 }}>
         <div className="detail"><span>Paper cash</span><span>{money(me.cash)}</span></div>
-        <div className="detail"><span>Open P&amp;L</span><span>{signedMoney(unrealized)}</span></div>
+        <div className="detail"><span>Open P&amp;L (unrealized)</span><span>{signedMoney(unrealized)}</span></div>
+        <div className="muted" style={{ fontSize: 10 }}>Season P&amp;L = realized + open. Recent trades covers your latest 50 receipts; Lifetime below has full stats.</div>
         {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit</span><span>{money(me.protection_credit)}</span></div>}
       </div>
 

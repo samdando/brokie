@@ -42,6 +42,19 @@ export interface FeedEvent {
   kind: "opened" | "closed" | "rekt" | "funded"; id: string; handle: string; is_you: boolean; market: Market; side: Side;
   quantity: number; price: number; pnl: number | null; reason: string | null; at: string;
 }
+export interface GlobalRow {
+  rank: number; handle: string; is_you: boolean; equity: number; return_pct: number; status: "active" | "locked" | "blown";
+  funded: boolean; qualified: boolean; trading_days: number; trades: number; show_global?: boolean;
+}
+export interface GlobalBoard { rows: GlobalRow[]; me: GlobalRow | null; players: number; season: string }
+export interface ChatMsg { id: number; handle: string; is_you: boolean; kind: "text" | "emoji"; body: string; at: string }
+export type FeedbackKind = "bug" | "idea" | "love" | "other";
+export interface EventItem {
+  id: string; kind: "econ" | "news" | "season" | "session"; impact: "low" | "med" | "high"; title: string; body: string | null;
+  market: Market | null; at: string; phase?: "soon" | "live"; ends_at?: string;
+}
+export interface EventsFeed { active: EventItem[]; upcoming: EventItem[]; server_time: string }
+export interface Flash { key: string; tone: "lime" | "red" | "gold"; title: string; sub: string }
 export interface Candle { index: number; open: number; high: number; low: number; close: number }
 
 export const direction = (s: Side) => (s === "long" ? 1 : -1);
