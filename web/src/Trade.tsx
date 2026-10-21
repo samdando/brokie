@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
-import { QTY_CHOICES, game, useGame } from "./game";
+import { TAP_SIZE, game, useGame } from "./game";
 import { EmojiBar, } from "./Social";
 import { shareInvite } from "./Squad";
 import { BrokieChart, vibeOf } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, money, px, signedMoney } from "./ui";
-import { MARKETS, Market, Side, pnlOf } from "./types";
+import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
 
@@ -14,7 +14,6 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const st = useGame();
   const me = st.me!;
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
-  const [ticket, setTicket] = useState<Side | null>(null);
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
   const mark = (m: Market) => game.quote(m)?.price ?? null;
@@ -37,12 +36,19 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
-  async function close(id: string, title: string) {
+  async function close(id: string, title: string): Promise<boolean> {
     setClosing(id);
     const r = await game.close(id);
     setClosing(null);
     toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
+    return !r.error;
   }
+  // Ticket 14: enforce dragged SL/TP while the app is open.
+  useEffect(() => {
+    let alive = true;
+    void game.checkBrackets().then((hits) => { if (alive) for (const h of hits) toast(h.error ?? `${h.hit === "tp" ? "🎯 TP hit" : "🛑 SL hit"} · ${signedMoney(h.pnl ?? 0)}`); });
+    return () => { alive = false; };
+  }, [st.me]);
 
   return (
     <div className="stack">
@@ -92,6 +98,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           {hi !== null && <span className="mono muted" style={{ fontSize: 9 }}>H {px(hi)} L {px(lo!)}</span>}
         </div>
         <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={me.positions} style={style}
+          brackets={st.brackets} onBracket={(id, b) => game.setBracket(id, b)} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => st.bubbles.find((b) => b.is_you && b.state === "open" && b.side === p.side && b.entry_price === p.entry_price && b.quantity === p.quantity)?.size_pct ?? null}
           overlay={(toXY, width) => (
             <BubbleLayer hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
@@ -113,17 +120,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         </div>
       </div>
 
-      <div className="size-row" role="radiogroup" aria-label="Order size in micro contracts" data-testid="size-chips">
-        <span className="eyebrow" style={{ fontSize: 8 }}>Size</span>
-        {QTY_CHOICES.map((n) => (
-          <button key={n} role="radio" aria-checked={st.qty === n} className={`chip lime ${st.qty === n ? "on" : ""}`} onClick={() => game.setQty(n)} data-testid={`size-${n}`}>{n} micro{n === 1 ? "" : "s"}</button>
-        ))}
-        <span className="mono muted" style={{ fontSize: 10, marginLeft: "auto" }}>{money(MARKETS[market].pointValue * st.qty, 0)}/pt</span>
-      </div>
-      <div className="row" style={{ gap: 12 }}>
-        <Button onClick={() => setTicket("long")} id="go-long" disabled={rules?.status === "blown" || rules?.status === "locked"}>↗ Go long</Button>
-        <Button variant="short" onClick={() => setTicket("short")} id="go-short" disabled={rules?.status === "blown" || rules?.status === "locked"}>↘ Go short</Button>
-      </div>
+      <SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} />
       <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
       <div className="stack" style={{ gap: 12 }}>
@@ -136,26 +133,15 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         )}
         {me.positions.map((p) => {
           const m = mark(p.market); const pnl = m ? pnlOf(p, m) : 0;
-          return (
-            <div className="card-row" key={p.id} data-testid="position">
-              <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{MARKETS[p.market].title} · {p.side === "long" ? "Long" : "Short"}
-                  {me.positions.some((q) => q.market === p.market && q.side !== p.side) && <span className="hedge-pill inline" data-testid="hedged-row">HEDGED</span>}</div>
-                <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{p.quantity} micro · at {px(p.entry_price)} · open P&amp;L</div>
-              </div>
-              <span className={`mono ${pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 600 }}>{signedMoney(pnl)}</span>
-              <button className="x-btn" aria-label="Close position" onClick={() => close(p.id, MARKETS[p.market].title)} disabled={!!closing} data-testid="close-position">
-                {closing === p.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : "✕"}
-              </button>
-            </div>
-          );
+          return <SwipeCard key={p.id} p={p} pnl={pnl} busy={closing === p.id} disabled={!!closing}
+            hedged={me.positions.some((q) => q.market === p.market && q.side !== p.side)}
+            onClose={() => close(p.id, MARKETS[p.market].title)} />;
         })}
+        {me.positions.length > 0 && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag ⇕ on the chart for SL/TP</div>}
       </div>
 
       <Pit goSquad={goSquad} toast={toast} />
 
-      <OrderSheet side={ticket} onClose={() => setTicket(null)} toast={toast} equity={equity} />
       <BubbleSheet b={picked} onClose={() => setPicked(null)} quote={quote} />
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
@@ -246,53 +232,6 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
   );
 }
 
-function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClose: () => void; toast: (m: string) => void; equity: number }) {
-  const st = useGame();
-  const qty = st.qty;
-  const setQty = (n: number) => game.setQty(n);
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  if (!side) return null;
-  const m = MARKETS[st.market];
-  const open = game.isOpen(st.market);
-  const used = (st.me?.positions ?? []).reduce((s, p) => s + p.quantity * 1000, 0);
-  const color = side === "long" ? "var(--lime)" : "var(--red)";
-  async function submit() {
-    setBusy(true); setErr(null);
-    const e = await game.open(side!, qty);
-    setBusy(false);
-    if (e) setErr(e); else { toast(`${side === "long" ? "Long" : "Short"} ${m.title} opened. You're in.`); onClose(); }
-  }
-  return (
-    <Sheet open onClose={onClose}>
-      <div className="stack" style={{ gap: 20 }}>
-        <div className="row between"><Eyebrow>Paper order</Eyebrow><button className="muted" onClick={onClose} aria-label="Cancel">✕</button></div>
-        <div className="row" style={{ gap: 13 }}>
-          <span className="badge-sq" style={{ width: 45, height: 45, borderRadius: 14, background: m.color + "1A", color: m.color, fontSize: 16 }}>{m.title[0]}</span>
-          <div><div style={{ font: "700 27px var(--round)" }}>{side === "long" ? "Long" : "Short"} {m.title}</div><div className="muted" style={{ fontSize: 12 }}>{m.subtitle} · {m.symbol}</div></div>
-        </div>
-        <div className="muted" style={{ fontSize: 13 }}>{side === "long" ? "Think it goes up? You're in the right place." : "Think it goes down? Put your paper on it."}</div>
-        <div><Eyebrow>Micro contracts</Eyebrow>
-          <div className="qty" style={{ marginTop: 11 }}>
-            {[1, 2, 3, 5, 10].map((n) => <button key={n} aria-pressed={qty === n} data-testid={`quantity-${n}`} onClick={() => { setQty(n); setErr(null); }} style={qty === n ? { background: color, color: "var(--bg)" } : undefined}>{n}</button>)}
-          </div>
-        </div>
-        <div className="stack" style={{ gap: 13 }}>
-          <div className="detail"><span>{open ? "Live market price" : "Last price · market closed"}</span><span>{px(game.quote(st.market)?.price ?? 0)}</span></div>
-          <div className="detail"><span>P&amp;L per 1 point move</span><span>{money(m.pointValue * qty)}</span></div>
-          <div className="detail"><span>Practice margin</span><span>{money(qty * 1000, 0)}</span></div>
-          <div className="detail"><span>Available</span><span>{money(Math.max(0, equity - used))}</span></div>
-        </div>
-        {err && <div className="err" data-testid="order-error">{err}</div>}
-        <button className="big-btn" style={{ background: color, color: "var(--bg)", opacity: open ? 1 : 0.4 }} disabled={busy || !open} onClick={submit} data-testid="confirm-order">
-          {busy ? <span className="spinner" /> : `Open ${side} · ${qty} ${qty === 1 ? "micro" : "micros"}`}
-        </button>
-        <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Virtual funds only. Filled by the Brokie server at the live price.</div>
-      </div>
-    </Sheet>
-  );
-}
-
 function RuleStatus({ rules, toast }: { rules: Rules; toast: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   if (rules.status === "active") return null;
@@ -379,5 +318,115 @@ function BubbleSheet({ b, onClose, quote }: { b: Bubble | null; onClose: () => v
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </div>
     </Sheet>
+  );
+}
+
+const buzz = (ms: number | number[]) => { try { navigator.vibrate?.(ms); } catch { /* */ } };
+
+/** Ticket 15: spam BUY / SELL. Every tap = +1 micro instantly (squash, pop, thump); taps batch into
+ *  one order 300ms after the last. SELL while long (or BUY while short) opens the hedge leg. */
+function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: boolean }) {
+  const st = useGame();
+  const [pops, setPops] = useState<{ id: number; side: Side }[]>([]);
+  const [squash, setSquash] = useState<Side | null>(null);
+  const [shake, setShake] = useState<Side | null>(null);
+  const streak = useRef(0);
+  const seq = useRef(0);
+  const pend = st.pending;
+  const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
+  function tap(side: Side) {
+    if (disabled) return;
+    const n = pend && pend.side === side ? pend.count : 0;
+    if (n >= 10) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
+    streak.current = n + 1;
+    const lvl = Math.min(2, Math.floor(n / 5));
+    buzz([12, 22, 35][lvl]);
+    const id = ++seq.current;
+    setPops((p) => [...p.slice(-8), { id, side }]);
+    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 420);
+    setSquash(null); requestAnimationFrame(() => setSquash(side));
+    const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
+    game.tap(side, (err, q) => {
+      if (err) { buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
+      else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${MARKETS[st.market].title}`); }
+    });
+  }
+  const btn = (side: Side) => {
+    const n = pend && pend.side === side ? pend.count : 0;
+    const label = side === "long" ? "BUY" : "SELL";
+    const hedge = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
+    return (
+      <button type="button" className={`spam-btn ${side} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
+        style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
+        onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
+        onAnimationEnd={() => setSquash(null)} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
+        <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
+        <span className="spam-sub">{n ? `x${n}` : hedge ? "tap = hedge" : `+${TAP_SIZE} per tap`}</span>
+        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">+{TAP_SIZE}</span>)}
+      </button>
+    );
+  };
+  return <div className="spam-pad" data-testid="spam-pad">{btn("long")}{btn("short")}</div>;
+}
+
+/** Ticket 16: a position as a clean card. Drag it sideways; past 40% it tints (lime win / red
+ *  loss) and buzzes; let go past that and it flies off and closes (confetti or crack). */
+function SwipeCard({ p, pnl, busy, disabled, hedged, onClose }:
+  { p: Position; pnl: number; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean> }) {
+  const [dx, setDx] = useState(0);
+  const [phase, setPhase] = useState<"idle" | "drag" | "fly" | "back" | "gone">("idle");
+  const [fx, setFx] = useState<"win" | "loss" | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const armed = useRef(false);
+  const win = pnl >= 0;
+  const w = () => ref.current?.offsetWidth ?? 320;
+  function down(e: React.PointerEvent) {
+    if (disabled || phase === "fly" || phase === "gone") return;
+    const x0 = e.clientX, y0 = e.clientY; let locked: boolean | null = null; let lastDx = 0;
+    const el = e.currentTarget as HTMLElement; el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const ddx = ev.clientX - x0, ddy = ev.clientY - y0;
+      if (locked === null && Math.hypot(ddx, ddy) > 8) locked = Math.abs(ddx) > Math.abs(ddy);
+      if (!locked) return;
+      setPhase("drag"); setDx(ddx); lastDx = ddx;
+      const over = Math.abs(ddx) > w() * 0.4;
+      if (over !== armed.current) { armed.current = over; if (over) buzz(22); }
+    };
+    const up = async () => {
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+      if (!locked) return;
+      if (armed.current) {
+        armed.current = false;
+        const dir = Math.sign(lastDx || 1);
+        setPhase("fly"); setDx(dir * (w() + 60));
+        buzz(win ? [10, 40, 18] : [40, 30, 40]);
+        setFx(win ? "win" : "loss");
+        const ok = await onClose();
+        if (ok) setPhase("gone"); else { setFx(null); setPhase("back"); setDx(0); }
+      } else { setPhase("back"); setDx(0); }
+    };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+  }
+  const over = Math.abs(dx) > w() * 0.4;
+  const tint = phase === "drag" && over ? (win ? "tint-win" : "tint-loss") : "";
+  return (
+    <div className={`swipe-wrap ${phase === "gone" ? "collapse" : ""}`} data-testid="position">
+      <div className={`swipe-bg ${win ? "win" : "loss"}`} style={{ opacity: Math.min(1, Math.abs(dx) / (w() * 0.4)) }}>
+        <span>{win ? "💰 Bank it" : "✂️ Cut it"}</span><span>{win ? "💰 Bank it" : "✂️ Cut it"}</span>
+      </div>
+      <div ref={ref} className={`pos-card ${tint} ${phase} ${fx === "loss" ? "crack" : ""}`} onPointerDown={down}
+        style={{ transform: `translateX(${dx}px) rotate(${dx / 40}deg)`, touchAction: "pan-y" }}
+        onTransitionEnd={() => { if (phase === "back") setPhase("idle"); }}>
+        <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{MARKETS[p.market].title} <span className={p.side === "long" ? "lime" : "red"}>{p.side === "long" ? "LONG ↗" : "SHORT ↘"}</span>
+            {hedged && <span className="hedge-pill inline" data-testid="hedged-row">HEDGED</span>}</div>
+          <div className="muted mono" style={{ fontSize: 10, marginTop: 4 }}>x{p.quantity} · {px(p.entry_price)}</div>
+        </div>
+        <span className={`mono pos-pnl ${win ? "lime" : "red"}`}>{signedMoney(pnl)}</span>
+        {busy && <span className="spinner" style={{ width: 12, height: 12 }} />}
+      </div>
+      {fx === "win" && <div className="confetti" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ ["--i" as string]: i }} />)}</div>}
+    </div>
   );
 }

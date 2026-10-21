@@ -328,3 +328,51 @@ a { color: var(--lime); }
   .coin.fresh .coin-face, .coin.fresh .coin-av, .coin.danger .coin-face { animation: none; }
   .coin-wave, .coin-trail { display: none; }
 }
+/* ---- Ticket 14: SL/TP drag off the entry line ---- */
+.bracket { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--bc); z-index: 4; pointer-events: none !important; --bc: var(--lime); }
+.bracket.sl { --bc: var(--red); }
+.bracket.live { border-top-style: solid; }
+.bracket-tag { position: absolute; left: 6px; transform: translateY(-50%); pointer-events: auto; cursor: ns-resize; display: inline-flex; gap: 4px; align-items: center;
+  font: 800 9px var(--mono); padding: 3px 7px; border-radius: 99px; background: rgba(12,14,11,.9); color: var(--bc); box-shadow: inset 0 0 0 1px var(--bc); }
+.bracket.live .bracket-tag { background: var(--bc); color: var(--bg); transform: translateY(-50%) scale(1.08); }
+.bracket-x { color: inherit; font-size: 9px; padding: 0 0 0 4px; opacity: .8; }
+.bracket-grip { position: absolute; transform: translate(-50%, -50%); width: 24px; height: 24px; border-radius: 50%; z-index: 4; cursor: ns-resize;
+  font: 900 12px var(--mono); color: var(--bg); background: var(--lime); box-shadow: 0 0 0 2px var(--bg), 0 0 12px rgba(214,254,89,.5); }
+.bracket-grip.short { background: var(--red); box-shadow: 0 0 0 2px var(--bg), 0 0 12px rgba(255,125,139,.5); }
+/* ---- Ticket 15: spam BUY / SELL ---- */
+.spam-pad { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.spam-btn { position: relative; height: 78px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  user-select: none; -webkit-user-select: none; touch-action: manipulation; --glow: 0; --c: var(--lime); --g: 214,254,89;
+  background: var(--c); color: var(--bg); box-shadow: 0 6px 0 rgba(0,0,0,.35), 0 0 calc(8px + var(--glow) * 30px) rgba(var(--g), calc(.25 + var(--glow) * .6)); }
+.spam-btn.short { --c: var(--red); --g: 255,125,139; }
+.spam-btn:disabled { opacity: .35; }
+.spam-label { font: 900 22px var(--round); letter-spacing: .5px; }
+.spam-sub { font: 800 11px var(--mono); opacity: .75; }
+.spam-btn.squash { animation: squash 240ms both; }
+@keyframes squash { 0% { transform: scale(1); } 25% { transform: scale(.92); } 65% { transform: scale(1.04); } 85% { transform: scale(.99); } 100% { transform: scale(1); } }
+.spam-btn.nope { animation: nope .3s; }
+@keyframes nope { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.spam-pop { position: absolute; top: 6px; left: 50%; pointer-events: none; font: 900 15px var(--mono); color: #fff; padding: 2px 7px; border-radius: 99px;
+  background: rgba(12,14,11,.85); animation: spampop .4s ease-out both; }
+@keyframes spampop { 0% { transform: translate(-50%, 0) scale(.6); opacity: 1; } 100% { transform: translate(-50%, -24px) scale(1.1); opacity: 0; } }
+/* ---- Ticket 16: swipe-to-close position cards ---- */
+.swipe-wrap { position: relative; max-height: 120px; transition: max-height .2s ease, margin .2s ease, opacity .2s; }
+.swipe-wrap.collapse { max-height: 0; opacity: 0; margin-top: -12px; overflow: hidden; }
+.swipe-bg { position: absolute; inset: 0; border-radius: 18px; display: flex; justify-content: space-between; align-items: center; padding: 0 18px; font: 800 13px var(--round); }
+.swipe-bg.win { background: rgba(214,254,89,.18); color: var(--lime); } .swipe-bg.loss { background: rgba(255,125,139,.18); color: var(--red); }
+.pos-card { position: relative; background: var(--panel); border-radius: 18px; padding: 15px 15px; display: flex; align-items: center; gap: 12px;
+  cursor: grab; user-select: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); transition: background .15s, box-shadow .15s; }
+.pos-card.drag { transition: background .15s, box-shadow .15s; cursor: grabbing; }
+.pos-card.back { transition: transform 250ms cubic-bezier(.3,1.5,.5,1); }
+.pos-card.fly { transition: transform 220ms ease-in, opacity 220ms ease-in; opacity: 0; }
+.pos-card.tint-win { background: #26301a; box-shadow: inset 0 0 0 1.5px var(--lime); }
+.pos-card.tint-loss { background: #301a1d; box-shadow: inset 0 0 0 1.5px var(--red); }
+.pos-card.crack { animation: crackshake .22s; background: #301a1d linear-gradient(115deg, transparent 46%, var(--red) 47%, transparent 48%, transparent 60%, var(--red) 61%, transparent 62%); }
+@keyframes crackshake { 0%,100% { translate: 0; } 20% { translate: -5px 0; } 40% { translate: 5px 0; } 60% { translate: -3px 0; } 80% { translate: 3px 0; } }
+.pos-pnl { font-size: 16px; font-weight: 800; }
+.confetti { position: absolute; left: 50%; top: 50%; pointer-events: none; z-index: 5; }
+.confetti i { position: absolute; width: 6px; height: 9px; border-radius: 2px; background: var(--lime); opacity: 0;
+  --a: calc(var(--i) * 25.7deg); animation: confetti .7s ease-out calc(var(--i) * 8ms) both; }
+.confetti i:nth-child(3n) { background: #fff; } .confetti i:nth-child(4n) { background: var(--gold); }
+@keyframes confetti { 0% { transform: rotate(var(--a)) translateY(0) rotate(0); opacity: 1; } 100% { transform: rotate(var(--a)) translateY(-90px) rotate(400deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .spam-btn.squash, .spam-pop, .pos-card.crack, .confetti { animation: none !important; } }

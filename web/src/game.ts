@@ -27,7 +27,14 @@ export interface GameState {
   events: EventsFeed | null;
   flash: Flash | null;
   qty: number;
+  /** Client-side SL/TP brackets per position id (ticket 14). */
+  brackets: Record<string, Bracket>;
+  /** Spam taps waiting to be sent (ticket 15). */
+  pending: { side: Side; count: number } | null;
 }
+export interface Bracket { sl?: number; tp?: number }
+const BRACKET_KEY = "brokie.brackets";
+export const TAP_SIZE = 1;
 
 const SQUAD_KEY = "brokie.squad";
 const MARKET_KEY = "brokie.market";
@@ -47,6 +54,7 @@ export class Game {
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], lifetime: null,
     global: null, chat: [], events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
+    brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
   private submitting = false;
@@ -135,6 +143,62 @@ export class Game {
   dismissBackupCode() { this.set({ freshBackupCode: null }); }
 
   setQty(n: number) { const q = clampQty(n); write(QTY_KEY, String(q)); this.set({ qty: q }); }
+
+  // ---- Ticket 14: SL/TP dragged off the entry line. Kept on this device and enforced while the
+  // app is open (the server has no bracket orders yet). ----
+  setBracket(id: string, b: Bracket) {
+    const brackets = { ...this.state.brackets, [id]: { ...this.state.brackets[id], ...b } };
+    write(BRACKET_KEY, JSON.stringify(brackets)); this.set({ brackets });
+  }
+  clearBracket(id: string, key: keyof Bracket) {
+    const cur = { ...this.state.brackets[id] }; delete cur[key];
+    const brackets = { ...this.state.brackets, [id]: cur }; write(BRACKET_KEY, JSON.stringify(brackets)); this.set({ brackets });
+  }
+  private bracketBusy = new Set<string>();
+  /** Closes any position whose SL or TP has been touched. Returns what fired. */
+  async checkBrackets(): Promise<{ id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[]> {
+    const out: { id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[] = [];
+    for (const p of this.state.me?.positions ?? []) {
+      const b = this.state.brackets[p.id]; const q = this.quote(p.market)?.price;
+      if (!b || q == null || this.bracketBusy.has(p.id) || !this.isOpen(p.market)) continue;
+      const up = p.side === "long";
+      const hit = b.tp != null && (up ? q >= b.tp : q <= b.tp) ? "tp" : b.sl != null && (up ? q <= b.sl : q >= b.sl) ? "sl" : null;
+      if (!hit) continue;
+      this.bracketBusy.add(p.id);
+      const r = await this.close(p.id);
+      this.bracketBusy.delete(p.id);
+      out.push({ id: p.id, hit, ...r });
+    }
+    const live = new Set((this.state.me?.positions ?? []).map((p) => p.id));
+    const kept = Object.fromEntries(Object.entries(this.state.brackets).filter(([k]) => live.has(k)));
+    if (Object.keys(kept).length !== Object.keys(this.state.brackets).length) { write(BRACKET_KEY, JSON.stringify(kept)); this.set({ brackets: kept }); }
+    return out;
+  }
+
+  // ---- Ticket 15: spam BUY / SELL. Each tap counts instantly; taps are batched ~300ms after the
+  // last one into a single open_position call (max 10 micros per order, server rule). The opposite
+  // side opens the other leg, i.e. a hedge, exactly like the existing Go long / Go short. ----
+  private tapTimer: number | null = null;
+  tap(side: Side, onDone: (err: string | null, qty: number) => void) {
+    const cur = this.state.pending;
+    if (cur && cur.side !== side) this.flushTaps(onDone);
+    const p = this.state.pending;
+    const count = Math.min(10, (p && p.side === side ? p.count : 0) + TAP_SIZE);
+    this.set({ pending: { side, count } });
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = window.setTimeout(() => this.flushTaps(onDone), 300);
+  }
+  private flushTaps(onDone: (err: string | null, qty: number) => void) {
+    if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
+    const p = this.state.pending; if (!p) return;
+    this.set({ pending: null });
+    const send = async () => {
+      while (this.submitting) await new Promise((r) => setTimeout(r, 60));
+      const err = await this.open(p.side, p.count);
+      onDone(err, p.count);
+    };
+    void send();
+  }
 
   async open(side: Side, quantity: number): Promise<string | null> {
     if (this.submitting) return "One order at a time.";

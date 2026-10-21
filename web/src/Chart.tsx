@@ -1,8 +1,9 @@
-import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
 import { CoinBubble, useFreshIds } from "./Bubbles";
+import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
 const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#969D8D";
@@ -16,9 +17,10 @@ export type ToXY = (unixSeconds: number, price: number) => { x: number; y: numbe
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf }:
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket }:
   { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
-    overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null }) {
+    overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
+    brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   const [, setFrame] = useState(0);
   const [plotWidth, setPlotWidth] = useState(0);
   const [hover, setHover] = useState<Hover | null>(null);
@@ -192,6 +194,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const series_ = () => { const s = series.current; return s ? (style === "candles" ? s.candle : s.area) : null; };
   const yOf = (price: number) => { const y = series_()?.priceToCoordinate(price); return y == null ? null : y; };
 
+  const priceOf = (y: number) => { const v = series_()?.coordinateToPrice(y); return v == null ? null : Number(v); };
+
   const toXY: ToXY = (secs, price) => {
     const c = chart.current;
     if (!c || !series_() || !candles.length || !Number.isFinite(secs) || !Number.isFinite(price)) return null;
@@ -234,6 +238,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
           {hedged && <span className="hedge-pill" data-testid="my-hedged">HEDGED</span>}
           {mine.map((p) => <MyPosition key={p.id} p={p} quote={quote} toXY={toXY} yOf={yOf} width={plotWidth}
             sizePct={sizePctOf?.(p) ?? null} fresh={fresh.has(p.id)} hedged={hedged} />)}
+          {onBracket && mine.map((p, i) => <BracketDrag key={`b-${p.id}`} p={p} slot={i} b={brackets?.[p.id] ?? {}} yOf={yOf} priceOf={priceOf} width={plotWidth}
+            onSet={(b) => onBracket(p.id, b)} onClear={(k) => onClearBracket?.(p.id, k)} />)}
         </div>}
         {hover && (
           <div className="crosshair-readout" data-testid="crosshair-readout">
@@ -295,4 +301,66 @@ export function vibeOf(candles: Candle[]): { label: string; color: string } {
   if (close > avg + spread && slope > 0) return { label: "PUMPING", color: LIME };
   if (close < avg - spread && slope < 0) return { label: "DUMPING", color: RED };
   return { label: "CHOP", color: MUTED };
+}
+
+/** Ticket 14: grab the handle on your entry line and drag up or down. For a long, up is TP and
+ *  down is SL; a short is the reverse. Snaps to the market tick, previews price + P&L live,
+ *  light haptic on release. Set lines can be dragged again; tap their ✕ to remove. */
+const tickOf = (price: number) => (price >= 1000 ? 0.25 : price >= 10 ? 0.01 : 0.0001);
+const snap = (price: number) => { const t = tickOf(price); return Math.round(price / t) * t; };
+const buzz = (ms: number | number[]) => { try { navigator.vibrate?.(ms); } catch { /* */ } };
+
+function BracketDrag({ p, slot, b, yOf, priceOf, width, onSet, onClear }:
+  { p: Position; slot: number; b: Bracket; yOf: (price: number) => number | null; priceOf: (y: number) => number | null; width: number;
+    onSet: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
+  const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
+  const keyFor = (price: number): keyof Bracket => ((price > p.entry_price) === (p.side === "long") ? "tp" : "sl");
+  const entryY = yOf(p.entry_price);
+  const start = (e: ReactPointerEvent, fixed?: keyof Bracket) => {
+    e.stopPropagation(); e.preventDefault();
+    const layer = (e.currentTarget as HTMLElement).closest(".bubble-layer") as HTMLElement | null;
+    if (!layer) return;
+    const top = layer.getBoundingClientRect().top;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      const raw = priceOf(Math.max(0, Math.min(H, ev.clientY - top)));
+      if (raw == null) return;
+      const price = snap(raw);
+      if (fixed && keyFor(price) !== fixed) return; // a set line can't cross the entry
+      const key = fixed ?? keyFor(price);
+      setDrag({ price, key });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      setDrag((d) => {
+        if (d && Math.abs(d.price - p.entry_price) >= tickOf(p.entry_price) && ev.type === "pointerup") { onSet({ [d.key]: d.price }); buzz(10); }
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  };
+  const pnlAt = (price: number) => pnlOf(p, price);
+  const line = (key: keyof Bracket, price: number, live: boolean) => {
+    const y = yOf(price); if (y == null || y < 0 || y > H) return null;
+    const pnl = pnlAt(price);
+    return (
+      <div key={key + (live ? "-live" : "")} className={`bracket ${key} ${live ? "live" : ""}`} style={{ top: y }} data-testid={`bracket-${key}`}>
+        <span className="bracket-tag" onPointerDown={live ? undefined : (e) => start(e, key)} style={{ touchAction: "none" }}>
+          {key.toUpperCase()} {px(price)} · <b>{signedMoney(pnl)}</b>
+          {!live && <button type="button" className="bracket-x" aria-label={`Remove ${key.toUpperCase()}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => { onClear(key); buzz(8); }}>✕</button>}
+        </span>
+      </div>
+    );
+  };
+  return (
+    <>
+      {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
+      {drag && line(drag.key, drag.price, true)}
+      {entryY != null && entryY >= 0 && entryY <= H && (
+        <button type="button" className={`bracket-grip ${p.side}`} style={{ top: entryY, left: Math.max(14, width - 30 - slot * 30), touchAction: "none" }}
+          onPointerDown={(e) => start(e)} aria-label={`Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}
+          data-testid="bracket-grip">⇕</button>
+      )}
+    </>
+  );
 }
