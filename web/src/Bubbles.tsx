@@ -9,6 +9,8 @@ import { MARKETS, direction } from "./types";
 interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
 
 const FLIP_MS = 1100;
+const MAX_MARKS = 5;    // closed trades kept on the chart
+const MAX_LABELS = 2;   // of those, how many show their P&L text
 
 /** Ids that showed up after the first render, kept "fresh" for one flip-in animation. */
 export function useFreshIds(ids: string[]): Set<string> {
@@ -42,7 +44,7 @@ export function CoinBubble({ side, initial, size, qty, me, fresh, hedged, danger
       <span className="coin-face" aria-hidden="true">
         <span className="coin-av">{initial.toUpperCase()}</span>
         <span className="coin-dir">{long ? "▲" : "▼"}</span>
-        <span className="coin-qty">{qty}</span>
+        <span className="coin-qty">{me ? `x${qty}` : qty}</span>
       </span>
       {tag && <span className={`bub-tag ${tagUp ? "lime" : "red"}`} aria-hidden="true">{tag}</span>}
       {hedged && <span className="coin-hedge" aria-hidden="true">H</span>}
@@ -50,6 +52,25 @@ export function CoinBubble({ side, initial, size, qty, me, fresh, hedged, danger
   );
 }
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }
+
+/** One bubble per player per side: spam-clicking 20 micros shows as one coin (x20), not 20 coins.
+ *  Size-weighted average entry, oldest leg's id and open time. */
+function mergeOpen(bubbles: Bubble[]): Bubble[] {
+  const groups = new Map<string, Bubble[]>();
+  for (const b of bubbles) {
+    if (b.state !== "open") continue;
+    const k = `${b.handle}|${b.side}`;
+    groups.set(k, [...(groups.get(k) ?? []), b]);
+  }
+  return [...groups.values()].map((legs) => {
+    legs = [...legs].sort((a, b) => Date.parse(a.opened_at) - Date.parse(b.opened_at));
+    const qty = legs.reduce((s, b) => s + b.quantity, 0);
+    const entry = legs.reduce((s, b) => s + b.entry_price * b.quantity, 0) / Math.max(1, qty);
+    const size = legs.reduce((s, b) => s + (b.size_pct ?? 0), 0);
+    return { ...legs[0], quantity: qty, entry_price: entry, size_pct: size };
+  });
+}
+const MAX_FX = 2;       // exit animations playing at once
 
 const pctOf = (b: Bubble, mark: number, mkt: Market) => {
   const pnl = (mark - b.entry_price) * MARKETS[mkt].pointValue * b.quantity * direction(b.side);
@@ -59,7 +80,8 @@ const pctOf = (b: Bubble, mark: number, mkt: Market) => {
 export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine }:
   { hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
-  const fresh = useFreshIds(bubbles.filter((b) => b.state === "open").map((b) => b.id));
+  const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
+  const fresh = useFreshIds(merged.map((b) => b.id));
   const seenExit = useRef<Set<string>>(new Set());
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
@@ -89,7 +111,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       fresh.push({ b, kind, born: Date.now() });
     }
     if (fresh.length) {
-      setExits((e) => [...e, ...fresh]);
+      setExits((e) => [...e, ...fresh].slice(-MAX_FX));
     }
   }, [bubbles, market, onEnter, toXY]);
 
@@ -105,8 +127,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
 
   const placed: Placed[] = useMemo(() => {
     const out: Placed[] = [];
-    for (const b of bubbles) {
-      if (b.state !== "open") continue;
+    for (const b of merged) {
       // Your own open trade is drawn by the chart itself (pinned at entry, ticket C1).
       if (hideMine && b.is_you) continue;
       // Opened before the visible window? Keep it on the left edge at its price instead of dropping it.
@@ -127,7 +148,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     for (const b of bubbles) if (b.state === "open") sides.set(b.handle, (sides.get(b.handle) ?? new Set()).add(b.side));
     for (const p of out) p.hedged = (sides.get(p.b.handle)?.size ?? 0) > 1;
     return out;
-  }, [bubbles, toXY, quote, market, width]);
+  }, [merged, bubbles, toXY, quote, market, width]);
 
   // Cluster bubbles that would overlap into a "3 ▲ / 1 ▼" pill.
   const groups = useMemo(() => {
@@ -149,8 +170,23 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       if (!z) continue;
       out.push({ b, x1: a?.x ?? z.x, y1: a?.y ?? z.y, x2: z.x, y2: z.y });
     }
-    return out.slice(-12);
+    // Keep the chart readable: only the latest few exits, newest last.
+    return out.sort((a, b) => Date.parse(a.b.at) - Date.parse(b.b.at)).slice(-MAX_MARKS);
   }, [bubbles, toXY, width]);
+
+  // Newest exits get a text label first; an older label that would overlap one already shown
+  // (or sit on top of an open bubble) drops to just its ✕ dot.
+  const labelled = useMemo(() => {
+    const boxes: { x: number; y: number; w: number }[] = placed.map((p) => ({ x: p.x - p.r, y: p.y, w: p.r * 2 }));
+    const keep = new Set<string>();
+    for (const m of [...marks].reverse()) {
+      if (keep.size >= MAX_LABELS) break;
+      const w = 64, right = m.x2 > width - 60, x = right ? m.x2 - w - 10 : m.x2 + 10;
+      if (boxes.some((b) => Math.abs(b.y - m.y2) < 20 && x < b.x + b.w && b.x < x + w)) continue;
+      boxes.push({ x, y: m.y2, w }); keep.add(m.b.id);
+    }
+    return keep;
+  }, [marks, placed, width]);
 
   const openAll = bubbles.filter((b) => b.state === "open");
   const longs = openAll.filter((b) => b.side === "long").length, shorts = openAll.length - longs;
@@ -161,8 +197,6 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         {marks.map((m) => <line key={`l-${m.b.id}`} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2}
           stroke={(m.b.pnl ?? 0) >= 0 ? "var(--lime)" : "var(--red)"} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.55" />)}
         {marks.map((m) => <circle key={`c-${m.b.id}`} cx={m.x1} cy={m.y1} r="2.5" fill="var(--muted)" />)}
-        {placed.map((p) => p.markY !== null && <line key={p.b.id} x1={p.x} y1={p.y} x2={p.x} y2={p.markY}
-          stroke={p.b.side === "long" ? "var(--lime)" : "var(--red)"} strokeWidth="1" strokeDasharray="2 4" opacity="0.4" />)}
       </svg>
       {openAll.length > 0 && (
         <div className="sentiment" title={`${longs} long / ${shorts} short`} data-testid="sentiment" aria-label={`${longs} long, ${shorts} short`}>
@@ -209,7 +243,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         const right = m.x2 > width - 60;
         return <span key={`x-${m.b.id}`} className={`exit-mark ${pnl >= 0 ? "win" : "loss"} ${m.b.is_you ? "me" : ""} ${right ? "left" : ""}`}
           style={{ left: m.x2, top: m.y2 }} data-testid="exit-mark" title={`@${m.b.handle} closed ${m.b.side} ×${m.b.quantity}`}>
-          <i aria-hidden="true">✕</i><span>{m.b.is_you ? "" : `@${m.b.handle} `}{label}</span>
+          <i aria-hidden="true">✕</i>{labelled.has(m.b.id) && <span>{m.b.is_you ? "" : `${m.b.handle[0]?.toUpperCase() ?? "?"} `}{label}</span>}
         </span>;
       })}
       {exits.map((e) => {
@@ -228,7 +262,7 @@ function BubbleDot({ p, fresh, onClick }: { p: Placed; fresh: boolean; onClick: 
       style={{ left: p.x, top: p.y, width: hitSize, height: hitSize }} onClick={onClick}
       data-testid="bubble" aria-label={`${p.b.handle} ${p.b.side} ${p.b.quantity} micros at ${p.b.entry_price}, ${tag}${p.hedged ? ", hedged" : ""}`}>
       <CoinBubble side={p.b.side} initial={p.b.handle[0] ?? "?"} size={p.r * 2} qty={p.b.quantity} me={p.b.is_you}
-        fresh={fresh} hedged={p.hedged} danger={p.danger} tag={tag} tagUp={p.pct >= 0} style={{ left: "50%", top: "50%" }} />
+        fresh={fresh} hedged={p.hedged} danger={p.danger} tag={Math.abs(p.pct) >= 0.1 ? tag : undefined} tagUp={p.pct >= 0} style={{ left: "50%", top: "50%" }} />
     </button>
   );
 }

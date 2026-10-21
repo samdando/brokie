@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
-import { TAP_SIZE, game, useGame } from "./game";
+import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 import { EmojiBar, } from "./Social";
 import { shareInvite } from "./Squad";
 import { BrokieChart, vibeOf } from "./Chart";
@@ -13,6 +13,8 @@ const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
 export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; goSquad: () => void }) {
   const st = useGame();
   const me = st.me!;
+  const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
+  const lastEnterToast = useRef(0);
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
@@ -36,9 +38,10 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
-  async function close(id: string, title: string): Promise<boolean> {
+  const stacks = stacksOf(me.positions);
+  async function close(id: string, ids: string[], title: string): Promise<boolean> {
     setClosing(id);
-    const r = await game.close(id);
+    const r = await game.closeStack(ids);
     setClosing(null);
     toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
     return !r.error;
@@ -97,12 +100,12 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           <span className="muted" style={{ fontSize: 9, marginRight: "auto", marginLeft: 8 }}>vs 20-bar avg</span>
           {hi !== null && <span className="mono muted" style={{ fontSize: 9 }}>H {px(hi)} L {px(lo!)}</span>}
         </div>
-        <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={me.positions} style={style}
+        <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => game.setBracket(id, b)} onClearBracket={(id, k) => game.clearBracket(id, k)}
-          sizePctOf={(p) => st.bubbles.find((b) => b.is_you && b.state === "open" && b.side === p.side && b.entry_price === p.entry_price && b.quantity === p.quantity)?.size_pct ?? null}
-          overlay={(toXY, width) => (
+          sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
+          overlay={(toXY, width) => crowd && (
             <BubbleLayer hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
-              onEnter={(b) => toast(`@${b.handle} aped ${b.side === "long" ? "LONG" : "SHORT"} ${b.quantity} micro${b.quantity === 1 ? "" : "s"} 🚀`)} />
+              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; toast(`@${b.handle} aped ${b.side === "long" ? "LONG" : "SHORT"} ${b.quantity} micro${b.quantity === 1 ? "" : "s"} 🚀`); }} />
           )} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
@@ -110,9 +113,12 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           ))}
           <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
+          <button className={`chip lime ${crowd ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={crowd} data-testid="crowd-toggle"
+            aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
+            onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>👥</button>
         </div>
         <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
-          {open ? `Live prices · OANDA practice feed · pinch to zoom · drag to pan · hold for crosshair · double-tap for live` : "Market's closed. New trades open when prices are live again."}
+          {open ? `OANDA practice prices · pinch to zoom · drag to pan · double-tap for live` : "Market's closed. New trades open when prices are live again."}
         </div>
         <div className="chart-attribution">
           Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
@@ -124,18 +130,18 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
       <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
       <div className="stack" style={{ gap: 12 }}>
-        <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{me.positions.length} open</span></div>
+        <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>
         {me.positions.length === 0 && (
           <div className="panel" style={{ padding: 18, borderRadius: 15 }}>
             <b style={{ fontSize: 13 }}>No trades. Peak risk management.</b>
             <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Pick a market and make your first paper trade.</div>
           </div>
         )}
-        {me.positions.map((p) => {
+        {stacks.map(({ merged: p, ids }) => {
           const m = mark(p.market); const pnl = m ? pnlOf(p, m) : 0;
           return <SwipeCard key={p.id} p={p} pnl={pnl} busy={closing === p.id} disabled={!!closing}
             hedged={me.positions.some((q) => q.market === p.market && q.side !== p.side)}
-            onClose={() => close(p.id, MARKETS[p.market].title)} />;
+            onClose={() => close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`)} />;
         })}
         {me.positions.length > 0 && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag ⇕ on the chart for SL/TP</div>}
       </div>

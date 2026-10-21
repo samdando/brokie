@@ -39,7 +39,12 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const requestFrame = useRef<() => void>(() => {});
   const plotRef = useRef(0);
   const countRef = useRef(0);
-  const lastTap = useRef(0);
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  // Touch bookkeeping so a pinch (two fingers lifting) or a drag never counts as a double-tap.
+  const touches = useRef(new Map<number, { x: number; y: number; t: number }>());
+  const gestureDirty = useRef(false);
+  // True once the player pinches, drags or wheels the chart; auto-framing stays off until they go live again.
+  const userMoved = useRef(false);
   const mine = positions.filter((p) => p.market === market);
   const m = MARKETS[market];
 
@@ -112,6 +117,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const goLive = useCallback(() => {
     const c = chart.current; const n = countRef.current;
     if (!c || !n) return;
+    userMoved.current = false;
     // An explicit range (not fitContent) so pinch/wheel zoom still works on short histories.
     c.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VIEW_BARS), to: n - 1 + 6 });
     c.priceScale("right").applyOptions({ autoScale: true });
@@ -158,9 +164,11 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     const viewKey = `${key}-${style}`;
     // Re-frame when the view changes or a batch of history arrives (not on every tick, and never
     // while the player has zoomed or panned away).
-    if (viewKey !== lastKey.current || Math.abs(bars.length - lastCount.current) > 2) {
+    if (viewKey !== lastKey.current) {
       goLive();
       lastKey.current = viewKey;
+    } else if (Math.abs(bars.length - lastCount.current) > 2 && !userMoved.current) {
+      goLive();
     }
     lastCount.current = bars.length;
     requestFrame.current();
@@ -225,11 +233,28 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   return (
     <div>
       <div className="chart-host" style={{ position: "relative", width: "100%", height: H, touchAction: "pan-y" }}
-        onDoubleClick={() => { lastTap.current = 0; goLive(); }}
+        onDoubleClick={() => { lastTap.current = null; goLive(); }}
+        onWheel={() => { userMoved.current = true; }}
+        onPointerDown={(e) => {
+          if (e.pointerType !== "touch") { userMoved.current = true; return; }
+          if (touches.current.size === 0) gestureDirty.current = false;
+          touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
+          if (touches.current.size > 1) { gestureDirty.current = true; userMoved.current = true; lastTap.current = null; }
+        }}
+        onPointerMove={(e) => {
+          const s = touches.current.get(e.pointerId);
+          if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) { gestureDirty.current = true; userMoved.current = true; }
+        }}
+        onPointerCancel={(e) => { touches.current.delete(e.pointerId); gestureDirty.current = true; }}
         onPointerUp={(e) => {
           if (e.pointerType !== "touch") return;
-          const now = performance.now();
-          if (now - lastTap.current < 300) { lastTap.current = 0; goLive(); } else lastTap.current = now;
+          const s = touches.current.get(e.pointerId);
+          touches.current.delete(e.pointerId);
+          // Only a clean, quick, single-finger tap counts toward a double-tap.
+          if (!s || gestureDirty.current || touches.current.size > 0 || performance.now() - s.t > 250) { lastTap.current = null; return; }
+          const now = performance.now(), prev = lastTap.current;
+          if (prev && now - prev.t < 300 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 30) { lastTap.current = null; goLive(); }
+          else lastTap.current = { t: now, x: e.clientX, y: e.clientY };
         }}>
         <div ref={host} style={{ width: "100%", height: H }} aria-label={`${m.title} price chart`} />
         {plotWidth > 0 && <div className="bubble-layer" style={{ width: plotWidth, right: "auto" }}>

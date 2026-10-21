@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
 import { isConfigured } from "./config";
-import type { Bubble, Candle, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
+import type { Bubble, Candle, Position, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -33,6 +33,19 @@ export interface GameState {
   pending: { side: Side; count: number } | null;
 }
 export interface Bracket { sl?: number; tp?: number }
+/** Same market + same side = one stack: size-weighted avg entry, total size, id = oldest leg's id.
+ *  A hedge (other side) is its own stack. Brackets and closes apply to the whole stack. */
+export interface Stack { merged: Position; ids: string[] }
+export function stacksOf(positions: Position[]): Stack[] {
+  const groups = new Map<string, Position[]>();
+  for (const p of positions) { const k = `${p.market}|${p.side}`; groups.set(k, [...(groups.get(k) ?? []), p]); }
+  return [...groups.values()].map((legs) => {
+    legs = [...legs].sort((a, b) => Date.parse(a.opened_at) - Date.parse(b.opened_at));
+    const qty = legs.reduce((s, p) => s + p.quantity, 0);
+    const avg = legs.reduce((s, p) => s + p.entry_price * p.quantity, 0) / Math.max(1, qty);
+    return { merged: { ...legs[0], quantity: qty, entry_price: avg }, ids: legs.map((p) => p.id) };
+  });
+}
 const BRACKET_KEY = "brokie.brackets";
 export const TAP_SIZE = 1;
 
@@ -158,18 +171,19 @@ export class Game {
   /** Closes any position whose SL or TP has been touched. Returns what fired. */
   async checkBrackets(): Promise<{ id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[]> {
     const out: { id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[] = [];
-    for (const p of this.state.me?.positions ?? []) {
+    const stacks = stacksOf(this.state.me?.positions ?? []);
+    for (const { merged: p, ids } of stacks) {
       const b = this.state.brackets[p.id]; const q = this.quote(p.market)?.price;
       if (!b || q == null || this.bracketBusy.has(p.id) || !this.isOpen(p.market)) continue;
       const up = p.side === "long";
       const hit = b.tp != null && (up ? q >= b.tp : q <= b.tp) ? "tp" : b.sl != null && (up ? q <= b.sl : q >= b.sl) ? "sl" : null;
       if (!hit) continue;
       this.bracketBusy.add(p.id);
-      const r = await this.close(p.id);
+      const r = await this.closeStack(ids);
       this.bracketBusy.delete(p.id);
       out.push({ id: p.id, hit, ...r });
     }
-    const live = new Set((this.state.me?.positions ?? []).map((p) => p.id));
+    const live = new Set(stacksOf(this.state.me?.positions ?? []).map((s) => s.merged.id));
     const kept = Object.fromEntries(Object.entries(this.state.brackets).filter(([k]) => live.has(k)));
     if (Object.keys(kept).length !== Object.keys(this.state.brackets).length) { write(BRACKET_KEY, JSON.stringify(kept)); this.set({ brackets: kept }); }
     return out;
@@ -212,6 +226,13 @@ export class Game {
       return null;
     } catch (e) { return (e as Error).message; }
     finally { this.submitting = false; }
+  }
+
+  /** Closes every leg of a stack; sums the P&L. Stops at the first error. */
+  async closeStack(ids: string[]): Promise<{ pnl?: number; error?: string }> {
+    let pnl = 0;
+    for (const id of ids) { const r = await this.close(id); if (r.error) return { error: r.error, pnl }; pnl += r.pnl ?? 0; }
+    return { pnl };
   }
 
   async close(id: string): Promise<{ pnl?: number; error?: string }> {
