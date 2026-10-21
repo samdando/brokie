@@ -1,0 +1,87 @@
+import { useEffect, useRef } from "react";
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine } from "lightweight-charts";
+import type { Candle, Market, Position } from "./types";
+import { MARKETS, pnlOf } from "./types";
+
+const LIME = "#D6FE59", RED = "#FF7D8B", LINE = "#2C3028", MUTED = "#969D8D";
+
+/** The Brokie chart: candles or line, a quiet 20-bar average, your entry lines. */
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style }:
+  { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line" }) {
+  const host = useRef<HTMLDivElement>(null);
+  const chart = useRef<IChartApi | null>(null);
+  const series = useRef<{ candle: ISeriesApi<"Candlestick">; area: ISeriesApi<"Area">; ema: ISeriesApi<"Line"> } | null>(null);
+  const lines = useRef<IPriceLine[]>([]);
+  const lastKey = useRef("");
+  const lastCount = useRef(0);
+
+  useEffect(() => {
+    if (!host.current) return;
+    const c = createChart(host.current, {
+      height: 236,
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace" },
+      grid: { vertLines: { visible: false }, horzLines: { color: LINE, style: LineStyle.Dashed } },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
+      timeScale: { borderVisible: false, visible: false, rightOffset: 6, fixLeftEdge: true },
+      crosshair: { mode: CrosshairMode.Magnet, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: false }, horzLine: { color: "rgba(255,255,255,.2)" } },
+      localization: { locale: "en-US" },
+      handleScale: false,
+      handleScroll: false,
+    });
+    const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false });
+    const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false });
+    const ema = c.addLineSeries({ color: "rgba(255,255,255,.28)", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    chart.current = c;
+    series.current = { candle, area, ema };
+    const ro = new ResizeObserver(() => c.applyOptions({ width: host.current?.clientWidth ?? 300 }));
+    ro.observe(host.current);
+    return () => { ro.disconnect(); c.remove(); chart.current = null; series.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const s = series.current;
+    if (!s) return;
+    const color = MARKETS[market].color;
+    s.area.applyOptions({ lineColor: color, topColor: color + "38", bottomColor: color + "00", visible: style === "line" });
+    s.candle.applyOptions({ visible: style === "candles" });
+    const t = (i: number) => (i * bucketSeconds) as UTCTimestamp;
+    s.candle.setData(candles.map((c) => ({ time: t(c.index), open: c.open, high: c.high, low: c.low, close: c.close })));
+    s.area.setData(candles.map((c) => ({ time: t(c.index), value: c.close })));
+    let e = candles[0]?.close ?? 0; const k = 2 / 21;
+    s.ema.setData(candles.map((c) => { e = c.close * k + e * (1 - k); return { time: t(c.index), value: e }; }));
+    const key = `${market}-${bucketSeconds}-${style}`;
+    // Re-fit when the view changes or a batch of history arrives (not on every tick).
+    if (key !== lastKey.current || Math.abs(candles.length - lastCount.current) > 2) {
+      chart.current?.timeScale().fitContent();
+      lastKey.current = key;
+    }
+    lastCount.current = candles.length;
+
+    const target = style === "candles" ? s.candle : s.area;
+    for (const l of lines.current) { try { s.candle.removePriceLine(l); } catch { /* */ } try { s.area.removePriceLine(l); } catch { /* */ } }
+    lines.current = [];
+    if (quote) {
+      lines.current.push(target.createPriceLine({ price: quote, color, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "" }));
+    }
+    for (const p of positions.filter((p) => p.market === market)) {
+      const pnl = quote ? pnlOf(p, quote) : 0;
+      lines.current.push(target.createPriceLine({
+        price: p.entry_price, color: p.side === "long" ? LIME : RED, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false,
+        title: `${p.side.toUpperCase()} ${p.quantity} · ${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`,
+      }));
+    }
+  }, [candles, bucketSeconds, quote, positions, market, style]);
+
+  return <div ref={host} style={{ width: "100%", height: 236 }} aria-label={`${MARKETS[market].title} price chart`} />;
+}
+
+export function vibeOf(candles: Candle[]): { label: string; color: string } {
+  if (candles.length < 6) return { label: "CHOP", color: MUTED };
+  let e = candles[0].close; const k = 2 / 21; const emas: number[] = [];
+  for (const c of candles) { e = c.close * k + e * (1 - k); emas.push(e); }
+  const close = candles[candles.length - 1].close, avg = emas[emas.length - 1], slope = avg - emas[emas.length - 6];
+  const closes = candles.map((c) => c.close); const spread = (Math.max(...closes) - Math.min(...closes)) * 0.06;
+  if (close > avg + spread && slope > 0) return { label: "SENDING IT", color: LIME };
+  if (close < avg - spread && slope < 0) return { label: "DUMPING", color: RED };
+  return { label: "CHOP", color: MUTED };
+}
