@@ -122,7 +122,7 @@ export class Game {
   async restore(handle: string, code: string) {
     await this.api.ensureSession();
     const r = await this.api.rpc<{ ok: boolean; error?: string; code?: string }>("restore_account", { p_handle: handle, p_code: code });
-    if (!r.ok) throw new BackendError(r.error ?? "Couldn't restore that account.");
+    if (!r.ok) throw new BackendError(r.error ?? "Couldn't restore that account. Check the handle (no @) and the BRK- code.");
     await this.refreshState();
     this.set({ freshBackupCode: r.code ?? null });
     if (this.state.phase !== "ready") { this.set({ phase: "ready" }); await this.refreshSquads(); this.loop(); }

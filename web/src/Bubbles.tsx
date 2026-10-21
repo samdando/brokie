@@ -6,7 +6,7 @@ import type { ToXY } from "./Chart";
 import type { Bubble, Market } from "./types";
 import { MARKETS, direction } from "./types";
 
-interface Placed { b: Bubble; x: number; y: number; r: number; pnl: number; pct: number; danger: boolean; markY: number | null }
+interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null }
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }
 
 const pctOf = (b: Bubble, mark: number, mkt: Market) => {
@@ -64,14 +64,18 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     const out: Placed[] = [];
     for (const b of bubbles) {
       if (b.state !== "open") continue;
-      const at = toXY(Date.parse(b.opened_at) / 1000, b.entry_price);
+      // Opened before the visible window? Keep it on the left edge at its price instead of dropping it.
+      const at = toXY(Date.parse(b.opened_at) / 1000, b.entry_price) ?? toXY(Date.now() / 1000, b.entry_price);
       if (!at) continue;
       const { pnl, pct } = quote ? pctOf(b, quote, market) : { pnl: 0, pct: 0 };
       const sizePct = Number.isFinite(b.size_pct) ? Math.max(0, b.size_pct ?? 0) : 0;
       const r = Math.max(14, Math.min(24, 14 + sizePct * 0.5));
       const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.1) : 1;
       const mark = quote === null ? null : toXY(Date.parse(b.opened_at) / 1000, quote);
-      out.push({ b, x: at.x, y: at.y, r, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null });
+      // Trades opened before the visible window hug the edge instead of clipping off-screen.
+      const min = r + 6, max = Math.max(min, width - r - 6);
+      const x = Math.min(max, Math.max(min, at.x));
+      out.push({ b, x, y: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null });
     }
     return out;
   }, [bubbles, toXY, quote, market, width]);
@@ -111,9 +115,8 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
           stroke={p.b.side === "long" ? "var(--lime)" : "var(--red)"} strokeWidth="1" strokeDasharray="2 4" opacity="0.4" />)}
       </svg>
       {placed.length > 0 && (
-        <div className="sentiment" title={`${longs} long / ${shorts} short`}>
-          <div style={{ height: `${(longs / placed.length) * 100}%`, background: "var(--lime)" }} />
-          <div style={{ flex: 1, background: "var(--red)" }} />
+        <div className="sentiment" title={`${longs} long / ${shorts} short`} data-testid="sentiment" aria-label={`${longs} long, ${shorts} short`}>
+          <span className="lime">{longs}▲</span><span className="red">{shorts}▼</span>
         </div>
       )}
       {groups.map((g) => {

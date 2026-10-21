@@ -48,10 +48,11 @@ function RestoreSheet({ open, onClose }: { open: boolean; onClose: () => void })
         <Eyebrow>Restore your account</Eyebrow>
         <h3 className="h3" style={{ fontSize: 28 }}>Welcome back.</h3>
         <div className="muted" style={{ fontSize: 13 }}>Enter your handle and the backup code you saved. Your stack, trades and squads come with you.</div>
-        <input className="field" placeholder="handle" value={handle} autoCapitalize="none" onChange={(e) => setHandle(e.target.value.toLowerCase())} data-testid="restore-handle" />
-        <input className="field code" style={{ fontSize: 18, letterSpacing: 1 }} placeholder="BRK-XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} data-testid="restore-code" />
+        <input className="field" placeholder="handle" value={handle} autoCapitalize="none" onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 18))} data-testid="restore-handle" autoCorrect="off" spellCheck={false} inputMode="text" />
+        <input className="field code" style={{ fontSize: 18, letterSpacing: 1 }} placeholder="BRK-XXXX-XXXX-XXXX" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} data-testid="restore-code" autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+        <div className="muted" style={{ fontSize: 11 }}>Type your handle without the @. The code is the BRK-… one from You → Backup code. Spaces and dashes don't matter.</div>
         {err && <div className="err" data-testid="restore-error">{err}</div>}
-        <Button busy={busy} disabled={handle.length < 3 || code.replace(/[^A-Z0-9]/g, "").length < 15} id="restore-go" onClick={async () => {
+        <Button busy={busy} disabled={handle.length < 3 || code.replace(/[^A-Z0-9]/g, "").length < 6} id="restore-go" onClick={async () => {
           setBusy(true); setErr(null);
           try { await game.restore(handle, code); onClose(); } catch (e) { setErr((e as Error).message); }
           setBusy(false);

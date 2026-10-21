@@ -210,7 +210,12 @@ function Pit({ goSquad, toast }: { goSquad: () => void; toast: (m: string) => vo
           {squad.member_count === 1 && <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={invite} disabled={busy} data-testid="pit-invite">{busy ? <span className="spinner" /> : "Invite friends ↗"}</button>}
         </div>
       ) : st.feed.slice(0, 5).map((e) => <FeedRow key={`${e.kind}-${e.id}`} e={e} />)}
-      {squad && <EmojiBar compact onSent={(e) => { if (e) toast(e); }} />}
+      {squad && squad.member_count > 1 && (
+        <>
+          <div className="react-hint">React to your squad · tap to send to {squad.name}</div>
+          <EmojiBar compact onSent={(e) => toast(e ?? `Sent to ${squad.name}`)} />
+        </>
+      )}
     </div>
   );
 }

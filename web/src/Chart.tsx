@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, Logical } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
-import { MARKETS, pnlOf } from "./types";
+import { MARKETS } from "./types";
 
 const LIME = "#D6FE59", RED = "#FF7D8B", LINE = "#2C3028", MUTED = "#969D8D";
 
@@ -93,10 +93,9 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       lines.current.push(target.createPriceLine({ price: quote, color, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, title: "" }));
     }
     for (const p of positions.filter((p) => p.market === market)) {
-      const pnl = quote ? pnlOf(p, quote) : 0;
       lines.current.push(target.createPriceLine({
         price: p.entry_price, color: p.side === "long" ? LIME : RED, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false,
-        title: `${p.side.toUpperCase()} ${p.quantity} · ${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`,
+        title: `${p.side.toUpperCase()} ${p.quantity}`,
       }));
     }
     requestFrame.current();
