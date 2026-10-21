@@ -84,3 +84,9 @@ Run `backend/v3.sql` in the Supabase SQL editor after `schema.sql` and `seasons_
   `insert into events (kind, impact, title, body, market, event_at) values ('econ','high','US CPI','Inflation print','gold','2026-11-12 23:30+10');`
 - Weekday session opens (Sydney, Tokyo, London, Wall Street) flash automatically, DST-proof.
 - Chat: 140 chars, 5 messages / 10 s, emoji quick-send. Opting out of the global board is in Squad → Global.
+
+### Economic calendar auto-sync (Forex Factory feed)
+Run `backend/events_sync.sql` after `v3.sql`. Every 30 minutes the database pulls the free weekly feed
+(nfs.faireconomy.media) and adds USD high-impact releases (CPI, NFP, FOMC, ...) as flashing events, plus other
+majors' high-impact releases at medium level. No edge function needed. The feed is unofficial: fine for friends,
+but use a licensed calendar before any public launch. You can still add your own rows by hand.
