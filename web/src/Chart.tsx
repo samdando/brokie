@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine } from "lightweight-charts";
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, Logical } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, pnlOf } from "./types";
 
@@ -12,18 +12,21 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number) => ReactNode }) {
   const [, setFrame] = useState(0);
+  const [plotWidth, setPlotWidth] = useState(0);
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<{ candle: ISeriesApi<"Candlestick">; area: ISeriesApi<"Area">; ema: ISeriesApi<"Line"> } | null>(null);
   const lines = useRef<IPriceLine[]>([]);
   const lastKey = useRef("");
   const lastCount = useRef(0);
+  const requestFrame = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!host.current) return;
     const c = createChart(host.current, {
       height: 236,
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace" },
+      // A linked TradingView attribution remains in the visible chart footer.
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: LINE, style: LineStyle.Dashed } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, visible: false, rightOffset: 6, fixLeftEdge: true },
@@ -32,15 +35,32 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       handleScale: false,
       handleScroll: false,
     });
-    const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false });
-    const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false });
+    const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
+    const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     const ema = c.addLineSeries({ color: "rgba(255,255,255,.28)", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     chart.current = c;
     series.current = { candle, area, ema };
-    const ro = new ResizeObserver(() => { c.applyOptions({ width: host.current?.clientWidth ?? 300 }); setFrame((f) => f + 1); });
+    let animationFrame = 0;
+    const refreshOverlay = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        // timeScale.width() is the plot width: it excludes the price-axis labels.
+        setPlotWidth(c.timeScale().width());
+        setFrame((f) => f + 1);
+      });
+    };
+    requestFrame.current = refreshOverlay;
+    const ro = new ResizeObserver(() => { c.applyOptions({ width: host.current?.clientWidth ?? 300 }); refreshOverlay(); });
     ro.observe(host.current);
-    c.timeScale().subscribeVisibleLogicalRangeChange(() => setFrame((f) => f + 1));
-    return () => { ro.disconnect(); c.remove(); chart.current = null; series.current = null; };
+    c.timeScale().subscribeVisibleLogicalRangeChange(refreshOverlay);
+    refreshOverlay();
+    return () => {
+      ro.disconnect();
+      c.timeScale().unsubscribeVisibleLogicalRangeChange(refreshOverlay);
+      cancelAnimationFrame(animationFrame);
+      requestFrame.current = () => {};
+      c.remove(); chart.current = null; series.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -75,28 +95,30 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         title: `${p.side.toUpperCase()} ${p.quantity} · ${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`,
       }));
     }
-    setFrame((f) => f + 1);
+    requestFrame.current();
   }, [candles, bucketSeconds, quote, positions, market, style]);
 
   const toXY: ToXY = (secs, price) => {
     const c = chart.current, s = series.current;
-    if (!c || !s || !candles.length) return null;
+    if (!c || !s || !candles.length || !Number.isFinite(secs) || !Number.isFinite(price)) return null;
     const target = style === "candles" ? s.candle : s.area;
     const y = target.priceToCoordinate(price);
-    if (y === null) return null;
-    const first = candles[0].index, last = candles[candles.length - 1].index;
-    let bucket = Math.floor(secs / bucketSeconds), clamped = false;
-    if (bucket < first) { bucket = first; clamped = true; }
-    if (bucket > last) bucket = last;
-    const x = c.timeScale().timeToCoordinate((bucket * bucketSeconds) as UTCTimestamp);
-    if (x === null) return null;
-    return { x, y, clamped };
+    if (y === null || y < 0 || y > 236) return null;
+    const bucket = Math.floor(secs / bucketSeconds);
+    const index = candles.findIndex((bar) => bar.index === bucket);
+    // Never move an old trade onto the first visible candle or bridge missing
+    // history. Its position card remains available outside this chart window.
+    if (index < 0) return null;
+    const fraction = (secs - bucket * bucketSeconds) / bucketSeconds;
+    const x = c.timeScale().logicalToCoordinate((index + fraction) as Logical);
+    if (x === null || x < 0 || x > c.timeScale().width()) return null;
+    return { x, y, clamped: false };
   };
 
   return (
     <div style={{ position: "relative", width: "100%", height: 236 }}>
       <div ref={host} style={{ width: "100%", height: 236 }} aria-label={`${MARKETS[market].title} price chart`} />
-      {overlay && <div className="bubble-layer">{overlay(toXY, host.current?.clientWidth ?? 300)}</div>}
+      {overlay && plotWidth > 0 && <div className="bubble-layer" style={{ width: plotWidth, right: "auto" }}>{overlay(toXY, plotWidth)}</div>}
     </div>
   );
 }
@@ -107,7 +129,7 @@ export function vibeOf(candles: Candle[]): { label: string; color: string } {
   for (const c of candles) { e = c.close * k + e * (1 - k); emas.push(e); }
   const close = candles[candles.length - 1].close, avg = emas[emas.length - 1], slope = avg - emas[emas.length - 6];
   const closes = candles.map((c) => c.close); const spread = (Math.max(...closes) - Math.min(...closes)) * 0.06;
-  if (close > avg + spread && slope > 0) return { label: "SENDING IT", color: LIME };
+  if (close > avg + spread && slope > 0) return { label: "PUMPING", color: LIME };
   if (close < avg - spread && slope < 0) return { label: "DUMPING", color: RED };
   return { label: "CHOP", color: MUTED };
 }

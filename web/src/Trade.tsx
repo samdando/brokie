@@ -51,6 +51,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
             {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
           </div>
+          <div className="muted" style={{ fontSize: 9, marginTop: 5 }}>Season P&amp;L · equity vs starting balance</div>
         </div>
         <div className="tagline" style={{ textAlign: "right", fontSize: 10, fontWeight: 500, paddingBottom: 6, lineHeight: 1.7 }}>
           <div>100% fake money.</div><div className="muted">100% real bragging rights.</div>
@@ -94,13 +95,17 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           )} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
-            <button key={s} className={`chip lime ${style === s ? "on" : ""}`} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
+            <button key={s} className={`chip lime ${style === s ? "on" : ""}`} aria-label={s === "candles" ? "Candlestick chart" : "Line chart"} aria-pressed={style === s} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
           ))}
           <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
-          {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
+          {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
         </div>
         <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
           {open ? `Live prices · OANDA practice feed · tap the chart to read a bar` : "Market's closed. New trades open when prices are live again."}
+        </div>
+        <div className="chart-attribution">
+          Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
+          <span aria-hidden="true"> · </span><a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">Attribution</a>
         </div>
       </div>
 
@@ -114,7 +119,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{me.positions.length} open</span></div>
         {me.positions.length === 0 && (
           <div className="panel" style={{ padding: 18, borderRadius: 15 }}>
-            <b style={{ fontSize: 13 }}>No bags. Yet.</b>
+            <b style={{ fontSize: 13 }}>No trades. Peak risk management.</b>
             <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Pick a market and make your first paper trade.</div>
           </div>
         )}
@@ -253,28 +258,43 @@ function RuleStatus({ rules, toast }: { rules: Rules; toast: (m: string) => void
 }
 
 function Meters({ rules, equity }: { rules: Rules; equity: number }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
   const dailyRoom = Math.max(0, equity - rules.daily_floor), dailyMax = rules.day_start_equity - rules.daily_floor;
   const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = rules.peak_equity - rules.drawdown_floor;
-  const progress = Math.max(0, Math.min(1, (equity - rules.start_balance) / (rules.target - rules.start_balance)));
-  const tone = (f: number) => (f > 0.5 ? "var(--lime)" : f > 0.2 ? "var(--gold)" : "var(--red)");
-  const m = (label: string, value: string, frac: number, color: string, id: string) => (
-    <div className="meter" data-testid={id}>
-      <div className="eyebrow" style={{ fontSize: 7 }}>{label}</div>
-      <b style={{ color }}>{value}</b>
-      <div className="bar"><i style={{ width: `${Math.max(2, frac * 100)}%`, background: color }} /></div>
-    </div>
+  const targetGain = Math.max(0, rules.target - rules.start_balance);
+  const gain = Math.max(0, equity - rules.start_balance);
+  const progress = targetGain > 0 ? Math.min(1, gain / targetGain) : 0;
+  const tone = (f: number) => (f < 0.25 ? "var(--red)" : f <= 0.5 ? "var(--gold)" : "var(--lime)");
+  const m = (label: string, remaining: number, frac: number, cap: number, id: string) => (
+    <button type="button" className="meter" data-testid={id} aria-expanded={expanded === id} aria-controls="rule-explainer"
+      onClick={() => setExpanded(expanded === id ? null : id)}>
+      <div className="meter-heading">{label} <span aria-hidden="true">ⓘ</span></div>
+      <b style={{ color: tone(frac) }}>{money(remaining, 0)} <small>left</small></b>
+      <div className="bar" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: tone(frac) }} /></div>
+      <div className="meter-caption">{cap}% {id === "meter-daily" ? "daily cap" : "trailing limit"}</div>
+    </button>
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
+  const explanations: Record<string, string> = {
+    "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until midnight Brisbane time.`,
+    "meter-dd": `Your current trailing floor is ${money(rules.drawdown_floor, 0)}. Reaching it closes your positions and marks this season's account REKT.`,
+    "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Funded badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
+  };
   return (
-    <div>
+    <div className="rule-summary">
       <div className="meters">
-        {m(`Daily left · ${rules.daily_loss_pct}%`, money(dailyRoom, 0), df, tone(df), "meter-daily")}
-        {m(`DD left · ${rules.max_dd_pct}%`, money(ddRoom, 0), dd, tone(dd), "meter-dd")}
-        {m("To funded", rules.funded ? "🏆 Done" : `${Math.round(progress * 100)}%`, rules.funded ? 1 : progress, "var(--gold)", "meter-target")}
+        {m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
+        {m("Max drawdown", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
       </div>
-      <div className="muted" style={{ fontSize: 10, marginTop: 8 }}>
-        {rules.trading_days >= rules.qualify_days ? "✓ Qualified for the season leaderboard" : `${rules.trading_days} of ${rules.qualify_days} trading days to qualify for the leaderboard`}
-      </div>
+      <button type="button" className="target-meter" data-testid="meter-target" aria-expanded={expanded === "meter-target"} aria-controls="rule-explainer"
+        onClick={() => setExpanded(expanded === "meter-target" ? null : "meter-target")}>
+        <span className="target-ring" style={{ ["--progress" as string]: `${(rules.funded ? 1 : progress) * 360}deg` }} aria-hidden="true"><span>{rules.funded ? "✓" : `${Math.round(progress * 100)}%`}</span></span>
+        <span className="target-copy"><span className="meter-heading">Profit target <span aria-hidden="true">ⓘ</span></span>
+          <strong>{money(gain, 0)} <span className="muted">/ {money(targetGain, 0)}</span></strong>
+          <span className="meter-caption">{rules.funded ? "Funded badge earned · " : ""}{rules.trading_days}/{rules.qualify_days} trading days · {rules.trading_days >= rules.qualify_days ? "Leaderboard qualified" : "To qualify for leaderboard"}</span>
+        </span>
+      </button>
+      <div id="rule-explainer" hidden={!expanded} className="rule-explainer">{expanded ? explanations[expanded] : ""}</div>
     </div>
   );
 }

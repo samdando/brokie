@@ -48,6 +48,9 @@ a { color: var(--lime); }
 .chip { font: 700 9px var(--mono); height: 24px; min-width: 34px; padding: 0 8px; border-radius: 7px; background: var(--bg); color: var(--muted); }
 .chip.on { background: var(--line); color: #fff; }
 .chip.lime.on { background: var(--lime); color: var(--bg); }
+.chart-card .chip { min-width: 40px; height: 44px; }
+.chart-attribution { margin-top: 6px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.chart-attribution a { color: inherit; text-underline-offset: 2px; }
 .vibe { font: 800 8px var(--mono); letter-spacing: .6px; padding: 4px 7px; border-radius: 99px; }
 
 .big-btn { height: 52px; border-radius: 14px; font-weight: 700; font-size: 15px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -127,8 +130,9 @@ a { color: var(--lime); }
 /* ---------- Chart bubbles ---------- */
 .bubble-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .bubble-layer > * { pointer-events: auto; }
+.bub-hit { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; background: transparent; z-index: 2; }
 .bub { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center;
-  background: var(--panel); font-weight: 800; color: #fff; animation: bubpop .55s cubic-bezier(.3,1.7,.5,1) both; z-index: 2; }
+  background: rgba(23,26,21,.78); font-weight: 800; color: #fff; animation: bubpop .55s cubic-bezier(.3,1.7,.5,1) both; z-index: 2; }
 .bub.long { box-shadow: 0 0 0 2px var(--lime), 0 0 12px rgba(214,254,89,.25); }
 .bub.short { box-shadow: 0 0 0 2px var(--red), 0 0 12px rgba(255,125,139,.25); }
 .bub.friend { filter: brightness(1.15); }
@@ -142,7 +146,8 @@ a { color: var(--lime); }
 @keyframes bubpop { 0% { transform: translate(-50%,-50%) scale(0); } 100% { transform: translate(-50%,-50%) scale(1); } }
 @keyframes shake { 0%,100% { margin-left: 0 } 25% { margin-left: -2px } 75% { margin-left: 2px } }
 .cluster { position: absolute; transform: translate(-50%,-50%); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 99px; padding: 4px 9px; font: 800 10px var(--mono); white-space: nowrap; z-index: 3; animation: bubpop .4s both; }
+  border-radius: 99px; min-height: 44px; padding: 4px 9px; font: 800 10px var(--mono); white-space: nowrap; z-index: 3; animation: bubpop .4s both; }
+.cluster-collapse { font-size: 9px; background: var(--bg); }
 .sentiment { position: absolute; right: 2px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; opacity: .8; }
 .exit { position: absolute; transform: translate(-50%,-50%); pointer-events: none; z-index: 4; }
 .exit-av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; background: var(--panel); }
@@ -163,11 +168,25 @@ a { color: var(--lime); }
 @keyframes rise { 0% { opacity: 0; transform: translate(-50%, 4px); } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
 
 /* ---------- Prop rule meters ---------- */
-.meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.meter { background: var(--panel); border-radius: 13px; padding: 11px; }
+.rule-summary { display: grid; gap: 8px; }
+.meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.meter { background: var(--panel); border-radius: 13px; padding: 13px; text-align: left; }
+.meter-heading { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; color: var(--muted); }
+.meter-heading > span { margin-left: auto; opacity: .8; }
+.meter-caption { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .meter .bar { height: 5px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
 .meter .bar i { display: block; height: 100%; border-radius: 3px; }
-.meter b { font: 700 13px var(--mono); display: block; margin-top: 6px; white-space: nowrap; }
+.meter b { font: 700 17px var(--mono); display: block; margin-top: 7px; white-space: nowrap; }
+.meter b small { font: 500 10px system-ui, sans-serif; color: var(--muted); }
+.target-meter { display: flex; align-items: center; gap: 13px; padding: 13px; border: 1px solid var(--line); border-radius: 13px; text-align: left; }
+.target-ring { flex: none; width: 53px; height: 53px; padding: 4px; border-radius: 50%; background: conic-gradient(var(--gold) var(--progress), var(--line) 0); }
+.target-ring > span { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: var(--bg); font: 700 12px var(--mono); color: var(--gold); }
+.target-copy { flex: 1; min-width: 0; }
+.target-copy strong { display: block; margin-top: 4px; font: 600 14px var(--mono); color: var(--gold); }
+.target-copy .meter-caption { margin-top: 4px; }
+.rule-explainer { padding: 12px 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.meter[aria-expanded="true"], .target-meter[aria-expanded="true"] { outline: 1px solid var(--muted); outline-offset: -1px; }
+.meter:focus-visible, .target-meter:focus-visible, .bub-hit:focus-visible, .cluster:focus-visible, .chart-card .chip:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .status-card { border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: center; }
 .disclaimer { font-size: 9px; color: var(--muted); text-align: center; letter-spacing: .3px; }
 .chip-status { font: 800 8px var(--mono); padding: 3px 6px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
@@ -184,11 +203,16 @@ a { color: var(--lime); }
   .wordmark { font-size: 26px; }
   .markets, .meters { gap: 6px; }
   .market, .meter { padding: 10px 9px; }
-  .market .mono, .meter b { font-size: 12px; }
+  .market .mono { font-size: 12px; }
+  .meter b { font-size: 15px; }
   .quote { font-size: 25px; }
   .qty button { font-size: 16px; }
   .title { font-size: 30px; }
 }
 @media (min-width: 768px) {
   .app { padding-top: calc(28px + var(--safe-t)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bub, .bub.danger, .cluster, .exit *, .exit.win .exit-av, .exit.loss .exit-av, .exit.rekt .exit-av { animation: none; }
+  .exit.win i { display: none; }
 }
