@@ -10,6 +10,8 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
   const [card, setCard] = useState<Trade | null>(null);
   const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (q ? pnlOf(p, q) : 0); }, 0);
   const wins = me.trades.filter((t) => t.pnl > 0).length;
+  const base = me.rules?.start_balance ?? 10000;
+  useEffect(() => { void game.refreshLifetime(); }, []);
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div><h1 className="title">Your trading arc.</h1><div className="muted" style={{ fontSize: 13 }}>Every great trader starts somewhere.</div></div>
@@ -21,7 +23,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         </div>
       </div>
       <div className="row" style={{ gap: 10 }}>
-        {[["Closed trades", String(me.trades.length)], ["Win rate", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Net result", signedMoney(me.cash - 10000)]].map(([k, v]) => (
+        {[["Closed trades", String(me.trades.length)], ["Win rate", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Season P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
           <div key={k} className="panel" style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
         ))}
       </div>
@@ -31,6 +33,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit</span><span>{money(me.protection_credit)}</span></div>}
       </div>
 
+      <LifetimeCard />
       <BackupRow />
 
       <div className="stack" style={{ gap: 14 }}>
@@ -172,5 +175,33 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
         <Button onClick={share} disabled={!blob} id="share-card">Share to the group chat ↗</Button>
       </div>
     </Sheet>
+  );
+}
+
+function LifetimeCard() {
+  const lt = useGame().lifetime;
+  if (!lt) return null;
+  const maxAbs = Math.max(1, ...lt.seasons.map((x) => Math.abs(x.return_pct)));
+  return (
+    <div className="panel stack" style={{ gap: 14 }} data-testid="lifetime">
+      <div className="row between"><h2 className="h2">Lifetime</h2><span className="eyebrow">Never resets</span></div>
+      <div className="meters">
+        {[["Win rate", lt.win_rate == null ? "—" : `${lt.win_rate}%`], ["Trades", String(lt.total_trades)], ["Max DD", `${(+lt.max_drawdown).toFixed(1)}%`],
+          ["Seasons", String(lt.seasons_played)], ["Funded 🏆", String(lt.seasons_funded)], ["Blown 💀", String(lt.seasons_blown)]].map(([k, v]) => (
+          <div key={k} className="meter" style={{ background: "var(--bg)" }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><b>{v}</b></div>
+        ))}
+      </div>
+      <div>
+        <div className="eyebrow" style={{ fontSize: 7, marginBottom: 8 }}>Season by season</div>
+        <div className="row" style={{ alignItems: "flex-end", gap: 6, height: 54 }}>
+          {lt.seasons.map((x) => (
+            <div key={x.season} style={{ flex: 1, maxWidth: 36, textAlign: "center" }}>
+              <div style={{ height: Math.max(3, Math.abs(x.return_pct) / maxAbs * 40), background: x.status === "blown" ? "#555" : x.return_pct >= 0 ? "var(--lime)" : "var(--red)", borderRadius: 3 }} />
+              <div className="mono muted" style={{ fontSize: 8, marginTop: 4 }}>S{x.number}{x.funded ? "🏆" : x.status === "blown" ? "💀" : ""}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

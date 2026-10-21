@@ -33,7 +33,7 @@ export function App() {
       <div className="app">
         <div className="header">
           <div className="wordmark">brokie<i /></div>
-          <span className="pill-btn" data-testid="season-pill">WEEK ENDS {countdown(st.me.season_ends_at, now + st.clockOffset).toUpperCase()}</span>
+          <span className="pill-btn" data-testid="season-pill">S{st.me.season_number ?? ""} · {countdown(st.me.season_ends_at, now + st.clockOffset).toUpperCase()} LEFT</span>
           <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}

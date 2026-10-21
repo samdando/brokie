@@ -80,7 +80,7 @@ a { color: var(--lime); }
 @keyframes up { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
 
-.qty { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.qty { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
 .qty button { height: 49px; border-radius: 11px; background: var(--panel); font-weight: 700; font-size: 19px; }
 .detail { display: flex; justify-content: space-between; font-size: 12px; }
 .detail span:first-child { color: var(--muted); }
@@ -123,3 +123,72 @@ a { color: var(--lime); }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .card-preview { width: 100%; max-width: 340px; border-radius: 28px; display: block; margin: 0 auto; box-shadow: 0 10px 40px rgba(214,254,89,.12); }
+
+/* ---------- Chart bubbles ---------- */
+.bubble-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.bubble-layer > * { pointer-events: auto; }
+.bub { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center;
+  background: var(--panel); font-weight: 800; color: #fff; animation: bubpop .55s cubic-bezier(.3,1.7,.5,1) both; z-index: 2; }
+.bub.long { box-shadow: 0 0 0 2px var(--lime), 0 0 12px rgba(214,254,89,.25); }
+.bub.short { box-shadow: 0 0 0 2px var(--red), 0 0 12px rgba(255,125,139,.25); }
+.bub.friend { filter: brightness(1.15); }
+.bub.me .bub-av { color: var(--lime); }
+.bub.danger { animation: bubpop .55s cubic-bezier(.3,1.7,.5,1) both, shake .35s ease-in-out infinite .6s; }
+.bub.danger.long, .bub.danger.short { box-shadow: 0 0 0 2px #ff3d57, 0 0 16px rgba(255,61,87,.6); }
+.bub-dir { position: absolute; top: -9px; right: -6px; font-size: 9px; }
+.bub.long .bub-dir { color: var(--lime); } .bub.short .bub-dir { color: var(--red); }
+.bub-tag { position: absolute; top: 100%; margin-top: 3px; left: 50%; transform: translateX(-50%); font: 700 8px var(--mono);
+  background: rgba(12,14,11,.85); padding: 1px 4px; border-radius: 5px; white-space: nowrap; }
+@keyframes bubpop { 0% { transform: translate(-50%,-50%) scale(0); } 100% { transform: translate(-50%,-50%) scale(1); } }
+@keyframes shake { 0%,100% { margin-left: 0 } 25% { margin-left: -2px } 75% { margin-left: 2px } }
+.cluster { position: absolute; transform: translate(-50%,-50%); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 99px; padding: 4px 9px; font: 800 10px var(--mono); white-space: nowrap; z-index: 3; animation: bubpop .4s both; }
+.sentiment { position: absolute; right: 2px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; overflow: hidden; display: flex; flex-direction: column; opacity: .8; }
+.exit { position: absolute; transform: translate(-50%,-50%); pointer-events: none; z-index: 4; }
+.exit-av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; background: var(--panel); }
+.exit-txt { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font: 800 11px var(--mono); white-space: nowrap; animation: rise 1.8s ease-out forwards; }
+.exit.win .exit-av { box-shadow: 0 0 0 2px var(--lime); animation: popout .5s ease-out forwards; }
+.exit.win .exit-txt { color: var(--lime); }
+.exit.win i { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; border-radius: 1px; background: var(--lime);
+  animation: confetti .9s ease-out forwards; }
+.exit.win i:nth-child(3n) { background: #fff; } .exit.win i:nth-child(4n) { background: var(--gold); }
+.exit.loss .exit-av { box-shadow: 0 0 0 2px var(--red); animation: deflate 1.2s ease-in forwards; }
+.exit.loss .exit-txt { color: var(--red); }
+.exit.rekt .exit-av { filter: grayscale(1); box-shadow: 0 0 0 2px #666; animation: sink 1.8s ease-in forwards; }
+.exit.rekt .exit-txt { color: #bbb; }
+@keyframes confetti { to { transform: rotate(var(--a)) translateY(calc(-1 * var(--d))) rotate(120deg); opacity: 0; } }
+@keyframes popout { 50% { transform: scale(1.4); } 100% { transform: scale(0); opacity: 0; } }
+@keyframes deflate { 60% { transform: scale(.35); opacity: .7; } 100% { transform: scale(.2); opacity: .25; } }
+@keyframes sink { 20% { transform: rotate(-12deg); } 100% { transform: translateY(120px) rotate(25deg); opacity: 0; } }
+@keyframes rise { 0% { opacity: 0; transform: translate(-50%, 4px); } 15% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
+
+/* ---------- Prop rule meters ---------- */
+.meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.meter { background: var(--panel); border-radius: 13px; padding: 11px; }
+.meter .bar { height: 5px; border-radius: 3px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.meter .bar i { display: block; height: 100%; border-radius: 3px; }
+.meter b { font: 700 13px var(--mono); display: block; margin-top: 6px; white-space: nowrap; }
+.status-card { border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: center; }
+.disclaimer { font-size: 9px; color: var(--muted); text-align: center; letter-spacing: .3px; }
+.chip-status { font: 800 8px var(--mono); padding: 3px 6px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
+
+/* ---------- Small screens ---------- */
+.pill-btn { white-space: nowrap; }
+.meter .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.equity { min-width: 0; }
+@media (max-width: 380px) {
+  .app { padding-left: 14px; padding-right: 14px; }
+  .tagline { display: none; }
+  .equity { font-size: 34px; }
+  .pill-btn { font-size: 8px; padding: 7px 9px; letter-spacing: .6px; }
+  .wordmark { font-size: 26px; }
+  .markets, .meters { gap: 6px; }
+  .market, .meter { padding: 10px 9px; }
+  .market .mono, .meter b { font-size: 12px; }
+  .quote { font-size: 25px; }
+  .qty button { font-size: 16px; }
+  .title { font-size: 30px; }
+}
+@media (min-width: 768px) {
+  .app { padding-top: calc(28px + var(--safe-t)); }
+}

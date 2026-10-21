@@ -144,17 +144,21 @@ function Leaderboard() {
   const now = useNow(30_000);
   return (
     <div>
-      <div className="row between" style={{ marginBottom: 12 }}><h2 className="h2">This week</h2>
-        <span className="eyebrow" style={{ fontSize: 8 }}>Resets in {countdown(st.me?.season_ends_at, now + st.clockOffset)}</span></div>
+      <div className="row between" style={{ marginBottom: 12 }}><h2 className="h2">Season {st.me?.season_number ?? ""}</h2>
+        <span className="eyebrow" style={{ fontSize: 8 }}>Ends in {countdown(st.me?.season_ends_at, now + st.clockOffset)}</span></div>
       {st.leaderboard.length === 0 && <div style={{ textAlign: "center", padding: 30 }}><span className="spinner lime" /></div>}
       {st.leaderboard.map((r, i) => (
         <div key={r.handle}>
-          <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="leader-row">
+          <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="leader-row" style={{ opacity: r.qualified === false ? 0.7 : 1, filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i === 0 && r.return_pct > 0 ? "👑" : String(i + 1).padStart(2, "0")}</span>
             <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>@{r.handle} {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}</div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"} · worst ${signedMoney(r.worst_trade)}`}</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>@{r.handle} {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
+                {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
+                {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
+                {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
+                {(r.resets_used ?? 0) > 0 && r.status !== "blown" && <span className="chip-status" style={{ background: "var(--line)", color: "var(--muted)" }}>BUY-BACK</span>}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"} · worst ${signedMoney(r.worst_trade)}`}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div className={`mono ${r.return_pct >= 0 ? "lime" : "red"}`} style={{ fontSize: 14, fontWeight: 600 }}>{r.return_pct >= 0 ? "+" : ""}{r.return_pct.toFixed(2)}%</div>
@@ -164,7 +168,7 @@ function Leaderboard() {
           {i < st.leaderboard.length - 1 && <div className="sep" />}
         </div>
       ))}
-      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Return and worst trade sit side by side, so one lucky YOLO doesn't tell the whole story.</div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Prop rules: 5% daily loss, 10% trailing drawdown, +10% to get funded. 5 trading days to qualify (faded rows haven't yet).</div>
     </div>
   );
 }

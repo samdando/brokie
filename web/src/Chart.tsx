@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, pnlOf } from "./types";
@@ -6,8 +6,12 @@ import { MARKETS, pnlOf } from "./types";
 const LIME = "#D6FE59", RED = "#FF7D8B", LINE = "#2C3028", MUTED = "#969D8D";
 
 /** The Brokie chart: candles or line, a quiet 20-bar average, your entry lines. */
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style }:
-  { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line" }) {
+export type ToXY = (unixSeconds: number, price: number) => { x: number; y: number; clamped: boolean } | null;
+
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay }:
+  { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+    overlay?: (toXY: ToXY, width: number) => ReactNode }) {
+  const [, setFrame] = useState(0);
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const series = useRef<{ candle: ISeriesApi<"Candlestick">; area: ISeriesApi<"Area">; ema: ISeriesApi<"Line"> } | null>(null);
@@ -33,8 +37,9 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     const ema = c.addLineSeries({ color: "rgba(255,255,255,.28)", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     chart.current = c;
     series.current = { candle, area, ema };
-    const ro = new ResizeObserver(() => c.applyOptions({ width: host.current?.clientWidth ?? 300 }));
+    const ro = new ResizeObserver(() => { c.applyOptions({ width: host.current?.clientWidth ?? 300 }); setFrame((f) => f + 1); });
     ro.observe(host.current);
+    c.timeScale().subscribeVisibleLogicalRangeChange(() => setFrame((f) => f + 1));
     return () => { ro.disconnect(); c.remove(); chart.current = null; series.current = null; };
   }, []);
 
@@ -70,9 +75,30 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         title: `${p.side.toUpperCase()} ${p.quantity} · ${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`,
       }));
     }
+    setFrame((f) => f + 1);
   }, [candles, bucketSeconds, quote, positions, market, style]);
 
-  return <div ref={host} style={{ width: "100%", height: 236 }} aria-label={`${MARKETS[market].title} price chart`} />;
+  const toXY: ToXY = (secs, price) => {
+    const c = chart.current, s = series.current;
+    if (!c || !s || !candles.length) return null;
+    const target = style === "candles" ? s.candle : s.area;
+    const y = target.priceToCoordinate(price);
+    if (y === null) return null;
+    const first = candles[0].index, last = candles[candles.length - 1].index;
+    let bucket = Math.floor(secs / bucketSeconds), clamped = false;
+    if (bucket < first) { bucket = first; clamped = true; }
+    if (bucket > last) bucket = last;
+    const x = c.timeScale().timeToCoordinate((bucket * bucketSeconds) as UTCTimestamp);
+    if (x === null) return null;
+    return { x, y, clamped };
+  };
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: 236 }}>
+      <div ref={host} style={{ width: "100%", height: 236 }} aria-label={`${MARKETS[market].title} price chart`} />
+      {overlay && <div className="bubble-layer">{overlay(toXY, host.current?.clientWidth ?? 300)}</div>}
+    </div>
+  );
 }
 
 export function vibeOf(candles: Candle[]): { label: string; color: string } {

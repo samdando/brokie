@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
 import { isConfigured } from "./config";
-import type { Candle, FeedEvent, LeaderRow, Market, MyState, Side, Squad, Trade } from "./types";
+import type { Bubble, Candle, FeedEvent, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -20,6 +20,8 @@ export interface GameState {
   market: Market;
   clockOffset: number;
   freshBackupCode: string | null;
+  bubbles: Bubble[];
+  lifetime: Lifetime | null;
 }
 
 const SQUAD_KEY = "brokie.squad";
@@ -32,7 +34,7 @@ export class Game {
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
-    clockOffset: 0, freshBackupCode: null,
+    clockOffset: 0, freshBackupCode: null, bubbles: [], lifetime: null,
   };
   private listeners = new Set<() => void>();
   private timer: number | null = null;
@@ -167,7 +169,19 @@ export class Game {
     } catch { /* keep last */ }
   }
 
-  setMarket(m: Market) { write(MARKET_KEY, m); this.set({ market: m }); void this.refreshCandles(m); }
+  setMarket(m: Market) { write(MARKET_KEY, m); this.set({ market: m, bubbles: [] }); void this.refreshCandles(m); void this.refreshBubbles(); }
+
+  async refreshBubbles() {
+    if (this.state.phase !== "ready") return;
+    const market = this.state.market;
+    try {
+      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: this.squad?.id ?? null });
+      if (this.state.market === market) this.set({ bubbles });
+    } catch { /* keep last */ }
+  }
+
+  async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }
+  async refreshLifetime() { try { this.set({ lifetime: await this.api.rpc<Lifetime>("lifetime_stats") }); } catch { /* */ } }
   setCandleSeconds(s: number) { this.set({ candleSeconds: s }); void this.refreshCandles(); }
 
   async refreshCandles(m: Market = this.state.market) {

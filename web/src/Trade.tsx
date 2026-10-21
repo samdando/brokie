@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { BubbleLayer } from "./Bubbles";
+import type { Bubble, Rules } from "./types";
 import { game, useGame } from "./game";
 import { BrokieChart, vibeOf } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, money, px, signedMoney } from "./ui";
@@ -15,6 +17,14 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const mark = (m: Market) => game.quote(m)?.price ?? null;
   const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
+  const rules = me.rules;
+  const base = rules?.start_balance ?? 10000;
+  const [picked, setPicked] = useState<Bubble | null>(null);
+  useEffect(() => {
+    void game.refreshBubbles();
+    const t = setInterval(() => { if (!document.hidden) void game.refreshBubbles(); }, 3000);
+    return () => clearInterval(t);
+  }, [st.market, st.squadId]);
   const market = st.market;
   const candles = game.liveCandles(market);
   const quote = mark(market);
@@ -35,16 +45,20 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
     <div className="stack">
       <div className="row between" style={{ alignItems: "flex-end" }}>
         <div>
-          <Eyebrow>This week's stack · USD</Eyebrow>
+          <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
           <div className="equity" data-testid="equity">{money(equity)}</div>
-          <div className={equity >= 10000 ? "lime" : "red"} style={{ fontSize: 12, fontWeight: 500 }}>
-            {equity >= 10000 ? "↗" : "↘"} {signedMoney(equity - 10000)} this week
+          <div className={equity >= base ? "lime" : "red"} style={{ fontSize: 12, fontWeight: 500 }}>
+            {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
+            {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
           </div>
         </div>
-        <div style={{ textAlign: "right", fontSize: 10, fontWeight: 500, paddingBottom: 6, lineHeight: 1.7 }}>
+        <div className="tagline" style={{ textAlign: "right", fontSize: 10, fontWeight: 500, paddingBottom: 6, lineHeight: 1.7 }}>
           <div>100% fake money.</div><div className="muted">100% real bragging rights.</div>
         </div>
       </div>
+
+      {rules && <RuleStatus rules={rules} toast={toast} />}
+      {rules && <Meters rules={rules} equity={equity} />}
 
       <div className="markets">
         {(Object.keys(MARKETS) as Market[]).map((m) => (
@@ -73,7 +87,11 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           <span className="muted" style={{ fontSize: 9, marginRight: "auto", marginLeft: 8 }}>vs 20-bar avg</span>
           {hi !== null && <span className="mono muted" style={{ fontSize: 9 }}>H {px(hi)} L {px(lo!)}</span>}
         </div>
-        <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={me.positions} style={style} />
+        <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={me.positions} style={style}
+          overlay={(toXY, width) => (
+            <BubbleLayer bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
+              onEnter={(b) => toast(`@${b.handle} ${b.side === "long" ? "longed" : "shorted"} ${MARKETS[market].title} ×${b.quantity}`)} />
+          )} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
             <button key={s} className={`chip lime ${style === s ? "on" : ""}`} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
@@ -87,9 +105,10 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
       </div>
 
       <div className="row" style={{ gap: 12 }}>
-        <Button onClick={() => setTicket("long")} id="go-long">↗ Go long</Button>
-        <Button variant="short" onClick={() => setTicket("short")} id="go-short">↘ Go short</Button>
+        <Button onClick={() => setTicket("long")} id="go-long" disabled={rules?.status === "blown" || rules?.status === "locked"}>↗ Go long</Button>
+        <Button variant="short" onClick={() => setTicket("short")} id="go-short" disabled={rules?.status === "blown" || rules?.status === "locked"}>↘ Go short</Button>
       </div>
+      <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
       <div className="stack" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{me.positions.length} open</span></div>
@@ -120,6 +139,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
       <Pit goSquad={goSquad} />
 
       <OrderSheet side={ticket} onClose={() => setTicket(null)} toast={toast} equity={equity} />
+      <BubbleSheet b={picked} onClose={() => setPicked(null)} quote={quote} />
     </div>
   );
 }
@@ -148,12 +168,14 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
         <div className="row" style={{ gap: 6 }}>
           <b style={{ fontSize: 12 }}>{e.is_you ? "You" : `@${e.handle}`}</b>
           <span className="muted" style={{ fontSize: 9 }}>{ago(e.at)}</span>
-          <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600 }} className={e.side === "long" ? "lime" : "red"}>{MARKETS[e.market].title} {e.side === "long" ? "↑" : "↓"}</span>
+          {(e.kind === "opened" || e.kind === "closed") && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600 }} className={e.side === "long" ? "lime" : "red"}>{MARKETS[e.market].title} {e.side === "long" ? "↑" : "↓"}</span>}
         </div>
         <div style={{ fontSize: 13, marginTop: 5, color: "rgba(255,255,255,.85)" }}>
-          {e.kind === "closed" && e.pnl !== null ? (
-            <>{e.reason === "liquidated" ? `Got liquidated on ${size} ` : `Closed ${e.side} ${size} `}
-              <b className={`mono ${e.pnl >= 0 ? "lime" : "red"}`}>{signedMoney(e.pnl)}</b>{e.reason !== "liquidated" && (e.pnl >= 0 ? " 🔥" : " 💀")}</>
+          {e.kind === "rekt" ? <b style={{ color: "#bbb" }}>💀 Blew the account. REKT.</b>
+          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Hit +10%. FUNDED.</b>
+          : e.kind === "closed" && e.pnl !== null ? (
+            <>{e.reason === "blown" ? `Blown out of ${size} ` : e.reason === "daily_limit" ? `Daily limit closed ${size} ` : `Closed ${e.side} ${size} `}
+              <b className={`mono ${e.pnl >= 0 ? "lime" : "red"}`}>{signedMoney(e.pnl)}</b>{e.reason === "closed" && (e.pnl >= 0 ? " 🔥" : " 💀")}</>
           ) : <>Went {e.side} {size} at {px(e.price)}</>}
         </div>
       </div>
@@ -188,7 +210,7 @@ function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClo
         <div className="muted" style={{ fontSize: 13 }}>{side === "long" ? "Think it goes up? You're in the right place." : "Think it goes down? Put your paper on it."}</div>
         <div><Eyebrow>Micro contracts</Eyebrow>
           <div className="qty" style={{ marginTop: 11 }}>
-            {[1, 2, 3].map((n) => <button key={n} data-testid={`quantity-${n}`} onClick={() => { setQty(n); setErr(null); }} style={qty === n ? { background: color, color: "var(--bg)" } : undefined}>{n}</button>)}
+            {[1, 2, 3, 5, 10].map((n) => <button key={n} data-testid={`quantity-${n}`} onClick={() => { setQty(n); setErr(null); }} style={qty === n ? { background: color, color: "var(--bg)" } : undefined}>{n}</button>)}
           </div>
         </div>
         <div className="stack" style={{ gap: 13 }}>
@@ -202,6 +224,80 @@ function OrderSheet({ side, onClose, toast, equity }: { side: Side | null; onClo
           {busy ? <span className="spinner" /> : `Open ${side} · ${qty} ${qty === 1 ? "micro" : "micros"}`}
         </button>
         <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Virtual funds only. Filled by the Brokie server at the live price.</div>
+      </div>
+    </Sheet>
+  );
+}
+
+function RuleStatus({ rules, toast }: { rules: Rules; toast: (m: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  if (rules.status === "active") return null;
+  if (rules.status === "locked") return (
+    <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
+      <span style={{ fontSize: 26 }}>🔒</span>
+      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Trading unlocks at midnight Brisbane time.</div></div>
+    </div>
+  );
+  return (
+    <div className="status-card" style={{ background: "#1b1b1b", border: "1px solid #444", flexDirection: "column", alignItems: "stretch" }} data-testid="status-blown">
+      <div className="row"><span style={{ fontSize: 30, filter: "grayscale(1)" }}>💀</span>
+        <div><b style={{ fontSize: 17 }}>REKT.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>You hit the {rules.max_dd_pct}% max drawdown. Account blown for this season.</div></div></div>
+      {rules.resets_used === 0 ? (
+        <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
+          onClick={async () => { setBusy(true); try { await game.buyBack(); toast("Back in. Tighter rules: 4% daily, 8% drawdown."); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
+          {busy ? <span className="spinner" /> : "Use your one buy-back (4% / 8% rules)"}
+        </button>
+      ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Buy-back used. See you next season.</div>}
+    </div>
+  );
+}
+
+function Meters({ rules, equity }: { rules: Rules; equity: number }) {
+  const dailyRoom = Math.max(0, equity - rules.daily_floor), dailyMax = rules.day_start_equity - rules.daily_floor;
+  const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = rules.peak_equity - rules.drawdown_floor;
+  const progress = Math.max(0, Math.min(1, (equity - rules.start_balance) / (rules.target - rules.start_balance)));
+  const tone = (f: number) => (f > 0.5 ? "var(--lime)" : f > 0.2 ? "var(--gold)" : "var(--red)");
+  const m = (label: string, value: string, frac: number, color: string, id: string) => (
+    <div className="meter" data-testid={id}>
+      <div className="eyebrow" style={{ fontSize: 7 }}>{label}</div>
+      <b style={{ color }}>{value}</b>
+      <div className="bar"><i style={{ width: `${Math.max(2, frac * 100)}%`, background: color }} /></div>
+    </div>
+  );
+  const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
+  return (
+    <div>
+      <div className="meters">
+        {m(`Daily left · ${rules.daily_loss_pct}%`, money(dailyRoom, 0), df, tone(df), "meter-daily")}
+        {m(`DD left · ${rules.max_dd_pct}%`, money(ddRoom, 0), dd, tone(dd), "meter-dd")}
+        {m("To funded", rules.funded ? "🏆 Done" : `${Math.round(progress * 100)}%`, rules.funded ? 1 : progress, "var(--gold)", "meter-target")}
+      </div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 8 }}>
+        {rules.trading_days >= rules.qualify_days ? "✓ Qualified for the season leaderboard" : `${rules.trading_days} of ${rules.qualify_days} trading days to qualify for the leaderboard`}
+      </div>
+    </div>
+  );
+}
+
+function BubbleSheet({ b, onClose, quote }: { b: Bubble | null; onClose: () => void; quote: number | null }) {
+  const st = useGame();
+  if (!b) return null;
+  const m = MARKETS[st.market];
+  const pnl = quote ? (quote - b.entry_price) * m.pointValue * b.quantity * (b.side === "long" ? 1 : -1) : 0;
+  const ddLeft = b.equity && b.dd_floor ? b.equity + pnl * 0 - b.dd_floor : null;
+  return (
+    <Sheet open onClose={onClose}>
+      <div className="stack" style={{ gap: 16 }}>
+        <div className="row" style={{ gap: 12 }}>
+          <span className={`av ${b.is_you ? "you" : ""}`} style={{ width: 46, height: 46, fontSize: 16, boxShadow: `0 0 0 2px ${b.side === "long" ? "var(--lime)" : "var(--red)"}` }}>{b.handle[0].toUpperCase()}</span>
+          <div><b style={{ fontSize: 18 }}>{b.is_you ? "You" : `@${b.handle}`}</b><div className="muted" style={{ fontSize: 12 }}>{b.side === "long" ? "Long ▲" : "Short ▼"} {m.title} × {b.quantity}</div></div>
+        </div>
+        <div className="detail"><span>Entry</span><span>{px(b.entry_price)}</span></div>
+        <div className="detail"><span>Open P&amp;L</span><span className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}</span></div>
+        <div className="detail"><span>Size</span><span>{(b.size_pct ?? 0).toFixed(1)}% of account</span></div>
+        {ddLeft !== null && <div className="detail"><span>Drawdown room left</span><span>{money(ddLeft, 0)}</span></div>}
+        <div className="detail"><span>Opened</span><span>{ago(b.opened_at)}</span></div>
+        <Button variant="ghost" onClick={onClose}>Close</Button>
       </div>
     </Sheet>
   );
