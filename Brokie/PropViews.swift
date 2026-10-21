@@ -54,7 +54,7 @@ struct RuleStatusCard: View {
                 Text("🔒").font(.system(size: 26))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Daily loss limit hit.").font(.system(size: 14, weight: .bold))
-                    Text("Positions closed. Trading unlocks at midnight Brisbane time.").font(.system(size: 12)).foregroundStyle(Ink.muted)
+                    Text("Positions closed. Trading unlocks when the next session opens (5pm New York).").font(.system(size: 12)).foregroundStyle(Ink.muted)
                 }
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)

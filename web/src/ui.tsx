@@ -72,3 +72,18 @@ const HINT_OPENS = 3;
 const opens = (() => { try { const n = Number(localStorage.getItem("brokie.opens") ?? 0) + 1; localStorage.setItem("brokie.opens", String(n)); return n; } catch { return 1; } })();
 export function hintOn(key: string): boolean { try { return opens <= HINT_OPENS && localStorage.getItem(`brokie.hint.${key}`) !== "done"; } catch { return false; } }
 export function hintDone(key: string) { try { localStorage.setItem(`brokie.hint.${key}`, "done"); } catch { /* */ } }
+
+/** The next 5pm New York (US futures session close), when Brokie's trading day rolls over. */
+export function nextSessionOpen(now = Date.now()): Date {
+  const parts = (at: Date) => Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "numeric", day: "numeric", timeZoneName: "shortOffset" })
+    .formatToParts(at).map((p) => [p.type, p.value]));
+  for (let add = 0; add < 3; add++) {
+    const p = parts(new Date(now + add * 86_400_000));
+    const off = Number(String(p.timeZoneName).replace("GMT", "")) || -5;
+    const at = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), 17 - off);
+    if (at > now) return new Date(at);
+  }
+  return new Date(now + 86_400_000);
+}
+export const sessionOpenLabel = (now = Date.now()) =>
+  nextSessionOpen(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(":00", "");

@@ -6,7 +6,7 @@ import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
-import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, signedMoney } from "./ui";
+import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
@@ -269,7 +269,7 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
   if (rules.status === "locked") return (
     <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
       <span style={{ fontSize: 26 }}>🔒</span>
-      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Unlocks at midnight Brisbane time.</div><button className="text-action lime" onClick={goHistory}>Review your trades →</button></div>
+      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Unlocks when the next session opens at {sessionOpenLabel()} your time (5pm New York).</div><button className="text-action lime" onClick={goHistory}>Review your trades →</button></div>
     </div>
   );
   return (
@@ -305,7 +305,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
   const explanations: Record<string, string> = {
-    "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until midnight Brisbane time.`,
+    "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until the next session opens at ${sessionOpenLabel()} your time (5pm New York).`,
     "meter-dd": `Your current trailing floor is ${money(rules.drawdown_floor, 0)}. Reaching it closes your positions and marks this season's account REKT.`,
     "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Target badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
   };
