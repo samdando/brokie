@@ -9,6 +9,7 @@ import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
 import { EventStrip, FlashOverlay } from "./Events";
 import { FeedbackSheet } from "./Social";
+import { avatarColor } from "./Bubbles";
 import { useVoice, voice, ROOMS } from "./voice";
 import { Icon, countdown, useNow, useToast } from "./ui";
 
@@ -66,6 +67,7 @@ export function App() {
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
+      <ChatPop onOpen={() => { setReviewHistory(false); setTab("squad"); game.setChatOpen(true); }} />
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
@@ -98,5 +100,23 @@ function Centered({ title, body, spinner, retry }: { title: string; body: string
       {body && <div className="muted" style={{ fontSize: 13, maxWidth: 300 }}>{body}</div>}
       {retry && <button className="big-btn lime" style={{ width: 200, marginTop: 10 }} onClick={() => game.start()}>Try again</button>}
     </div>
+  );
+}
+
+/** A squad message slides in at the top on any screen; tap to open the chat, or it goes after 6 s. */
+function ChatPop({ onOpen }: { onOpen: () => void }) {
+  const pop = useGame().chatPop;
+  useEffect(() => {
+    if (!pop) return;
+    const t = setTimeout(() => game.dismissChatPop(), 6000);
+    return () => clearTimeout(t);
+  }, [pop]);
+  if (!pop) return null;
+  return (
+    <button type="button" key={pop.id} className="chat-pop" onClick={onOpen} data-testid="chat-pop" aria-label={`New message from @${pop.handle}: ${pop.body}. Open chat`}>
+      <span className="chat-pop-av" style={{ background: avatarColor(pop.handle) }} aria-hidden="true">{pop.handle[0]?.toUpperCase()}</span>
+      <span className="chat-pop-text"><b>@{pop.handle}</b><span className={pop.kind === "emoji" ? "chat-pop-emoji" : ""}>{pop.body}</span></span>
+      <span className="chat-pop-x" role="presentation" onClick={(e) => { e.stopPropagation(); game.dismissChatPop(); }}>✕</span>
+    </button>
   );
 }

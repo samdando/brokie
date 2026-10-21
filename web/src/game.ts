@@ -25,6 +25,10 @@ export interface GameState {
   lifetime: Lifetime | null;
   global: GlobalBoard | null;
   chat: ChatMsg[];
+  /** The newest squad message from someone else, popped over whatever screen you're on. */
+  chatPop: ChatMsg | null;
+  /** Squad chat sheet is open (so pop-ups stay quiet). */
+  chatOpen: boolean;
   events: EventsFeed | null;
   flash: Flash | null;
   qty: number;
@@ -67,11 +71,12 @@ export class Game {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
-    global: null, chat: [], events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
+    global: null, chat: [], chatPop: null, chatOpen: false, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
   private submitting = false;
+  private chatSeen = new Map<string, number>();
   private bubbleRequest = 0;
   private listeners = new Set<() => void>();
   private timer: number | null = null;
@@ -113,6 +118,7 @@ export class Game {
       if (this.beat % 3 === 0) { await this.refreshBoard(); await this.refreshCandles(); }
       if (this.beat % 12 === 0) await this.refreshSquads();
       if (this.beat % 6 === 0) await this.refreshEvents();
+      await this.refreshChat();   // every beat, so new messages pop up wherever you are
       this.beat++;
       this.timer = window.setTimeout(tick, 5000);
     };
@@ -341,12 +347,23 @@ export class Game {
     await this.refreshGlobal();
   }
 
+  /** Open or close the squad chat sheet; opening clears any pop-up. */
+  setChatOpen(open: boolean) { this.set(open ? { chatOpen: true, chatPop: null } : { chatOpen: false }); }
+  dismissChatPop() { this.set({ chatPop: null }); }
   async refreshChat() {
     const squad = this.squad;
     if (!squad) return;
     try {
       const msgs = await this.api.rpc<ChatMsg[]>("squad_chat", { p_squad: squad.id, p_after: 0, p_limit: 50 });
-      if (this.squad?.id === squad.id) this.set({ chat: msgs });
+      if (this.squad?.id !== squad.id) return;
+      // Pop up messages that arrived since the last look (never the backlog on first load or squad switch).
+      const lastSeen = this.chatSeen.get(squad.id);
+      const newest = msgs.reduce((m, x) => Math.max(m, x.id), 0);
+      const fresh = lastSeen === undefined ? [] : msgs.filter((x) => x.id > lastSeen && !x.is_you);
+      this.chatSeen.set(squad.id, Math.max(newest, lastSeen ?? 0));
+      const pop = fresh.length && !this.state.chatOpen ? fresh[fresh.length - 1] : null;
+      this.set(pop ? { chat: msgs, chatPop: pop } : { chat: msgs });
+      if (pop) { try { navigator.vibrate?.([15, 60, 15]); } catch { /* */ } }
     } catch { /* keep last */ }
   }
   async sendMessage(body: string, kind: "text" | "emoji" = "text"): Promise<string | null> {

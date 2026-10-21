@@ -5,7 +5,7 @@ import type { Bubble, Rules } from "./types";
 import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
-import { BrokieChart, vibeOf } from "./Chart";
+import { BrokieChart } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
@@ -30,8 +30,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const equity = Math.max(0, me.cash + unrealized);
   const rules = me.rules;
   const base = rules?.start_balance ?? 10000;
-  const [picked, setPicked] = useState<Bubble | null>(null);
-  const pick = (b: Bubble) => { setPicked(b); if (markerHint) { hintDone("markers"); setMarkerHint(false); } };
+  const pick = (_b: Bubble) => { if (markerHint) { hintDone("markers"); setMarkerHint(false); } };
   // Players (not legs) on each side, for the squad toggle: spamming 20 micros is still one player.
   const crowdHere = st.bubbleScope === `${st.market}:${game.squad?.id ?? ""}` ? st.bubbles.filter((b) => b.state === "open" && !b.is_you) : [];
   const longs = new Set(crowdHere.filter((b) => b.side === "long").map((b) => b.handle)).size;
@@ -46,7 +45,6 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const quote = mark(market);
   const open = game.isOpen(market);
   const change = quote && candles[0] ? quote - candles[0].open : 0;
-  const vibe = vibeOf(candles);
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
@@ -103,23 +101,22 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change))}</span>
             </div>
           </div>
+          <span className="row" style={{ gap: 6 }}>
+          <button className="text-action muted chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info">ⓘ</button>
           <span className="badge" data-testid="live-badge" style={{ color: open ? "#fff" : "var(--muted)" }}>
             <span className="dot" style={{ width: 5, height: 5, ["--c" as string]: open ? "var(--red)" : "var(--muted)" }} />{open ? "LIVE" : "MARKET CLOSED"}
           </span>
+          </span>
         </div>
-        <div className="row between chart-context">
-          <span className="vibe" style={{ color: vibe.color, background: vibe.color + "1F" }}>{vibe.label}</span>
-          <button className="text-action muted" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo}>Chart info ⓘ</button>
-        </div>
-        {chartInfo && <div className="chart-help muted">Compared with the 20-bar average. {hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
-        <BrokieChart initial={me.handle[0] ?? "?"} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+        {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
+        <BrokieChart handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
             {activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
-              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a squad bubble for their trade</span>}
+              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
           </>} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
@@ -161,7 +158,6 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
       <Pit goSquad={goSquad} toast={toast} />
 
-      <BubbleSheet b={picked} onClose={() => setPicked(null)} quote={quote} />
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
   );
@@ -324,30 +320,6 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       </button>
       <div id="rule-explainer" hidden={!expanded} className="rule-explainer">{expanded ? explanations[expanded] : ""}</div>
     </details>
-  );
-}
-
-function BubbleSheet({ b, onClose, quote }: { b: Bubble | null; onClose: () => void; quote: number | null }) {
-  const st = useGame();
-  if (!b) return null;
-  const m = MARKETS[st.market];
-  const pnl = quote ? (quote - b.entry_price) * m.pointValue * b.quantity * (b.side === "long" ? 1 : -1) : 0;
-  const ddLeft = b.equity && b.dd_floor ? b.equity + pnl * 0 - b.dd_floor : null;
-  return (
-    <Sheet open onClose={onClose}>
-      <div className="stack" style={{ gap: 16 }}>
-        <div className="row" style={{ gap: 12 }}>
-          <span className={`av ${b.is_you ? "you" : ""}`} style={{ width: 46, height: 46, fontSize: 16, boxShadow: `0 0 0 2px ${b.side === "long" ? "var(--lime)" : "var(--red)"}` }}>{b.handle[0].toUpperCase()}</span>
-          <div><b style={{ fontSize: 18 }}><PlayerLink handle={b.handle}>{b.is_you ? "You" : `@${b.handle}`}</PlayerLink></b><div className="muted" style={{ fontSize: 12 }}>{b.side === "long" ? "Long ▲" : "Short ▼"} {m.title} × {b.quantity}</div></div>
-        </div>
-        <div className="detail"><span>Entry</span><span>{px(b.entry_price)}</span></div>
-        <div className="detail"><span>Open P&amp;L</span><span className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}</span></div>
-        <div className="detail"><span>Size</span><span>{(b.size_pct ?? 0).toFixed(1)}% of account</span></div>
-        {ddLeft !== null && <div className="detail"><span>Drawdown room left</span><span>{money(ddLeft, 0)}</span></div>}
-        <div className="detail"><span>Opened</span><span>{ago(b.opened_at)}</span></div>
-        <Button variant="ghost" onClick={onClose}>Close</Button>
-      </div>
-    </Sheet>
   );
 }
 

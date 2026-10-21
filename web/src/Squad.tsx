@@ -8,7 +8,8 @@ import { ChatCard, GlobalBoard } from "./Social";
 
 export function SquadScreen({ toast }: { toast: (message: string) => void }) {
   const st = useGame();
-  const [chatOpen, setChatOpen] = useState(false);
+  const chatOpen = st.chatOpen;
+  const setChatOpen = (v: boolean) => game.setChatOpen(v);
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"squad" | "global">(() => { try { return localStorage.getItem("brokie.board") === "global" ? "global" : "squad"; } catch { return "squad"; } });
   const pick = (v: "squad" | "global") => { setView(v); try { localStorage.setItem("brokie.board", v); } catch { /* ignore */ } };

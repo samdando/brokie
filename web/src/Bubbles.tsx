@@ -1,17 +1,16 @@
-// pump.fun-style live trade bubbles: every squad mate's open trade sits on
-// the chart at its fill, with live P&L. Exits pop (green), deflate (red) or
-// crack and sink (REKT).
-import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from "react";
+// pump.fun-style chart markers: every squad trade is a small avatar sitting right on the candles at
+// its fill. Green = long, red = short; a closed trade's exit is a hollow ring. Tap one for a trade card. Exits still pop (green), deflate (red) or crack and sink (REKT) as they happen.
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import type { ToXY } from "./Chart";
-import type { Bubble, Market, Side } from "./types";
+import type { Bubble, Market } from "./types";
 import { MARKETS, direction } from "./types";
+import { PlayerLink } from "./Profiles";
+import { px, signedMoney } from "./ui";
 
-interface Placed { b: Bubble; x: number; y: number; anchorY: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
+const FLIP_MS = 900;
+const MAX_FX = 2;       // exit animations playing at once
 
-const FLIP_MS = 1100;
-const MAX_MARKS = 2;    // closed trades kept on the chart, as small dots (tap one for its result)
-
-/** Ids that showed up after the first render, kept "fresh" for one flip-in animation. */
+/** Ids that showed up after the first render, kept "fresh" for one pop-in animation. */
 export function useFreshIds(ids: string[]): Set<string> {
   const seen = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -34,30 +33,27 @@ export function useFreshIds(ids: string[]): Set<string> {
   return fresh;
 }
 
-/** The shared trade bubble: gradient ring, glow, avatar initial, ▲/▼ and size badge. When `fresh`
- *  it plays the entry: 3D coin flip with overshoot, a ring shockwave and a short glow trail.
- *  Transform/opacity only, so it stays on the compositor at 60fps. */
-export function CoinBubble({ side, initial, size, qty, me, fresh, hedged, danger, tag, tagUp, style, testId, label }:
-  { side: Side; initial: string; size: number; qty: number; me?: boolean; fresh?: boolean; hedged?: boolean; danger?: boolean;
-    tag?: string; tagUp?: boolean; style?: CSSProperties; testId?: string; label?: string }) {
-  const long = side === "long";
-  return (
-    <span className={`coin ${long ? "long" : "short"} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${danger ? "danger" : ""}`}
-      style={{ width: size, height: size, fontSize: size * 0.4, ...style }} data-testid={testId} aria-label={label} role={label ? "img" : undefined}>
-      {fresh && <><i className="coin-trail" aria-hidden="true" /><i className="coin-wave" aria-hidden="true" /></>}
-      <span className="coin-face" aria-hidden="true">
-        <span className="coin-av">{initial.toUpperCase()}</span>
-        <span className="coin-dir">{long ? "▲" : "▼"}</span>
-        <span className="coin-qty">{me ? `x${qty}` : qty}</span>
-      </span>
-      {tag && <span className={`bub-tag ${tagUp ? "lime" : "red"}`} aria-hidden="true">{tag}</span>}
-      {hedged && <span className="coin-hedge" aria-hidden="true">H</span>}
-    </span>
-  );
+/** A steady colour per player, so the same mate is the same dot everywhere. */
+export function avatarColor(handle: string): string {
+  let h = 0;
+  for (const ch of handle.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 42% 34%)`;
 }
+
+/** The marker: a small green (long) or red (short) avatar; `exit` makes it a hollow ring. */
+export function TradeMarker({ handle, long, exit, me, fresh, faded, danger, style, onClick, label, testId }:
+  { handle: string; long: boolean; exit?: boolean; me?: boolean; fresh?: boolean; faded?: boolean; danger?: boolean; style?: CSSProperties;
+    onClick?: () => void; label: string; testId?: string }) {
+  const cls = `tm ${long ? "long" : "short"} ${exit ? "exit" : ""} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${faded ? "faded" : ""} ${danger ? "danger" : ""}`;
+  const face = <span className="tm-face" aria-hidden="true">{handle[0]?.toUpperCase() ?? "?"}</span>;
+  return onClick
+    ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}</button>
+    : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}</span>;
+}
+
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }
 
-/** One bubble per player per side: spam-clicking 20 micros shows as one coin (x20), not 20 coins.
+/** One marker per player per side: spam-clicking 20 micros shows as one trade (x20), not 20 dots.
  *  Size-weighted average entry, oldest leg's id and open time. */
 function mergeOpen(bubbles: Bubble[]): Bubble[] {
   const groups = new Map<string, Bubble[]>();
@@ -74,12 +70,15 @@ function mergeOpen(bubbles: Bubble[]): Bubble[] {
     return { ...legs[0], quantity: qty, entry_price: entry, size_pct: size };
   });
 }
-const MAX_FX = 2;       // exit animations playing at once
 
-const pctOf = (b: Bubble, mark: number, mkt: Market) => {
-  const pnl = (mark - b.entry_price) * MARKETS[mkt].pointValue * b.quantity * direction(b.side);
-  return { pnl, pct: b.equity ? (pnl / b.equity) * 100 : 0 };
-};
+const pnlAt = (b: Bubble, mark: number, mkt: Market) => (mark - b.entry_price) * MARKETS[mkt].pointValue * b.quantity * direction(b.side);
+
+export function held(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60000));
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+}
 
 export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now }:
   { now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
@@ -98,8 +97,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   const seenExit = useRef<Set<string>>(new Set());
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [shownMark, setShownMark] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
 
   // Detect new entries (toast) and new exits (animation), once each.
   useEffect(() => {
@@ -122,19 +120,15 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       if (marker) { entryExpiry.current.set(marker.id, Date.now() + FLIP_MS); setFresh(new Set(entryExpiry.current.keys())); }
       if (!b.is_you) onEnter(b);
     }
-    const fresh: Exit[] = [];
+    const fx: Exit[] = [];
     for (const b of bubbles.filter((x) => x.state === "closed")) {
       if (seenExit.current.has(b.id)) continue;
       seenExit.current.add(b.id);
       if (now - Date.parse(b.at) > 15000 || now - Date.parse(b.at) < -5000) continue;
-      const at = toXY(Date.parse(b.at) / 1000, b.exit_price ?? b.entry_price);
-      if (!at) continue;
-      const kind = b.reason === "blown" ? "rekt" : (b.pnl ?? 0) >= 0 ? "win" : "loss";
-      fresh.push({ b, kind, born: Date.now() });
+      if (!toXY(Date.parse(b.at) / 1000, b.exit_price ?? b.entry_price)) continue;
+      fx.push({ b, kind: b.reason === "blown" ? "rekt" : (b.pnl ?? 0) >= 0 ? "win" : "loss", born: Date.now() });
     }
-    if (fresh.length) {
-      setExits((e) => [...e, ...fresh].slice(-MAX_FX));
-    }
+    if (fx.length) setExits((e) => [...e, ...fx].slice(-MAX_FX));
   }, [bubbles, market, onEnter, toXY, now, merged]);
 
   useEffect(() => {
@@ -145,126 +139,79 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   }, [exits]);
 
   // Reset when switching markets.
-  useEffect(() => { setExits([]); setExpanded(null); setShownMark(null); }, [market]);
-  // A tapped exit shows its result for a few seconds, then goes back to a dot.
-  useEffect(() => { if (!shownMark) return; const t = setTimeout(() => setShownMark(null), 4000); return () => clearTimeout(t); }, [shownMark]);
+  useEffect(() => { setExits([]); setPicked(null); }, [market]);
 
-  const placed: Placed[] = useMemo(() => {
-    const out: Placed[] = [];
+  // Every trade in view becomes a marker: open trades at their fill, closed trades at their entry
+  // (faded) and their exit. Overlaps are fine, like pump.fun; the newest sits on top.
+  type M = { key: string; b: Bubble; x: number; y: number; exit: boolean; faded: boolean; danger: boolean; t: number };
+  const markers = useMemo(() => {
+    const out: M[] = [];
+    const add = (b: Bubble, secs: number, price: number, exit: boolean, faded: boolean, danger = false) => {
+      const at = toXY(secs, price);
+      if (!at || at.x < 0 || at.x > width) return;
+      out.push({ key: `${b.id}-${exit ? "x" : "e"}`, b, x: at.x, y: at.y, exit, faded, danger, t: secs });
+    };
     for (const b of merged) {
-      // Your own open trade is drawn by the chart itself (pinned at entry, ticket C1).
-      if (hideMine && b.is_you) continue;
-      // Opened before the visible window? Keep it on the left edge at its price instead of dropping it.
-      const at = toXY(Date.parse(b.opened_at) / 1000, b.entry_price) ?? toXY(Date.now() / 1000, b.entry_price);
-      if (!at) continue;
-      const { pnl, pct } = quote ? pctOf(b, quote, market) : { pnl: 0, pct: 0 };
-      const sizePct = Number.isFinite(b.size_pct) ? Math.max(0, b.size_pct ?? 0) : 0;
-      const r = Math.max(11, Math.min(17, 11 + sizePct * 0.3));
+      if (hideMine && b.is_you) continue;   // your own open trade is drawn by the chart (with its SL/TP handle)
       const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.1) : 1;
-      const mark = quote === null ? null : toXY(Date.parse(b.opened_at) / 1000, quote);
-      // Trades opened before the visible window hug the edge instead of clipping off-screen.
-      const min = r + 6, max = Math.max(min, width - r - 6);
-      const x = Math.min(max, Math.max(min, at.x));
-      out.push({ b, x, y: Math.max(r + 8, at.y - r - 14), anchorY: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null, hedged: false });
+      add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, false, room < 0.2);
     }
-    // A player holding a long and a short at once is hedged: show both bubbles, flagged.
-    const sides = new Map<string, Set<string>>();
-    for (const b of bubbles) if (b.state === "open") sides.set(b.handle, (sides.get(b.handle) ?? new Set()).add(b.side));
-    for (const p of out) p.hedged = (sides.get(p.b.handle)?.size ?? 0) > 1;
-    return out;
-  }, [merged, bubbles, toXY, quote, market, width]);
-
-  // Cluster bubbles that would overlap into a "3 ▲ / 1 ▼" pill.
-  const groups = useMemo(() => {
-    const gs: Placed[][] = [];
-    for (const p of [...placed].sort((a, b) => a.x - b.x)) {
-      const g = gs.find((g) => g.some((q) => Math.hypot(q.x - p.x, q.y - p.y) < q.r + p.r + 2));
-      if (g) g.push(p); else gs.push([p]);
-    }
-    return gs;
-  }, [placed]);
-
-  // Closed trades stay on the chart: entry → exit line with the result at the exit.
-  const marks = useMemo(() => {
-    const out: { b: Bubble; x2: number; y2: number }[] = [];
     for (const b of bubbles) {
       if (b.state !== "closed" || b.exit_price === null) continue;
-      const z = toXY(Date.parse(b.at) / 1000, b.exit_price);
-      if (!z) continue;
-      out.push({ b, x2: z.x, y2: z.y });
+      add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, true);
+      add(b, Date.parse(b.at) / 1000, b.exit_price, true, false);
     }
-    // Keep the chart readable: only the latest few exits, newest last.
-    return out.sort((a, b) => Date.parse(a.b.at) - Date.parse(b.b.at)).slice(-MAX_MARKS);
-  }, [bubbles, toXY, width]);
+    return out.sort((a, b) => a.t - b.t);
+  }, [merged, bubbles, toXY, width, hideMine]);
+
+  const sel = picked ? (merged.find((b) => b.id === picked) ?? bubbles.find((b) => b.id === picked && b.state === "closed")) : undefined;
 
   return (
     <>
-      <svg width={width} height="100%" aria-hidden="true" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
-        {placed.map(p => <g key={p.b.id}><line x1={p.x} y1={p.y + p.r + 6} x2={p.x} y2={p.anchorY} stroke="var(--muted)" strokeWidth="1" /><circle cx={p.x} cy={p.anchorY} r="2" fill="var(--muted)" /></g>)}
-      </svg>
-      {groups.map((g) => {
-        const key = g.map((p) => p.b.id).join("|");
-        if (g.length > 1 && expanded !== key && !g.some((p) => fresh.has(p.b.id))) {
-          const cx = g.reduce((s, p) => s + p.x, 0) / g.length, cy = g.reduce((s, p) => s + p.y, 0) / g.length;
-          const up = g.filter((p) => p.b.side === "long").length;
-          return (
-            <button key={key} type="button" className="cluster" style={{ left: cx, top: cy }} onClick={() => setExpanded(key)}
-              aria-label={`Expand ${g.length} trades: ${up} long, ${g.length - up} short`} aria-expanded={false} data-testid="bubble-cluster">
-              {up > 0 && <span className="lime">{up}▲</span>}{g.length - up > 0 && <span className="red">{g.length - up}▼</span>}
-            </button>
-          );
-        }
-        const centerX = g.reduce((sum, p) => sum + p.x, 0) / g.length;
-        const centerY = g.reduce((sum, p) => sum + p.y, 0) / g.length;
-        const spacing = Math.min(54, Math.max(0, width - 52) / Math.max(1, g.length - 1));
-        const halfSpan = (g.length - 1) * spacing / 2;
-        const fanCenter = Math.min(width - 26 - halfSpan, Math.max(26 + halfSpan, centerX));
-        return <Fragment key={key}>
-          {g.map((p, i) => {
-            // Fan out only while inspecting a cluster; thin tethers retain the
-            // actual fill anchors so the displaced buttons aren't fake entries.
-            const fanX = g.length > 1 ? fanCenter + (i - (g.length - 1) / 2) * spacing : p.x;
-            return <Fragment key={p.b.id}>
-              {fanX !== p.x && <svg width={width} height="100%" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-                <line x1={p.x} y1={p.y} x2={fanX} y2={p.y} stroke="var(--muted)" strokeWidth="1" strokeDasharray="2 3" />
-                <circle cx={p.x} cy={p.y} r="2" fill="var(--muted)" />
-              </svg>}
-              <BubbleDot p={{ ...p, x: fanX }} fresh={fresh.has(p.b.id)} onClick={() => onSelect(p.b)} />
-            </Fragment>;
-          })}
-          {g.length > 1 && expanded === key && <button type="button" className="cluster cluster-collapse" style={{ left: centerX, top: centerY + 47 }}
-            onClick={() => setExpanded(null)} aria-label="Collapse trade cluster" aria-expanded={true}>Collapse</button>}
-        </Fragment>;
-      })}
-      {marks.map((m) => {
-        const pnl = m.b.pnl ?? 0;
-        const label = m.b.reason === "blown" ? "💀" : `${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`;
-        const right = m.x2 > width - 60;
-        const who = m.b.is_you ? "You" : `@${m.b.handle}`;
-        return <button type="button" key={`x-${m.b.id}`} className={`exit-mark ${pnl >= 0 ? "win" : "loss"} ${m.b.is_you ? "me" : ""} ${right ? "left" : ""}`}
-          style={{ left: m.x2, top: m.y2 }} data-testid="exit-mark" onClick={() => setShownMark(shownMark === m.b.id ? null : m.b.id)}
-          aria-label={`${who} closed ${m.b.side} ×${m.b.quantity}: ${label}`} aria-expanded={shownMark === m.b.id}>
-          <i aria-hidden="true" />{shownMark === m.b.id && <span>{m.b.is_you ? "" : `${m.b.handle[0]?.toUpperCase() ?? "?"} `}{label}</span>}
-        </button>;
-      })}
+      {markers.map((m) => (
+        <TradeMarker key={m.key} handle={m.b.handle} long={m.b.side === "long"} exit={m.exit} me={m.b.is_you} fresh={!m.exit && fresh.has(m.b.id)} faded={m.faded} danger={m.danger}
+          style={{ left: m.x, top: m.y }} testId={m.exit ? "exit-mark" : "bubble"}
+          onClick={() => { setPicked(picked === m.b.id ? null : m.b.id); onSelect(m.b); }}
+          label={`${m.b.is_you ? "You" : `@${m.b.handle}`} ${m.exit ? "closed" : "opened"} ${m.b.side} ${m.b.quantity} micros at ${px(m.exit ? m.b.exit_price! : m.b.entry_price)}`} />
+      ))}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
         return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: Math.max(24, at.y - 30) }} />;
       })}
+      {sel && <TradeCard b={sel} quote={quote} market={market} now={now} onClose={() => setPicked(null)} />}
     </>
   );
 }
 
-function BubbleDot({ p, fresh, onClick }: { p: Placed; fresh: boolean; onClick: () => void }) {
-  const tag = `${p.pct >= 0 ? "+" : "−"}${Math.abs(p.pct).toFixed(2)}%`;
-  const hitSize = Math.max(44, p.r * 2);
+/** The tap-a-marker card (like pump.fun's trader popover): who, size, entry, profit, how long. */
+function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote: number | null; market: Market; now: number; onClose: () => void }) {
+  const open = b.state === "open";
+  const pnl = open ? (quote != null ? pnlAt(b, quote, market) : 0) : b.pnl ?? 0;
+  const pct = b.equity ? pnl / b.equity * 100 : null;
   return (
-    <button type="button" className="bub-hit"
-      style={{ left: p.x, top: p.y, width: hitSize, height: hitSize }} onClick={onClick}
-      data-testid="bubble" aria-label={`${p.b.handle} ${p.b.side} ${p.b.quantity} micros at ${p.b.entry_price}, ${tag}${p.hedged ? ", hedged" : ""}`}>
-      <CoinBubble side={p.b.side} initial={p.b.handle[0] ?? "?"} size={p.r * 2} qty={p.b.quantity} me={p.b.is_you}
-        fresh={fresh} hedged={p.hedged} danger={p.danger} style={{ left: "50%", top: "50%" }} />
-    </button>
+    <div className="trade-card" role="dialog" aria-label={`${b.handle}'s trade`} data-testid="trade-card" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="row between">
+        <span className="tc-kind"><i className={b.side} />{b.side === "long" ? "Long" : "Short"} {MARKETS[market].title}</span>
+        <span className="row" style={{ gap: 8 }}>
+          <span className={`tc-state ${open ? "open" : ""}`}>{open ? "Open" : b.reason === "blown" ? "REKT" : "Closed"}</span>
+          <button type="button" className="muted tc-x" onClick={onClose} aria-label="Close trade card">✕</button>
+        </span>
+      </div>
+      <div className="row" style={{ gap: 10, margin: "8px 0 10px" }}>
+        <span className={`tc-av ${b.side}`} aria-hidden="true">{b.handle[0]?.toUpperCase()}</span>
+        <div style={{ minWidth: 0 }}>
+          <b style={{ fontSize: 13 }}>{b.is_you ? "You" : `@${b.handle}`}</b>
+          <div className="muted" style={{ fontSize: 10 }}>{b.quantity} micro{b.quantity === 1 ? "" : "s"}{b.size_pct ? ` · ${b.size_pct.toFixed(1)}% of account` : ""}</div>
+        </div>
+      </div>
+      <div className="tc-grid">
+        <div><span>Entry price</span><b>{px(b.entry_price)}</b></div>
+        <div><span>{open ? "Price now" : "Exit price"}</span><b>{open ? (quote != null ? px(quote) : "—") : px(b.exit_price ?? b.entry_price)}</b></div>
+        <div><span>{open ? "Profit" : "Result"}</span><b className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}{pct !== null && <small> {pct >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</small>}</b></div>
+        <div><span>Held for</span><b>{held((open ? now : Date.parse(b.at)) - Date.parse(b.opened_at))}</b></div>
+      </div>
+      {!b.is_you && <div className="tc-actions"><PlayerLink handle={b.handle}>Profile</PlayerLink></div>}
+    </div>
   );
 }
 

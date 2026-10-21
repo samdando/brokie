@@ -2,23 +2,23 @@ import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, u
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
-import { CoinBubble, useFreshIds } from "./Bubbles";
+import { TradeMarker, useFreshIds } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
 const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#969D8D";
-const H = 236;            // chart height in px
+const H = 256;            // chart height in px (includes the time axis)
 const VIEW_BARS = 60;     // bars shown when snapped to live
 const ANIM_MS = 450;      // forming-candle tween (C4)
 
-/** The Brokie chart: candles or line, a quiet 20-bar average, your position bubbles (hedges show both). */
+/** The Brokie chart: candles or line with a time axis, squad trade markers, and your positions (hedges show both). */
 export type ToXY = (unixSeconds: number, price: number) => { x: number; y: number; clamped: boolean } | null;
 
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, initial = "?" }:
-  { initial?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?" }:
+  { handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   const [, setFrame] = useState(0);
@@ -27,7 +27,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const [awayFromLive, setAway] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
-  const series = useRef<{ candle: ISeriesApi<"Candlestick">; area: ISeriesApi<"Area">; ema: ISeriesApi<"Line"> } | null>(null);
+  const series = useRef<{ candle: ISeriesApi<"Candlestick">; area: ISeriesApi<"Area"> } | null>(null);
   const lines = useRef<IPriceLine[]>([]);
   const quoteLine = useRef<IPriceLine | null>(null);
   const lastKey = useRef("");
@@ -60,10 +60,12 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,.045)", style: LineStyle.Solid } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
-      timeScale: { borderVisible: false, visible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false },
+      timeScale: { borderVisible: false, visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
+        tickMarkFormatter: (t: number) => { const d = new Date(t * 1000); return d.getHours() === 0 && d.getMinutes() === 0 ? d.toLocaleDateString([], { day: "numeric", month: "short" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } },
       // C5: on touch, a long-press enters crosshair tracking; the next tap exits it.
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: false }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2C3028" } },
-      localization: { locale: "en-US" },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: true, labelBackgroundColor: "#2C3028" }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2C3028" } },
+      // Bar times are UTC seconds; show them in the player's own time zone.
+      localization: { locale: "en-US", timeFormatter: (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
       // C5: pinch / wheel zoom and horizontal drag to pan. Vertical swipes still scroll the page.
       handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: false, axisDoubleClickReset: false },
       handleScroll: { horzTouchDrag: true, pressedMouseMove: true, mouseWheel: false, vertTouchDrag: false },
@@ -71,9 +73,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     });
     const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
     const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    const ema = c.addLineSeries({ color: "rgba(255,255,255,.28)", lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     chart.current = c;
-    series.current = { candle, area, ema };
+    series.current = { candle, area };
     let animationFrame = 0;
     const refreshOverlay = () => {
       cancelAnimationFrame(animationFrame);
@@ -152,13 +153,12 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         s.candle.update(bar);
         s.area.update({ time: to.time, value: close });
         if (k < 1) anim.current = requestAnimationFrame(step);
-        else { emaAll(s.ema, bars); }
+
       };
       anim.current = requestAnimationFrame(step);
     } else {
       s.candle.setData(bars);
       s.area.setData(bars.map((b) => ({ time: b.time, value: b.close })));
-      emaAll(s.ema, bars);
     }
     shown.current = { key, first: bars[0]?.time ?? 0, bars };
     const viewKey = `${key}-${style}`;
@@ -259,47 +259,43 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         <div ref={host} style={{ width: "100%", height: H }} aria-label={`${m.title} price chart`} />
         {plotWidth > 0 && <div className="bubble-layer" style={{ width: plotWidth, right: "auto" }}>
           {overlay?.(toXY, plotWidth)}
-          {quote != null && yOf(quote) != null && <div className={`price-glow ${tickColor.current === LIME ? "up" : "down"}`} style={{ top: yOf(quote)! }} aria-hidden="true" />}
           {hedged && <span className="hedge-pill" data-testid="my-hedged">HEDGED</span>}
-          {mine.map((p, i) => <MyPosition key={p.id} p={p} slot={i} initial={initial} quote={quote} toXY={toXY} yOf={yOf} priceOf={priceOf} width={plotWidth}
+          {mine.map((p, i) => <MyPosition key={p.id} p={p} slot={i} handle={handle} quote={quote} toXY={toXY} yOf={yOf} priceOf={priceOf} width={plotWidth}
             sizePct={sizePctOf?.(p) ?? null} fresh={fresh.has(p.id)} hedged={hedged} b={brackets?.[p.id] ?? {}}
             onSet={onBracket && ((b) => onBracket(p.id, b))} onClear={(k) => onClearBracket?.(p.id, k)} />)}
         </div>}
-        {hover && (
-          <div className="crosshair-readout" data-testid="crosshair-readout">
-            <span>O {px(hover.o)} H {px(hover.h)} L {px(hover.l)} C {px(hover.c)}</span>
-            <span>{new Date(hover.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              {hover.price != null && <> · {px(hover.price)}</>}
-              {dist !== null && ref && <> · <b className={dist >= 0 ? "lime" : "red"}>{dist >= 0 ? "+" : "−"}{px(Math.abs(dist))} pts {signedMoney(dist * m.pointValue * ref.quantity)}</b> vs entry</>}
-            </span>
-          </div>
-        )}
+        {(() => {
+          // pump.fun-style legend: O/H/L/C of the hovered bar (or the live one) and its change.
+          const last = candles[candles.length - 1];
+          const bar = hover ?? (last ? { o: last.open, h: last.high, l: last.low, c: last.close, time: 0, price: null } : null);
+          if (!bar) return null;
+          const ch = bar.c - bar.o, up = ch >= 0;
+          return (
+            <div className="chart-legend" data-testid="crosshair-readout">
+              <span>O<b className={up ? "lime" : "red"}>{px(bar.o)}</b> H<b className={up ? "lime" : "red"}>{px(bar.h)}</b> L<b className={up ? "lime" : "red"}>{px(bar.l)}</b> C<b className={up ? "lime" : "red"}>{px(bar.c)}</b> <b className={up ? "lime" : "red"}>{up ? "+" : "−"}{(Math.abs(ch) / bar.o * 100).toFixed(2)}%</b></span>
+              {hover && dist !== null && ref && <span><b className={dist >= 0 ? "lime" : "red"}>{signedMoney(dist * m.pointValue * ref.quantity)}</b> vs your entry</span>}
+            </div>
+          );
+        })()}
         {awayFromLive && <button type="button" className="live-btn" onClick={goLive} data-testid="back-to-live">⟲ Live</button>}
       </div>
     </div>
   );
 }
 
-function emaAll(ema: ISeriesApi<"Line">, bars: Bar[]) {
-  let e = bars[0]?.close ?? 0; const k = 2 / 21;
-  ema.setData(bars.map((b) => { e = b.close * k + e * (1 - k); return { time: b.time, value: e }; }));
-}
 
-/** One of your positions, kept off the candles: a small dot marks the fill, and your coin sits on
- *  the entry line at the right edge with the live P&L beside it. The coin is also the SL/TP handle
- *  (ticket 14): drag it up or down. For a long, up is TP and down is SL; a short is the reverse.
- *  Set lines show "SL −$305"; tap one for its price and ✕, or drag it again. */
-function MyPosition({ p, slot, initial, quote, toXY, yOf, priceOf, width, sizePct, fresh, hedged, b, onSet, onClear }:
-  { p: Position; slot: number; initial: string; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
+/** One of your positions: your marker at the fill (like everyone else's), and a pill on the entry
+ *  line at the right edge with size and live P&L. The pill is the SL/TP handle (ticket 14): drag it
+ *  up or down. For a long, up is TP and down is SL; a short is the reverse. Set lines show
+ *  "SL −$305"; tap one for its price and ✕, or drag it again. */
+function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct, fresh, hedged, b, onSet, onClear }:
+  { p: Position; slot: number; handle: string; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
     width: number; sizePct: number | null; fresh: boolean; hedged: boolean; b: Bracket; onSet?: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
   const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
   const [open, setOpen] = useState<keyof Bracket | null>(null);
-  const pct = sizePct ?? Math.min(20, p.quantity * 2);
-  const d = Math.round(26 + Math.max(0, Math.min(20, pct)) / 20 * 6);   // 26–32px by % of account
   const entryY = yOf(p.entry_price);
   const at = toXY(Date.parse(p.opened_at) / 1000, p.entry_price);
   const inView = (v: number | null): v is number => v !== null && v >= 0 && v <= H;
-  const coinX = width - d / 2 - 10 - slot * (d + 8);
   const pnl = quote != null ? pnlOf(p, quote) : 0;
   const keyFor = (price: number): keyof Bracket => ((price > p.entry_price) === (p.side === "long") ? "tp" : "sl");
 
@@ -348,22 +344,20 @@ function MyPosition({ p, slot, initial, quote, toXY, yOf, priceOf, width, sizePc
 
   return (
     <>
-      {at && inView(at.y) && <svg width={width} height={H} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        <circle cx={at.x} cy={at.y} r="2.5" fill={p.side === "long" ? "var(--lime)" : "var(--red)"} />
-      </svg>}
+      {at && inView(at.y) && <TradeMarker handle={handle} long={p.side === "long"} me fresh={fresh} style={{ left: at.x, top: at.y, pointerEvents: "none" }}
+        testId="my-bubble" label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}`} />}
       {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
       {drag && line(drag.key, drag.price, true)}
-      {inView(entryY) && <>
-        {!hedged && quote != null && !drag && (
-          <span className={`pnl-tag ${pnl >= 0 ? "up" : "down"}`} style={{ top: entryY, left: coinX - d / 2 - 4 }} data-testid="pnl-tag">{signedMoney(pnl)}</span>
-        )}
-        <button type="button" className="my-coin" style={{ left: coinX, top: entryY, width: d + 12, height: d + 12, touchAction: "none" }}
+      {inView(entryY) && (
+        <button type="button" className={`pos-pill ${p.side} ${pnl >= 0 ? "up" : "down"}`} style={{ top: entryY, left: 4, marginTop: slot * 22, touchAction: "none" }}
           onPointerDown={(e) => start(e)} data-testid="bracket-grip"
-          aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}. Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
-          <CoinBubble side={p.side} initial={initial} size={d} qty={p.quantity} me fresh={fresh} hedged={hedged}
-            style={{ left: "50%", top: "50%", pointerEvents: "none" }} testId="my-bubble" />
+          aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}, ${signedMoney(pnl)}. Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
+          <span className="pos-side">{p.side === "long" ? "L" : "S"}{p.quantity}</span>
+          {!drag && quote != null && <b data-testid="pnl-tag">{signedMoney(pnl)}</b>}
+          {hedged && <span className="pos-h">H</span>}
+          <span aria-hidden="true" className="pos-grip">⇕</span>
         </button>
-      </>}
+      )}
     </>
   );
 }
