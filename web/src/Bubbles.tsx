@@ -80,8 +80,8 @@ export function held(ms: number): string {
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now }:
-  { now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
+export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut }:
+  { onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
   const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
   const [fresh, setFresh] = useState(new Set<string>());
@@ -164,6 +164,8 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     return out.sort((a, b) => a.t - b.t);
   }, [merged, bubbles, toXY, width, hideMine]);
 
+  // Mates' exits that are off the left edge of this timeframe: offer to zoom out to find them.
+  const earlier = bubbles.filter((b) => b.state === "closed" && !b.is_you && b.exit_price !== null && !markers.some((m) => m.key === `${b.id}-x`)).length;
   const sel = picked ? (merged.find((b) => b.id === picked) ?? bubbles.find((b) => b.id === picked && b.state === "closed")) : undefined;
 
   return (
@@ -178,6 +180,8 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
         return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: Math.max(24, at.y - 30) }} />;
       })}
+      {earlier > 0 && onZoomOut && <button type="button" className="earlier-pill" onClick={onZoomOut} data-testid="earlier-trades">
+        ◂ {earlier} earlier exit{earlier === 1 ? "" : "s"} · zoom out</button>}
       {sel && <TradeCard b={sel} quote={quote} market={market} now={now} onClose={() => setPicked(null)} />}
     </>
   );

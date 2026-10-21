@@ -114,6 +114,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
+              onZoomOut={st.candleSeconds < 900 ? () => game.setCandleSeconds(st.candleSeconds === 60 ? 300 : 900) : undefined}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
             {activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
               : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
@@ -153,7 +154,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             hedged={me.positions.some((q) => q.market === p.market && q.side !== p.side)}
             onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
         })}
-        {me.positions.length > 0 && cardHint && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag your coin on the chart for SL/TP</div>}
+        {me.positions.length > 0 && cardHint && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag your position pill on the chart for SL/TP</div>}
       </div>
 
       <Pit goSquad={goSquad} toast={toast} />

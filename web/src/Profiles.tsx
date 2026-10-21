@@ -1,7 +1,8 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { game } from "./game";
-import type { Lifetime } from "./types";
-import { Sheet, signedMoney } from "./ui";
+import { game, useGame } from "./game";
+import type { Bubble, Lifetime, Market } from "./types";
+import { MARKETS, direction } from "./types";
+import { Sheet, ago, money, px, signedMoney } from "./ui";
 
 const OpenProfile = createContext<(handle: string) => void>(() => {});
 export function PlayerLink({ handle, children }: { handle: string; children?: ReactNode }) {
@@ -29,7 +30,8 @@ export function Profiles({ children }: { children: ReactNode }) {
     <Sheet open={!!handle} onClose={close}>
       <div className="stack" data-testid="player-profile">
         <div className="row between"><h3 className="h3">@{handle}</h3><button className="text-action lime" onClick={close}>Done</button></div>
-        <div className="muted">Paper trading profile · lifetime stats</div>
+        {handle && <LiveNow handle={handle} />}
+        <div className="eyebrow" style={{ marginTop: 6 }}>Lifetime</div>
         {error ? <div className="err" role="alert">{error}<button className="text-action lime" onClick={() => setAttempt(x => x + 1)}>Try again</button></div>
           : !stats ? <span className="spinner lime" aria-label="Loading profile" /> : <>
           <div className="profile-stats">{[["Trades", stats.total_trades], ["Win rate", stats.win_rate == null ? "—" : `${stats.win_rate}%`], ["Best trade", stats.best_trade == null ? "—" : signedMoney(stats.best_trade)]].map(([label, value]) => <div className="panel" key={label}><div className="eyebrow">{label}</div><b>{value}</b></div>)}</div>
@@ -41,4 +43,64 @@ export function Profiles({ children }: { children: ReactNode }) {
       </div>
     </Sheet>
   </OpenProfile.Provider>;
+}
+
+/** What a squad mate is doing right now: season equity and return, open positions with live P&L,
+ *  and their exits from the last 24 hours. Refreshes every 5 s while the profile is open. */
+function LiveNow({ handle }: { handle: string }) {
+  const st = useGame();
+  const [legs, setLegs] = useState<{ m: Market; b: Bubble }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      const squad = game.squad?.id ?? null;
+      const all = await Promise.all((Object.keys(MARKETS) as Market[]).map((m) =>
+        game.api.rpc<Bubble[]>("chart_bubbles", { p_market: m, p_squad: squad }).then((r) => (r ?? []).map((b) => ({ m, b }))).catch(() => [])));
+      if (live) setLegs(all.flat().filter((x) => x.b.handle.toLowerCase() === handle.toLowerCase()));
+    };
+    void load();
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 5000);
+    return () => { live = false; clearInterval(t); };
+  }, [handle]);
+  const row = st.leaderboard.find((r) => r.handle.toLowerCase() === handle.toLowerCase());
+  // One line per market + side, like your own position cards (spam taps merged).
+  const open = new Map<string, { m: Market; side: Bubble["side"]; qty: number; cost: number }>();
+  for (const { m, b } of legs ?? []) if (b.state === "open") {
+    const k = `${m}|${b.side}`; const cur = open.get(k) ?? { m, side: b.side, qty: 0, cost: 0 };
+    cur.qty += b.quantity; cur.cost += b.entry_price * b.quantity; open.set(k, cur);
+  }
+  const rows = [...open.values()].map((o) => {
+    const entry = o.cost / Math.max(1, o.qty); const q = game.quote(o.m)?.price;
+    return { ...o, entry, pnl: q == null ? null : (q - entry) * MARKETS[o.m].pointValue * o.qty * direction(o.side) };
+  });
+  const openPnl = rows.reduce((s, r) => s + (r.pnl ?? 0), 0);
+  const exits = (legs ?? []).filter((x) => x.b.state === "closed").sort((a, b) => Date.parse(b.b.at) - Date.parse(a.b.at)).slice(0, 5);
+  if (!row && legs && legs.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Live positions show for players in your squad.</div>;
+  return (
+    <div className="stack" style={{ gap: 10 }} data-testid="profile-live">
+      <div className="eyebrow">Right now</div>
+      <div className="profile-stats three">
+        <div className="panel"><div className="eyebrow">Equity</div><b>{row ? money(row.equity, 0) : "—"}</b></div>
+        <div className="panel"><div className="eyebrow">Season</div><b className={row && row.return_pct < 0 ? "red" : "lime"}>{row ? `${row.return_pct >= 0 ? "+" : ""}${Number(row.return_pct).toFixed(2)}%` : "—"}</b></div>
+        <div className="panel"><div className="eyebrow">Open P&amp;L</div><b className={openPnl < 0 ? "red" : "lime"} data-testid="profile-open-pnl">{rows.length ? signedMoney(openPnl) : "—"}</b></div>
+      </div>
+      {legs === null ? <span className="spinner lime" aria-label="Loading positions" />
+        : rows.length === 0 ? <div className="muted" style={{ fontSize: 12 }}>No open positions.</div>
+        : rows.map((r) => (
+          <div className="detail" key={`${r.m}-${r.side}`} data-testid="profile-position">
+            <span><b>{MARKETS[r.m].title}</b> <span className={r.side === "long" ? "lime" : "red"}>{r.side === "long" ? "LONG ↗" : "SHORT ↘"}</span> <span className="muted mono" style={{ fontSize: 11 }}>x{r.qty} · {px(r.entry)}</span></span>
+            <b className={`mono ${(r.pnl ?? 0) < 0 ? "red" : "lime"}`}>{r.pnl == null ? "—" : signedMoney(r.pnl)}</b>
+          </div>
+        ))}
+      {exits.length > 0 && <>
+        <div className="eyebrow" style={{ marginTop: 4 }}>Recent exits</div>
+        {exits.map(({ m, b }) => (
+          <div className="detail" key={b.id} data-testid="profile-exit">
+            <span>{b.reason === "blown" ? "💀 Blown out of" : "Closed"} {b.side} {b.quantity} {MARKETS[m].title} <span className="muted mono" style={{ fontSize: 11 }}>@ {px(b.exit_price ?? b.entry_price)} · {ago(b.at)}</span></span>
+            <b className={`mono ${(b.pnl ?? 0) < 0 ? "red" : "lime"}`}>{signedMoney(b.pnl ?? 0)}</b>
+          </div>
+        ))}
+      </>}
+    </div>
+  );
 }
