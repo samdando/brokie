@@ -46,6 +46,8 @@ struct ServerState: Decodable {
     let cash: Double
     let protectionCredit: Double
     let liquidations: Int
+    let seasonNumber: Int?
+    let rules: ServerRules?
     let hasBackupCode: Bool?
     let positions: [ServerPosition]
     let trades: [ServerTrade]
@@ -60,6 +62,52 @@ struct Squad: Decodable, Identifiable, Hashable {
     let memberCount: Int
 }
 
+struct ServerRules: Decodable, Equatable {
+    let status: String
+    let startBalance: Double
+    let peakEquity: Double
+    let dayStartEquity: Double
+    let dailyLossPct: Double
+    let maxDdPct: Double
+    let dailyFloor: Double
+    let drawdownFloor: Double
+    let target: Double
+    let funded: Bool
+    let resetsUsed: Int
+    let tradingDays: Int
+    let qualifyDays: Int
+    var isBlown: Bool { status == "blown" }
+    var isLocked: Bool { status == "locked" }
+}
+
+struct ChartBubble: Decodable, Identifiable, Equatable {
+    let state: String
+    let id: UUID
+    let handle: String
+    let isYou: Bool
+    let side: TradeSide
+    let quantity: Int
+    let entryPrice: Double
+    let exitPrice: Double?
+    let pnl: Double?
+    let reason: String?
+    let at: Date
+    let openedAt: Date
+    let sizePct: Double?
+    let ddFloor: Double?
+    let equity: Double?
+    var isOpen: Bool { state == "open" }
+}
+
+struct LifetimeStats: Decodable, Equatable {
+    let totalTrades: Int
+    let winRate: Double?
+    let seasonsPlayed: Int
+    let seasonsBlown: Int
+    let seasonsFunded: Int
+    let maxDrawdown: Double
+}
+
 struct LeaderRow: Decodable, Identifiable, Equatable {
     let handle: String
     let isYou: Bool
@@ -68,6 +116,11 @@ struct LeaderRow: Decodable, Identifiable, Equatable {
     let trades: Int
     let worstTrade: Double
     let openPositions: Int
+    var status: String? = nil
+    var funded: Bool? = nil
+    var resetsUsed: Int? = nil
+    var tradingDays: Int? = nil
+    var qualified: Bool? = nil
     var id: String { handle }
 }
 

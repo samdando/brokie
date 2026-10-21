@@ -24,6 +24,10 @@ final class OnlineGame: ObservableObject {
     @Published private(set) var serverCandles: [Market: [Candle]] = [:]
     @Published private(set) var marketOpen: [Market: Bool] = [:]
     @Published private(set) var hasBackupCode = true
+    @Published private(set) var rules: ServerRules?
+    @Published private(set) var seasonNumber = 1
+    @Published private(set) var bubbles: [ChartBubble] = []
+    @Published private(set) var lifetime: LifetimeStats?
     /// A code the player has just been given and must save (shown once).
     @Published var freshBackupCode: String?
     @Published var selectedSquadID: UUID? {
@@ -104,6 +108,7 @@ final class OnlineGame: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 try? await self.refreshState()
+                await self.refreshBubbles()
                 if beat % 3 == 0 {
                     await self.refreshSquadBoard()
                     await self.refreshCandles()
@@ -161,6 +166,8 @@ final class OnlineGame: ObservableObject {
         handle = state.handle
         seasonEndsAt = state.seasonEndsAt
         hasBackupCode = state.hasBackupCode ?? true
+        rules = state.rules
+        seasonNumber = state.seasonNumber ?? 1
         serverClockOffset = state.serverTime.timeIntervalSinceNow
         for quote in state.quotes {
             engine.applyServerQuote(market: quote.market, price: quote.price)
@@ -257,6 +264,29 @@ final class OnlineGame: ObservableObject {
     func liveCandles(for market: Market) -> [Candle] {
         CandleMerge.merge(serverCandles[market] ?? [], quote: engine.quotes[market] ?? 0,
                           now: serverNow, bucketSeconds: candleSeconds)
+    }
+
+    // MARK: Prop rules & bubbles
+
+    func refreshBubbles() async {
+        guard let client else { return }
+        let market = engine.selectedMarket
+        var params: [String: Any] = ["p_market": market.rawValue]
+        if let squad = selectedSquad { params["p_squad"] = squad.id.uuidString }
+        if let list: [ChartBubble] = try? await client.rpc("chart_bubbles", params), engine.selectedMarket == market {
+            bubbles = list
+        }
+    }
+
+    func buyBack() async throws {
+        guard let client else { return }
+        _ = try await client.rpcData("buy_back")
+        try await refreshState()
+    }
+
+    func refreshLifetime() async {
+        guard let client else { return }
+        lifetime = try? await client.rpc("lifetime_stats")
     }
 
     // MARK: Voice

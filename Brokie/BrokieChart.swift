@@ -46,6 +46,11 @@ struct BrokieChart: View {
     let quote: Double
     let entries: [ChartEntryLine]
     let style: PriceChartStyle
+    /// Live squad trades to float over the chart (online only).
+    var bubbles: [ChartBubble] = []
+    var bucketSeconds: Int = 60
+    var onTapBubble: (ChartBubble) -> Void = { _ in }
+    var onBubbleEnter: (ChartBubble) -> Void = { _ in }
 
     @State private var selectedIndex: Int?
 
@@ -112,6 +117,14 @@ struct BrokieChart: View {
                     }
                 }
                 .chartXSelection(value: $selectedIndex)
+                .chartOverlay { proxy in
+                    if !bubbles.isEmpty {
+                        GeometryReader { geo in
+                            BubbleLayerView(proxy: proxy, geo: geo, bubbles: bubbles, candles: candles, market: market, quote: quote,
+                                            bucketSeconds: bucketSeconds, onTap: onTapBubble, onEnter: onBubbleEnter)
+                        }
+                    }
+                }
                 .chartPlotStyle { plot in plot.clipped() }
                 .animation(.easeOut(duration: 0.25), value: candles.last?.close)
             }
@@ -328,6 +341,77 @@ struct PriceChartControls: View {
                 .accessibilityIdentifier("chart-frame-\(option.rawValue)")
             }
             Spacer(minLength: 0)
+        }
+    }
+}
+
+/// Places bubbles using the chart's own coordinate system and plays exit
+/// animations once per trade.
+private struct BubbleLayerView: View {
+    let proxy: ChartProxy
+    let geo: GeometryProxy
+    let bubbles: [ChartBubble]
+    let candles: [Candle]
+    let market: Market
+    let quote: Double
+    let bucketSeconds: Int
+    let onTap: (ChartBubble) -> Void
+    let onEnter: (ChartBubble) -> Void
+    @State private var seenOpen: Set<UUID>?
+    @State private var seenExit: Set<UUID> = []
+    @State private var exits: [ChartBubbleExit] = []
+
+    var body: some View {
+        BubbleOverlay(placed: placed, exits: exits, onTap: onTap)
+            .onAppear { process() }
+            .onChange(of: bubbles) { _, _ in process() }
+            .onChange(of: market) { _, _ in seenOpen = nil; exits = [] }
+    }
+
+    private func point(at date: Date, price: Double) -> CGPoint? {
+        guard let first = candles.first?.index, let last = candles.last?.index, let plot = proxy.plotFrame else { return nil }
+        let bucket = min(max(Int(floor(date.timeIntervalSince1970 / Double(bucketSeconds))), first), last)
+        guard let x = proxy.position(forX: bucket), let y = proxy.position(forY: price) else { return nil }
+        let origin = geo[plot].origin
+        return CGPoint(x: origin.x + x, y: origin.y + y)
+    }
+
+    private var placed: [PlacedBubble] {
+        bubbles.filter(\.isOpen).compactMap { b in
+            guard var pt = point(at: b.openedAt, price: b.entryPrice) else { return nil }
+            let pnl = (quote - b.entryPrice) * market.pointValue * Double(b.quantity) * b.side.direction
+            let pct = (b.equity ?? 0) > 0 ? pnl / b.equity! * 100 : 0
+            let r = CGFloat(min(24, max(13, 12 + (b.sizePct ?? 1) * 1.4)))
+            pt.x = min(max(pt.x, r + 2), geo.size.width - 60)
+            let room = (b.equity ?? 1) - (b.ddFloor ?? 0)
+            return PlacedBubble(bubble: b, point: pt, radius: r, pct: pct, danger: room / max(1, (b.equity ?? 1) * 0.1) < 0.2)
+        }
+    }
+
+    private func process() {
+        let opens = bubbles.filter(\.isOpen)
+        guard let seen = seenOpen else {
+            seenOpen = Set(opens.map(\.id))
+            seenExit = Set(bubbles.filter { !$0.isOpen }.map(\.id))
+            return
+        }
+        for b in opens where !seen.contains(b.id) {
+            seenOpen?.insert(b.id)
+            if !b.isYou { onEnter(b) }
+        }
+        var fresh: [ChartBubbleExit] = []
+        for b in bubbles where !b.isOpen && !seenExit.contains(b.id) {
+            seenExit.insert(b.id)
+            guard let pt = point(at: b.at, price: b.exitPrice ?? b.entryPrice) else { continue }
+            let kind: ChartBubbleExit.Kind = b.reason == "blown" ? .rekt : ((b.pnl ?? 0) >= 0 ? .win : .loss)
+            fresh.append(ChartBubbleExit(id: b.id, handle: b.handle, kind: kind, pnl: b.pnl ?? 0, point: pt))
+        }
+        guard !fresh.isEmpty else { return }
+        exits.append(contentsOf: fresh)
+        let ids = Set(fresh.map(\.id))
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            exits.removeAll { ids.contains($0.id) }
         }
     }
 }

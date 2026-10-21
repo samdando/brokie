@@ -82,8 +82,8 @@ struct OnboardingView: View {
                     .font(.system(size: 30, weight: .semibold, design: .rounded)).tracking(-1)
                     .padding(.top, 28)
                 VStack(alignment: .leading, spacing: 12) {
-                    onboardingPoint("chart.xyaxis.line", "Real Gold, NAS and ES prices. Fake $10k.")
-                    onboardingPoint("trophy.fill", "Fresh stack every Monday. Squad leaderboard.")
+                    onboardingPoint("chart.xyaxis.line", "Real Gold, NAS and ES prices. Fake $100k.")
+                    onboardingPoint("trophy.fill", "8-week prop challenge: don't blow 10%, hit +10%.")
                     onboardingPoint("waveform", "Talk trades live with your mates.")
                 }
                 .padding(.top, 26)
@@ -233,9 +233,9 @@ struct OnlineSquadScreen: View {
     private var leaderboard: some View {
         VStack(spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text("This week").font(.system(size: 17, weight: .semibold, design: .rounded))
+                Text("Season \(game.seasonNumber)").font(.system(size: 17, weight: .semibold, design: .rounded))
                 Spacer()
-                Text("RESETS IN \(seasonCountdown(to: game.seasonEndsAt, now: game.serverNow).uppercased())")
+                Text("ENDS IN \(seasonCountdown(to: game.seasonEndsAt, now: game.serverNow).uppercased())")
                     .font(.system(size: 8, weight: .bold, design: .monospaced)).tracking(0.8).foregroundStyle(Ink.muted)
             }.padding(.bottom, 12)
             if game.leaderboard.isEmpty {
@@ -257,9 +257,10 @@ struct OnlineSquadScreen: View {
                             if row.openPositions > 0 {
                                 Circle().fill(Ink.lime).frame(width: 5, height: 5).accessibilityLabel("in a trade")
                             }
+                            StatusChips(row: row)
                         }
-                        Text(row.trades == 0 ? (row.openPositions > 0 ? "In a trade" : "No trades yet")
-                             : "\(row.trades) \(row.trades == 1 ? "trade" : "trades") · worst \(signedMoney(row.worstTrade))")
+                        Text((row.qualified == false ? "\(row.tradingDays ?? 0)/5 days · " : "") + (row.trades == 0 ? (row.openPositions > 0 ? "In a trade" : "No trades yet")
+                             : "\(row.trades) \(row.trades == 1 ? "trade" : "trades") · worst \(signedMoney(row.worstTrade))"))
                             .font(.system(size: 10)).foregroundStyle(Ink.muted)
                     }
                     Spacer()
@@ -271,9 +272,10 @@ struct OnlineSquadScreen: View {
                 }
                 .padding(.vertical, 13).padding(.horizontal, 12)
                 .background(row.isYou ? Ink.lime.opacity(0.06) : .clear, in: RoundedRectangle(cornerRadius: 12))
+                .opacity(row.qualified == false ? 0.7 : 1).grayscale(row.status == "blown" ? 0.8 : 0)
                 if index < game.leaderboard.count - 1 { Rectangle().fill(Ink.line).frame(height: 1) }
             }
-            Text("Return and worst trade sit side by side, so one lucky YOLO doesn't tell the whole story.")
+            Text("Prop rules: 5% daily loss, 10% trailing drawdown, +10% to get funded. 5 trading days to qualify (faded rows haven't yet).")
                 .font(.system(size: 10)).foregroundStyle(Ink.muted).padding(.top, 12).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -350,7 +352,7 @@ struct FeedRow: View {
                     Text(event.isYou ? "You" : "@\(event.handle)").font(.system(size: 12, weight: .bold))
                     Text(event.at, style: .relative).font(.system(size: 9)).foregroundStyle(Ink.muted)
                     Spacer()
-                    Text("\(event.market.title) \(event.side == .long ? "↑" : "↓")").font(.system(size: 10, weight: .semibold))
+                    Text(event.kind == "rekt" || event.kind == "funded" ? "" : "\(event.market.title) \(event.side == .long ? "↑" : "↓")").font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(event.side == .long ? Ink.lime : Ink.red)
                 }
                 Text(headline).font(.system(size: 13)).foregroundStyle(.white.opacity(0.85))
@@ -361,6 +363,8 @@ struct FeedRow: View {
     }
 
     private var headline: AttributedString {
+        if event.kind == "rekt" { var t = AttributedString("💀 Blew the account. REKT."); t.foregroundColor = Color(white: 0.75); return t }
+        if event.kind == "funded" { var t = AttributedString("🏆 Hit +10%. FUNDED."); t.foregroundColor = Ink.gold; return t }
         let size = "\(event.quantity) \(event.market.title)"
         if event.isClose, let pnl = event.pnl {
             var text = AttributedString(event.reason == "liquidated" ? "Got liquidated on \(size) " : "Closed \(event.side.rawValue) \(size) ")

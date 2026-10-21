@@ -60,6 +60,7 @@ struct ContentView: View {
     @State private var sharedTrade: ClosedTrade?
     @State private var showHandleEditor = false
     @State private var closingID: UUID?
+    @State private var pickedBubble: ChartBubble?
     @AppStorage("brokie.league") private var leagueName = "The rent money club"
     @AppStorage("brokie.handle") private var handle = "you"
     @AppStorage("brokie.lessons") private var completedLessons = ""
@@ -125,13 +126,16 @@ struct ContentView: View {
         .sheet(item: Binding(get: { game.freshBackupCode.map(IdentifiedCode.init) }, set: { if $0 == nil { game.freshBackupCode = nil } })) { item in
             BackupCodeSheet(code: item.code).presentationDetents([.large])
         }
+        .sheet(item: $pickedBubble) { b in
+            BubbleSheet(bubble: b, market: engine.selectedMarket, quote: engine.quotes[engine.selectedMarket] ?? 0).presentationDetents([.medium])
+        }
         .sheet(isPresented: $showHandleEditor) { HandleEditor().environmentObject(game).presentationDetents([.medium]) }
         .fullScreenCover(isPresented: Binding(get: { game.phase == .needsHandle }, set: { _ in })) {
             OnboardingView().environmentObject(game)
         }
         .task { await game.start() }
         .onChange(of: scenePhase) { _, phase in game.setActive(phase == .active) }
-        .onChange(of: engine.selectedMarket) { _, market in if game.isOnline { Task { await game.refreshCandles(market) } } }
+        .onChange(of: engine.selectedMarket) { _, market in if game.isOnline { Task { await game.refreshCandles(market); await game.refreshBubbles() } } }
         .onChange(of: chartFrame) { _, frame in game.candleSeconds = frame.liveSeconds }
         .onAppear { game.candleSeconds = chartFrame.liveSeconds }
         .sheet(isPresented: $showLeague) { LeagueSheet(name: $leagueName) }
@@ -155,7 +159,7 @@ struct ContentView: View {
             }
             Spacer()
             Button { showRules = true } label: {
-                Text(game.isOnline ? "WEEK ENDS \(seasonCountdown(to: game.seasonEndsAt, now: game.serverNow).uppercased())" : "PAPER CLUB")
+                Text(game.isOnline ? "S\(game.seasonNumber) · \(seasonCountdown(to: game.seasonEndsAt, now: game.serverNow).uppercased()) LEFT" : "PAPER CLUB")
                     .font(.system(size: 9, weight: .heavy, design: .monospaced)).tracking(1.1)
                     .foregroundStyle(Ink.lime).padding(.horizontal, 11).padding(.vertical, 8)
                     .overlay(Capsule().stroke(Ink.lime.opacity(0.35)))
@@ -174,13 +178,17 @@ struct ContentView: View {
             connectionBanner
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 7) {
-                    eyebrow(game.isOnline ? "THIS WEEK'S STACK · USD" : "YOUR PAPER STACK · USD")
+                    eyebrow(game.isOnline ? "SEASON \(game.seasonNumber) CHALLENGE · USD" : "YOUR PAPER STACK · USD")
                     Text(money(engine.equity)).font(.system(size: 39, weight: .semibold, design: .rounded)).tracking(-1.8)
                         .monospacedDigit().minimumScaleFactor(0.7).lineLimit(1).accessibilityIdentifier("equity")
                     HStack(spacing: 5) {
-                        Image(systemName: engine.equity >= 10_000 ? "arrow.up.right" : "arrow.down.right").font(.system(size: 10, weight: .bold))
-                        Text("\(signedMoney(engine.equity - 10_000)) all time").font(.system(size: 12, weight: .medium)).monospacedDigit()
-                    }.foregroundStyle(engine.equity >= 10_000 ? Ink.lime : Ink.red)
+                        Image(systemName: engine.equity >= startBalance ? "arrow.up.right" : "arrow.down.right").font(.system(size: 10, weight: .bold))
+                        Text("\(signedMoney(engine.equity - startBalance)) · \(String(format: "%.2f", (engine.equity - startBalance) / startBalance * 100))%").font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        if game.isOnline && game.rules?.funded == true {
+                            Text("🏆 FUNDED").font(.system(size: 8, weight: .heavy, design: .monospaced)).foregroundStyle(Ink.gold)
+                                .padding(.horizontal, 6).padding(.vertical, 3).background(Ink.gold.opacity(0.15), in: Capsule())
+                        }
+                    }.foregroundStyle(engine.equity >= startBalance ? Ink.lime : Ink.red)
                 }
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 5) {
@@ -188,6 +196,11 @@ struct ContentView: View {
                     Text("100% real bragging rights.").foregroundStyle(Ink.muted)
                 }.font(.system(size: 10, weight: .medium)).padding(.bottom, 7)
             }.padding(.top, 5)
+
+            if game.isOnline, let rules = game.rules {
+                RuleStatusCard(rules: rules) { notify($0) }
+                RuleMeters(rules: rules, equity: engine.equity)
+            }
 
             HStack(spacing: 10) {
                 ForEach(Market.allCases) { market in
@@ -214,10 +227,9 @@ struct ContentView: View {
                 tradeButton(.long)
                 tradeButton(.short)
             }
-            HStack(spacing: 5) {
-                Image(systemName: "sparkle")
-                Text("Real point math. Zero rent money at risk.")
-            }.font(.system(size: 10, weight: .medium)).foregroundStyle(Ink.muted).frame(maxWidth: .infinity).padding(.top, -8)
+            Text("SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY")
+                .font(.system(size: 8, weight: .semibold, design: .monospaced)).tracking(0.4).foregroundStyle(Ink.muted)
+                .frame(maxWidth: .infinity).padding(.top, -8)
 
             positionsSection
             pitSection
@@ -268,7 +280,10 @@ struct ContentView: View {
                 }.accessibilityLabel(paused ? "Resume demo prices" : "Pause demo prices").accessibilityIdentifier("toggle-prices")
                 }
             }
-            BrokieChart(market: market, candles: candles, quote: quote, entries: entries, style: chartStyle)
+            BrokieChart(market: market, candles: candles, quote: quote, entries: entries, style: chartStyle,
+                        bubbles: online ? game.bubbles : [], bucketSeconds: chartFrame.liveSeconds,
+                        onTapBubble: { pickedBubble = $0 },
+                        onBubbleEnter: { b in notify("@\(b.handle) \(b.side == .long ? "longed" : "shorted") \(market.title) ×\(b.quantity)") })
                 .frame(height: 236)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("\(isLive ? "Live" : "Simulated") \(market.title) \(chartStyle.title.lowercased()) chart. Current price \(price(quote)). Press and drag to read a bar.")
@@ -289,7 +304,7 @@ struct ContentView: View {
                 .foregroundStyle(side == .long ? Ink.background : Ink.red)
                 .background(side == .long ? Ink.lime : Ink.red.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(side == .long ? .clear : Ink.red.opacity(0.4)))
-        }.accessibilityIdentifier(side == .long ? "go-long" : "go-short")
+        }.disabled(tradingLocked).opacity(tradingLocked ? 0.4 : 1).accessibilityIdentifier(side == .long ? "go-long" : "go-short")
     }
 
     private var positionsSection: some View {
@@ -614,6 +629,9 @@ struct ContentView: View {
         }
     }
 
+    private var startBalance: Double { game.isOnline ? (game.rules?.startBalance ?? 100_000) : TradingEngine.startingBalance }
+    private var tradingLocked: Bool { game.isOnline && (game.rules?.isBlown == true || game.rules?.isLocked == true) }
+
     private func close(_ position: Position) {
         if game.isOnline {
             closingID = position.id
@@ -673,7 +691,7 @@ private struct OrderSheet: View {
             VStack(alignment: .leading, spacing: 11) {
                 eyebrow("MICRO CONTRACTS")
                 HStack(spacing: 10) {
-                    ForEach(1...3, id: \.self) { number in
+                    ForEach(isOnline ? [1, 2, 3, 5, 10] : [1, 2, 3], id: \.self) { number in
                         Button { quantity = number; error = nil } label: {
                             Text("\(number)").font(.system(size: 19, weight: .bold)).frame(maxWidth: .infinity).frame(height: 49)
                                 .foregroundStyle(quantity == number ? Ink.background : .white)
