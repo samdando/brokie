@@ -134,7 +134,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </button>
         </div>
         <div className="chart-attribution">
-          {open ? "Simulated trading on OANDA practice prices. Not financial advice." : "Market's closed. New trades open when prices are live again."}
+          {open ? "Real market prices from OANDA, fake money. Not financial advice." :"Market's closed. New trades open when prices are live again."}
           {" "}Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
           {" "}(<a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">notice</a>).
         </div>
