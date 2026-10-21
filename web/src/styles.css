@@ -49,7 +49,7 @@ a { color: var(--lime); }
 .chip.on { background: var(--line); color: #fff; }
 .chip.lime.on { background: var(--lime); color: var(--bg); }
 .chart-card .chip { min-width: 40px; height: 44px; }
-.chart-attribution { margin-top: 6px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.chart-attribution { margin-top: 8px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .chart-attribution a { color: inherit; text-underline-offset: 2px; }
 .vibe { font: 800 8px var(--mono); letter-spacing: .6px; padding: 4px 7px; border-radius: 99px; }
 
@@ -145,10 +145,11 @@ a { color: var(--lime); }
   background: rgba(12,14,11,.85); padding: 1px 4px; border-radius: 5px; white-space: nowrap; }
 @keyframes bubpop { 0% { transform: translate(-50%,-50%) scale(0); } 100% { transform: translate(-50%,-50%) scale(1); } }
 @keyframes shake { 0%,100% { margin-left: 0 } 25% { margin-left: -2px } 75% { margin-left: 2px } }
-.cluster { position: absolute; transform: translate(-50%,-50%); background: var(--panel); border: 1px solid var(--line);
-  border-radius: 99px; min-height: 44px; padding: 4px 9px; font: 800 10px var(--mono); white-space: nowrap; z-index: 3; animation: bubpop .4s both; }
+.cluster { position: absolute; transform: translate(-50%,-50%); display: inline-flex; gap: 4px; align-items: center; background: rgba(12,14,11,.88); border: 1px solid var(--line);
+  border-radius: 99px; padding: 3px 7px; font: 800 9px var(--mono); white-space: nowrap; z-index: 3; animation: bubpop .4s both; }
+/* Keep a 44px tap target without the pill looking 44px tall. */
+.cluster::before { content: ""; position: absolute; inset: -12px -4px; }
 .cluster-collapse { font-size: 9px; background: var(--bg); }
-.sentiment { position: absolute; right: 4px; top: 4px; display: flex; gap: 6px; padding: 3px 7px; border-radius: 8px; background: rgba(10,10,10,.7); font: 800 9px var(--mono); pointer-events: none; z-index: 3; }
 .exit { position: absolute; transform: translate(-50%,-50%); pointer-events: none; z-index: 4; }
 .exit-av { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 11px; background: var(--panel); }
 .exit-txt { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); font: 800 11px var(--mono); white-space: nowrap; animation: rise 1.8s ease-out forwards; }
@@ -188,7 +189,6 @@ a { color: var(--lime); }
 .meter[aria-expanded="true"], .target-meter[aria-expanded="true"] { outline: 1px solid var(--muted); outline-offset: -1px; }
 .meter:focus-visible, .target-meter:focus-visible, .bub-hit:focus-visible, .cluster:focus-visible, .chart-card .chip:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 .status-card { border-radius: 16px; padding: 16px; display: flex; gap: 12px; align-items: center; }
-.disclaimer { font-size: 9px; color: var(--muted); text-align: center; letter-spacing: .3px; }
 .chip-status { font: 800 8px var(--mono); padding: 3px 6px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
 
 /* ---------- Small screens ---------- */
@@ -218,12 +218,13 @@ a { color: var(--lime); }
 }
 
 /* Closed-trade markers: stay on the chart after the exit animation */
-.exit-mark { position: absolute; transform: translate(-6px, -50%); display: inline-flex; align-items: center; gap: 4px; pointer-events: none; font: 700 10px var(--mono, ui-monospace, monospace); white-space: nowrap; z-index: 2; }
-.exit-mark i { width: 13px; height: 13px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 8px; background: var(--bg); border: 1.5px solid currentColor; flex: none; }
+.exit-mark { position: absolute; transform: translate(-4px, -50%); display: inline-flex; align-items: center; gap: 4px; padding: 0; font: 700 10px var(--mono, ui-monospace, monospace); white-space: nowrap; z-index: 2; }
+.exit-mark::before { content: ""; position: absolute; left: -14px; top: -14px; width: 36px; height: 36px; }
+.exit-mark i { width: 8px; height: 8px; border-radius: 50%; background: var(--bg); border: 1.5px solid currentColor; opacity: .8; flex: none; }
 .exit-mark span { padding: 2px 5px; border-radius: 6px; background: rgba(10,10,10,.82); }
 .exit-mark.win { color: var(--lime); } .exit-mark.loss { color: var(--red); }
 .exit-mark.me span { outline: 1px solid currentColor; }
-.exit-mark.left { transform: translate(calc(-100% + 6px), -50%); flex-direction: row-reverse; }
+.exit-mark.left { transform: translate(calc(-100% + 4px), -50%); flex-direction: row-reverse; }
 
 /* Feedback, size chips, info link, segmented control, switch */
 .icon-btn { width: 34px; height: 34px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); font-size: 15px; display: grid; place-items: center; }
@@ -280,7 +281,7 @@ a { color: var(--lime); }
 .react-hint { font-size: 10px; color: var(--muted); margin: 2px 0 -4px; }
 
 /* ---- Chart v1 (tickets C1–C5) ---- */
-.pnl-tag { position: absolute; right: 2px; transform: translateY(-130%); font: 700 9px var(--mono); padding: 2px 5px; border-radius: 5px;
+.pnl-tag { position: absolute; transform: translate(-100%, -50%); font: 700 9px var(--mono); padding: 2px 5px; border-radius: 5px;
   background: rgba(12,14,11,.9); pointer-events: none; white-space: nowrap; z-index: 4; }
 .pnl-tag.up { color: var(--lime); border: 1px solid rgba(214,254,89,.4); } .pnl-tag.down { color: var(--red); border: 1px solid rgba(255,125,139,.4); }
 .crosshair-readout { position: absolute; left: 4px; top: 2px; display: flex; flex-direction: column; gap: 1px; font: 600 8.5px var(--mono);
@@ -317,7 +318,7 @@ a { color: var(--lime); }
 @keyframes coinglint { 0%, 60% { opacity: .2 } 100% { opacity: 1 } }
 @keyframes coinwave { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(2.8); opacity: 0; } }
 @keyframes cointrail { 0% { transform: translateX(-50%) translateY(-38px) scaleY(1); opacity: 1; } 100% { transform: translateX(-50%) translateY(0) scaleY(.1); opacity: 0; } }
-.hedge-pill { position: absolute; left: 6px; top: 6px; z-index: 5; pointer-events: none; font: 900 8px var(--mono); letter-spacing: .8px; padding: 3px 7px; border-radius: 99px;
+.hedge-pill { position: absolute; right: 6px; top: 6px; z-index: 5; pointer-events: none; font: 900 8px var(--mono); letter-spacing: .8px; padding: 3px 7px; border-radius: 99px;
   color: #fff; background: rgba(12,14,11,.85); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); border-left: 3px solid var(--lime); border-right: 3px solid var(--red); }
 .hedge-pill.inline { position: static; margin-left: 8px; vertical-align: 2px; }
 /* Live price glow on the current-price line */
@@ -336,9 +337,17 @@ a { color: var(--lime); }
   font: 800 9px var(--mono); padding: 3px 7px; border-radius: 99px; background: rgba(12,14,11,.9); color: var(--bc); box-shadow: inset 0 0 0 1px var(--bc); }
 .bracket.live .bracket-tag { background: var(--bc); color: var(--bg); transform: translateY(-50%) scale(1.08); }
 .bracket-x { color: inherit; font-size: 9px; padding: 0 0 0 4px; opacity: .8; }
-.bracket-grip { position: absolute; transform: translate(-50%, -50%); width: 24px; height: 24px; border-radius: 50%; z-index: 4; cursor: ns-resize;
-  font: 900 12px var(--mono); color: var(--bg); background: var(--lime); box-shadow: 0 0 0 2px var(--bg), 0 0 12px rgba(214,254,89,.5); }
-.bracket-grip.short { background: var(--red); box-shadow: 0 0 0 2px var(--bg), 0 0 12px rgba(255,125,139,.5); }
+/* Your coin docked on its entry line: also the SL/TP drag handle. */
+.my-coin { position: absolute; transform: translate(-50%, -50%); padding: 0; border-radius: 50%; z-index: 5; cursor: ns-resize; background: none; }
+.my-coin .coin { z-index: auto; }
+.my-coin .coin-face { box-shadow: 0 0 8px var(--g); }
+/* Squad activity and first-run hints sit over the chart's top-left corner instead of taking a row. */
+.chart-toast { position: absolute; left: 4px; top: 4px; max-width: calc(100% - 8px); z-index: 6; pointer-events: none; font-size: 10px; color: #fff;
+  background: rgba(12,14,11,.88); border: 1px solid var(--line); border-radius: 99px; padding: 3px 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: toastfade 5s ease both; }
+.chart-toast.hint { color: var(--muted); animation: none; }
+@keyframes toastfade { 0% { opacity: 0; transform: translateY(-4px); } 6%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.crowd-chip { display: inline-flex; gap: 5px; align-items: center; font: 800 9px var(--mono); }
 /* ---- Ticket 15: spam BUY / SELL ---- */
 .spam-pad { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .spam-btn { position: relative; height: 78px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -401,7 +410,6 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--lime); ou
 .chart-card { padding: 12px; border-radius: 16px; }
 .chart-context { margin: 4px 0; }
 .chart-help { font-size: 11px; line-height: 1.5; padding-bottom: 8px; }
-.chart-activity { height: 22px; font-size: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .chart-card .chip.lime.on { background: var(--line); color: var(--lime); }
 .chart-card .chips { gap: 4px; }
 .chart-card .chip { min-width: 36px; padding: 0 6px; }

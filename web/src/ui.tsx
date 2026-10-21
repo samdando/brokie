@@ -65,3 +65,10 @@ export const Icon = {
   learn: <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>,
   you: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="10" r="3.2"/><path d="M6.5 18.5c1.3-2.3 3.2-3.4 5.5-3.4s4.2 1.1 5.5 3.4"/></svg>,
 };
+
+/** One-time hints: each shows for the first few app opens, and goes for good once the player has
+ *  done the thing it explains. */
+const HINT_OPENS = 3;
+const opens = (() => { try { const n = Number(localStorage.getItem("brokie.opens") ?? 0) + 1; localStorage.setItem("brokie.opens", String(n)); return n; } catch { return 1; } })();
+export function hintOn(key: string): boolean { try { return opens <= HINT_OPENS && localStorage.getItem(`brokie.hint.${key}`) !== "done"; } catch { return false; } }
+export function hintDone(key: string) { try { localStorage.setItem(`brokie.hint.${key}`, "done"); } catch { /* */ } }

@@ -17,8 +17,8 @@ export type ToXY = (unixSeconds: number, price: number) => { x: number; y: numbe
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket }:
-  { market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, initial = "?" }:
+  { initial?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   const [, setFrame] = useState(0);
@@ -261,10 +261,9 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
           {overlay?.(toXY, plotWidth)}
           {quote != null && yOf(quote) != null && <div className={`price-glow ${tickColor.current === LIME ? "up" : "down"}`} style={{ top: yOf(quote)! }} aria-hidden="true" />}
           {hedged && <span className="hedge-pill" data-testid="my-hedged">HEDGED</span>}
-          {mine.map((p) => <MyPosition key={p.id} p={p} quote={quote} toXY={toXY} yOf={yOf} width={plotWidth}
-            sizePct={sizePctOf?.(p) ?? null} fresh={fresh.has(p.id)} hedged={hedged} />)}
-          {onBracket && mine.map((p, i) => <BracketDrag key={`b-${p.id}`} p={p} slot={i} b={brackets?.[p.id] ?? {}} yOf={yOf} priceOf={priceOf} width={plotWidth}
-            onSet={(b) => onBracket(p.id, b)} onClear={(k) => onClearBracket?.(p.id, k)} />)}
+          {mine.map((p, i) => <MyPosition key={p.id} p={p} slot={i} initial={initial} quote={quote} toXY={toXY} yOf={yOf} priceOf={priceOf} width={plotWidth}
+            sizePct={sizePctOf?.(p) ?? null} fresh={fresh.has(p.id)} hedged={hedged} b={brackets?.[p.id] ?? {}}
+            onSet={onBracket && ((b) => onBracket(p.id, b))} onClear={(k) => onClearBracket?.(p.id, k)} />)}
         </div>}
         {hover && (
           <div className="crosshair-readout" data-testid="crosshair-readout">
@@ -286,34 +285,85 @@ function emaAll(ema: ISeriesApi<"Line">, bars: Bar[]) {
   ema.setData(bars.map((b) => { e = b.close * k + e * (1 - k); return { time: b.time, value: e }; }));
 }
 
-/** C1 overlay for one of your positions: coin bubble pinned at the fill, dotted tether to the
- *  current price and a live $ P&L tag at the right edge. */
-function MyPosition({ p, quote, toXY, yOf, width, sizePct, fresh, hedged }:
-  { p: Position; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; width: number; sizePct: number | null; fresh: boolean; hedged: boolean }) {
+/** One of your positions, kept off the candles: a small dot marks the fill, and your coin sits on
+ *  the entry line at the right edge with the live P&L beside it. The coin is also the SL/TP handle
+ *  (ticket 14): drag it up or down. For a long, up is TP and down is SL; a short is the reverse.
+ *  Set lines show "SL −$305"; tap one for its price and ✕, or drag it again. */
+function MyPosition({ p, slot, initial, quote, toXY, yOf, priceOf, width, sizePct, fresh, hedged, b, onSet, onClear }:
+  { p: Position; slot: number; initial: string; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
+    width: number; sizePct: number | null; fresh: boolean; hedged: boolean; b: Bracket; onSet?: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
+  const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
+  const [open, setOpen] = useState<keyof Bracket | null>(null);
   const pct = sizePct ?? Math.min(20, p.quantity * 2);
-  const d = Math.round(30 + Math.max(0, Math.min(20, pct)) / 20 * 16);   // 30–46px by % of account
+  const d = Math.round(26 + Math.max(0, Math.min(20, pct)) / 20 * 6);   // 26–32px by % of account
   const entryY = yOf(p.entry_price);
   const at = toXY(Date.parse(p.opened_at) / 1000, p.entry_price);
-  // Opened before the loaded window or panned off-screen: hug the left edge at the entry price.
-  const x = at ? Math.max(d / 2 + 2, Math.min(width - d / 2 - 2, at.x)) : d / 2 + 4;
-  const y = at?.y ?? entryY;
-  const qY = quote != null ? yOf(quote) : null;
+  const inView = (v: number | null): v is number => v !== null && v >= 0 && v <= H;
+  const coinX = width - d / 2 - 10 - slot * (d + 8);
   const pnl = quote != null ? pnlOf(p, quote) : 0;
-  const inView = (v: number | null) => v !== null && v >= 0 && v <= H;
+  const keyFor = (price: number): keyof Bracket => ((price > p.entry_price) === (p.side === "long") ? "tp" : "sl");
+
+  const start = (e: ReactPointerEvent, fixed?: keyof Bracket) => {
+    if (!onSet) return;
+    e.stopPropagation(); e.preventDefault();
+    const layer = (e.currentTarget as HTMLElement).closest(".bubble-layer") as HTMLElement | null;
+    if (!layer) return;
+    const top = layer.getBoundingClientRect().top;
+    const y0 = e.clientY; let moved = false;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientY - y0) < 4) return;
+      moved = true;
+      const raw = priceOf(Math.max(0, Math.min(H, ev.clientY - top)));
+      if (raw == null) return;
+      const price = snap(raw);
+      if (fixed && keyFor(price) !== fixed) return; // a set line can't cross the entry
+      setDrag({ price, key: fixed ?? keyFor(price) });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      if (!moved) { if (fixed && ev.type === "pointerup") setOpen((o) => (o === fixed ? null : fixed)); return; }
+      setDrag((dr) => {
+        if (dr && Math.abs(dr.price - p.entry_price) >= tickOf(p.entry_price) && ev.type === "pointerup") { onSet({ [dr.key]: dr.price }); buzz(10); setOpen(null); }
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  };
+
+  const line = (key: keyof Bracket, price: number, live: boolean) => {
+    const y = yOf(price); if (!inView(y)) return null;
+    const lp = pnlOf(p, price);
+    const full = live || open === key;
+    return (
+      <div key={key + (live ? "-live" : "")} className={`bracket ${key} ${live ? "live" : ""}`} style={{ top: y }} data-testid={`bracket-${key}`}>
+        <span className="bracket-tag" onPointerDown={live ? undefined : (e) => start(e, key)} style={{ touchAction: "none" }}
+          aria-label={`${key.toUpperCase()} at ${px(price)}, ${signedMoney(lp)}`}>
+          {key.toUpperCase()} {full ? <>{px(price)} · <b>{signedMoney(lp)}</b></> : <b>{shortMoney(lp)}</b>}
+          {!live && open === key && <button type="button" className="bracket-x" aria-label={`Remove ${key.toUpperCase()}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => { onClear(key); setOpen(null); buzz(8); }}>✕</button>}
+        </span>
+      </div>
+    );
+  };
+
   return (
     <>
-      <svg width={width} height={H} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        {y != null && inView(qY) && <line x1={x} y1={y} x2={width - 2} y2={qY!} stroke={pnl >= 0 ? "var(--lime)" : "var(--red)"} strokeWidth="1.2" strokeDasharray="1.5 3.5" opacity="0.8" />}
-      </svg>
-      {y != null && inView(y) && <svg width={width} height={H} aria-hidden="true" style={{position:"absolute",inset:0,pointerEvents:"none"}}><line x1={x} y1={Math.max(d + 8, y - 8)} x2={x} y2={y} stroke="var(--lime)" strokeWidth="1" /><circle cx={x} cy={y} r="2" fill="var(--lime)" /></svg>}
-      {y != null && inView(y) && (
-        <CoinBubble side={p.side} initial="S" size={d} qty={p.quantity} me fresh={fresh} hedged={hedged}
-          style={{ left: x, top: Math.max(d / 2 + 8, y - d / 2 - 14), pointerEvents: "none", zIndex: 3 }}
-          testId="my-bubble" label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}`} />
-      )}
-      {inView(qY) && !hedged && (
-        <span className={`pnl-tag ${pnl >= 0 ? "up" : "down"}`} style={{ top: qY! }} data-testid="pnl-tag">{signedMoney(pnl)}</span>
-      )}
+      {at && inView(at.y) && <svg width={width} height={H} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        <circle cx={at.x} cy={at.y} r="2.5" fill={p.side === "long" ? "var(--lime)" : "var(--red)"} />
+      </svg>}
+      {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
+      {drag && line(drag.key, drag.price, true)}
+      {inView(entryY) && <>
+        {!hedged && quote != null && !drag && (
+          <span className={`pnl-tag ${pnl >= 0 ? "up" : "down"}`} style={{ top: entryY, left: coinX - d / 2 - 4 }} data-testid="pnl-tag">{signedMoney(pnl)}</span>
+        )}
+        <button type="button" className="my-coin" style={{ left: coinX, top: entryY, width: d + 12, height: d + 12, touchAction: "none" }}
+          onPointerDown={(e) => start(e)} data-testid="bracket-grip"
+          aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}. Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
+          <CoinBubble side={p.side} initial={initial} size={d} qty={p.quantity} me fresh={fresh} hedged={hedged}
+            style={{ left: "50%", top: "50%", pointerEvents: "none" }} testId="my-bubble" />
+        </button>
+      </>}
     </>
   );
 }
@@ -329,64 +379,7 @@ export function vibeOf(candles: Candle[]): { label: string; color: string } {
   return { label: "CHOP", color: MUTED };
 }
 
-/** Ticket 14: grab the handle on your entry line and drag up or down. For a long, up is TP and
- *  down is SL; a short is the reverse. Snaps to the market tick, previews price + P&L live,
- *  light haptic on release. Set lines can be dragged again; tap their ✕ to remove. */
 const tickOf = (price: number) => (price >= 1000 ? 0.25 : price >= 10 ? 0.01 : 0.0001);
 const snap = (price: number) => { const t = tickOf(price); return Math.round(price / t) * t; };
 const buzz = (ms: number | number[]) => { try { navigator.vibrate?.(ms); } catch { /* */ } };
-
-function BracketDrag({ p, slot, b, yOf, priceOf, width, onSet, onClear }:
-  { p: Position; slot: number; b: Bracket; yOf: (price: number) => number | null; priceOf: (y: number) => number | null; width: number;
-    onSet: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
-  const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
-  const keyFor = (price: number): keyof Bracket => ((price > p.entry_price) === (p.side === "long") ? "tp" : "sl");
-  const entryY = yOf(p.entry_price);
-  const start = (e: ReactPointerEvent, fixed?: keyof Bracket) => {
-    e.stopPropagation(); e.preventDefault();
-    const layer = (e.currentTarget as HTMLElement).closest(".bubble-layer") as HTMLElement | null;
-    if (!layer) return;
-    const top = layer.getBoundingClientRect().top;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      const raw = priceOf(Math.max(0, Math.min(H, ev.clientY - top)));
-      if (raw == null) return;
-      const price = snap(raw);
-      if (fixed && keyFor(price) !== fixed) return; // a set line can't cross the entry
-      const key = fixed ?? keyFor(price);
-      setDrag({ price, key });
-    };
-    const up = (ev: PointerEvent) => {
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
-      setDrag((d) => {
-        if (d && Math.abs(d.price - p.entry_price) >= tickOf(p.entry_price) && ev.type === "pointerup") { onSet({ [d.key]: d.price }); buzz(10); }
-        return null;
-      });
-    };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
-  };
-  const pnlAt = (price: number) => pnlOf(p, price);
-  const line = (key: keyof Bracket, price: number, live: boolean) => {
-    const y = yOf(price); if (y == null || y < 0 || y > H) return null;
-    const pnl = pnlAt(price);
-    return (
-      <div key={key + (live ? "-live" : "")} className={`bracket ${key} ${live ? "live" : ""}`} style={{ top: y }} data-testid={`bracket-${key}`}>
-        <span className="bracket-tag" onPointerDown={live ? undefined : (e) => start(e, key)} style={{ touchAction: "none" }}>
-          {key.toUpperCase()} {px(price)} · <b>{signedMoney(pnl)}</b>
-          {!live && <button type="button" className="bracket-x" aria-label={`Remove ${key.toUpperCase()}`} onPointerDown={(e) => e.stopPropagation()} onClick={() => { onClear(key); buzz(8); }}>✕</button>}
-        </span>
-      </div>
-    );
-  };
-  return (
-    <>
-      {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
-      {drag && line(drag.key, drag.price, true)}
-      {entryY != null && entryY >= 0 && entryY <= H && (
-        <button type="button" className={`bracket-grip ${p.side}`} style={{ top: entryY, left: Math.max(14, width - 30 - slot * 30), touchAction: "none" }}
-          onPointerDown={(e) => start(e)} aria-label={`Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}
-          data-testid="bracket-grip">⇕</button>
-      )}
-    </>
-  );
-}
+const shortMoney = (n: number) => `${n >= 0 ? "+" : "−"}$${Math.abs(n) >= 1000 ? (Math.abs(n) / 1000).toFixed(1) + "k" : Math.abs(n).toFixed(0)}`;

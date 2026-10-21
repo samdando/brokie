@@ -6,7 +6,7 @@ import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
 import { BrokieChart, vibeOf } from "./Chart";
-import { Button, Eyebrow, Sheet, ago, money, px, signedMoney } from "./ui";
+import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
@@ -20,14 +20,22 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
   const [chartInfo, setChartInfo] = useState(false);
-  const [activity, setActivity] = useState("");
-  useEffect(() => { setActivity(""); }, [st.market, st.squadId]);
+  const [activity, setActivity] = useState<{ text: string; n: number } | null>(null);
+  useEffect(() => { setActivity(null); }, [st.market, st.squadId]);
+  useEffect(() => { if (!activity) return; const t = setTimeout(() => setActivity(null), 5000); return () => clearTimeout(t); }, [activity]);
+  const [markerHint, setMarkerHint] = useState(() => hintOn("markers"));
+  const [cardHint, setCardHint] = useState(() => hintOn("cards"));
   const mark = (m: Market) => game.quote(m)?.price ?? null;
   const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
   const rules = me.rules;
   const base = rules?.start_balance ?? 10000;
   const [picked, setPicked] = useState<Bubble | null>(null);
+  const pick = (b: Bubble) => { setPicked(b); if (markerHint) { hintDone("markers"); setMarkerHint(false); } };
+  // Players (not legs) on each side, for the squad toggle: spamming 20 micros is still one player.
+  const crowdHere = st.bubbleScope === `${st.market}:${game.squad?.id ?? ""}` ? st.bubbles.filter((b) => b.state === "open" && !b.is_you) : [];
+  const longs = new Set(crowdHere.filter((b) => b.side === "long").map((b) => b.handle)).size;
+  const shorts = new Set(crowdHere.filter((b) => b.side === "short").map((b) => b.handle)).size;
   useEffect(() => {
     void game.refreshBubbles();
     const t = setInterval(() => { if (!document.hidden) void game.refreshBubbles(); }, 3000);
@@ -104,14 +112,15 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <button className="text-action muted" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo}>Chart info ⓘ</button>
         </div>
         {chartInfo && <div className="chart-help muted">Compared with the 20-bar average. {hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
-        <div className="chart-activity muted" role="status">{activity || "Squad trades · tap a marker for details"}</div>
-        <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
-          brackets={st.brackets} onBracket={(id, b) => game.setBracket(id, b)} onClearBracket={(id, k) => game.clearBracket(id, k)}
+        <BrokieChart initial={me.handle[0] ?? "?"} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+          brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && (
-            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
-              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity(`@${b.handle} · ${b.side === "long" ? "Long" : "Short"} ${b.quantity} micros`); }} />
-          )} />
+          overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
+            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
+              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
+            {activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
+              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a squad bubble for their trade</span>}
+          </>} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
             <button key={s} className={`chip lime ${style === s ? "on" : ""}`} aria-label={s === "candles" ? "Candlestick chart" : "Line chart"} aria-pressed={style === s} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
@@ -120,19 +129,18 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
           <button className={`chip lime ${crowd ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={crowd} data-testid="crowd-toggle"
             aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
-            onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>👥</button>
-        </div>
-        <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
-          {open ? `OANDA practice prices` : "Market's closed. New trades open when prices are live again."}
+            onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>
+            <span className="crowd-chip">👥{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span>
+          </button>
         </div>
         <div className="chart-attribution">
-          Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
-          <span aria-hidden="true"> · </span><a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">Attribution</a>
+          {open ? "Simulated trading on OANDA practice prices. Not financial advice." : "Market's closed. New trades open when prices are live again."}
+          {" "}Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
+          {" "}(<a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">notice</a>).
         </div>
       </div>
 
       <div className="trade-dock"><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
-      <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
       <div className="stack" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>
@@ -146,9 +154,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           const m = mark(p.market); const pnl = m ? pnlOf(p, m) : 0;
           return <SwipeCard key={p.id} p={p} pnl={pnl} busy={closing === p.id} disabled={!!closing}
             hedged={me.positions.some((q) => q.market === p.market && q.side !== p.side)}
-            onClose={() => close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`)} />;
+            onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
         })}
-        {me.positions.length > 0 && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag ⇕ on the chart for SL/TP</div>}
+        {me.positions.length > 0 && cardHint && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag your coin on the chart for SL/TP</div>}
       </div>
 
       <Pit goSquad={goSquad} toast={toast} />
@@ -356,6 +364,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   const seq = useRef(0);
   const pend = st.pending;
   const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
+  const [tapHint] = useState(() => hintOn("taps"));
   function tap(side: Side) {
     if (disabled) return;
     const n = pend && pend.side === side ? pend.count : 0;
@@ -383,7 +392,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
         onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
         onAnimationEnd={() => setSquash(null)} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
-        <span className="spam-sub">{n ? `x${n}` : hedge ? "tap = hedge" : `+${TAP_SIZE} per tap`}</span>
+        <span className="spam-sub">{n ? `x${n}` : hedge ? "tap = hedge" : tapHint ? `+${TAP_SIZE} per tap` : "\u00a0"}</span>
         {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">+{TAP_SIZE}</span>)}
       </button>
     );

@@ -9,8 +9,7 @@ import { MARKETS, direction } from "./types";
 interface Placed { b: Bubble; x: number; y: number; anchorY: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
 
 const FLIP_MS = 1100;
-const MAX_MARKS = 2;    // closed trades kept on the chart
-const MAX_LABELS = 1;   // of those, how many show their P&L text
+const MAX_MARKS = 2;    // closed trades kept on the chart, as small dots (tap one for its result)
 
 /** Ids that showed up after the first render, kept "fresh" for one flip-in animation. */
 export function useFreshIds(ids: string[]): Set<string> {
@@ -100,6 +99,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [shownMark, setShownMark] = useState<string | null>(null);
 
   // Detect new entries (toast) and new exits (animation), once each.
   useEffect(() => {
@@ -145,7 +145,9 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   }, [exits]);
 
   // Reset when switching markets.
-  useEffect(() => { setExits([]); setExpanded(null); }, [market]);
+  useEffect(() => { setExits([]); setExpanded(null); setShownMark(null); }, [market]);
+  // A tapped exit shows its result for a few seconds, then goes back to a dot.
+  useEffect(() => { if (!shownMark) return; const t = setTimeout(() => setShownMark(null), 4000); return () => clearTimeout(t); }, [shownMark]);
 
   const placed: Placed[] = useMemo(() => {
     const out: Placed[] = [];
@@ -184,47 +186,19 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
 
   // Closed trades stay on the chart: entry → exit line with the result at the exit.
   const marks = useMemo(() => {
-    const out: { b: Bubble; x1: number; y1: number; x2: number; y2: number }[] = [];
+    const out: { b: Bubble; x2: number; y2: number }[] = [];
     for (const b of bubbles) {
       if (b.state !== "closed" || b.exit_price === null) continue;
-      const a = toXY(Date.parse(b.opened_at) / 1000, b.entry_price);
       const z = toXY(Date.parse(b.at) / 1000, b.exit_price);
       if (!z) continue;
-      out.push({ b, x1: a?.x ?? z.x, y1: a?.y ?? z.y, x2: z.x, y2: z.y });
+      out.push({ b, x2: z.x, y2: z.y });
     }
     // Keep the chart readable: only the latest few exits, newest last.
     return out.sort((a, b) => Date.parse(a.b.at) - Date.parse(b.b.at)).slice(-MAX_MARKS);
   }, [bubbles, toXY, width]);
 
-  // Newest exits get a text label first; an older label that would overlap one already shown
-  // (or sit on top of an open bubble) drops to just its ✕ dot.
-  const labelled = useMemo(() => {
-    const boxes: { x: number; y: number; w: number }[] = placed.map((p) => ({ x: p.x - p.r, y: p.y, w: p.r * 2 }));
-    const keep = new Set<string>();
-    for (const m of [...marks].reverse()) {
-      if (keep.size >= MAX_LABELS) break;
-      const w = 64, right = m.x2 > width - 60, x = right ? m.x2 - w - 10 : m.x2 + 10;
-      if (boxes.some((b) => Math.abs(b.y - m.y2) < 20 && x < b.x + b.w && b.x < x + w)) continue;
-      boxes.push({ x, y: m.y2, w }); keep.add(m.b.id);
-    }
-    return keep;
-  }, [marks, placed, width]);
-
-  const openAll = bubbles.filter((b) => b.state === "open");
-  const longs = openAll.filter((b) => b.side === "long").length, shorts = openAll.length - longs;
-
   return (
     <>
-      <svg width={width} height="100%" aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        {marks.map((m) => <line key={`l-${m.b.id}`} x1={m.x1} y1={m.y1} x2={m.x2} y2={m.y2}
-          stroke={(m.b.pnl ?? 0) >= 0 ? "var(--lime)" : "var(--red)"} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.55" />)}
-        {marks.map((m) => <circle key={`c-${m.b.id}`} cx={m.x1} cy={m.y1} r="2.5" fill="var(--muted)" />)}
-      </svg>
-      {openAll.length > 0 && (
-        <div className="sentiment" title={`${longs} long / ${shorts} short`} data-testid="sentiment" aria-label={`${longs} long, ${shorts} short`}>
-          <span className="lime">{longs}▲</span><span className="red">{shorts}▼</span>
-        </div>
-      )}
       <svg width={width} height="100%" aria-hidden="true" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
         {placed.map(p => <g key={p.b.id}><line x1={p.x} y1={p.y + p.r + 6} x2={p.x} y2={p.anchorY} stroke="var(--muted)" strokeWidth="1" /><circle cx={p.x} cy={p.anchorY} r="2" fill="var(--muted)" /></g>)}
       </svg>
@@ -236,7 +210,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
           return (
             <button key={key} type="button" className="cluster" style={{ left: cx, top: cy }} onClick={() => setExpanded(key)}
               aria-label={`Expand ${g.length} trades: ${up} long, ${g.length - up} short`} aria-expanded={false} data-testid="bubble-cluster">
-              <span className="lime">{up} ▲</span> / <span className="red">{g.length - up} ▼</span>
+              {up > 0 && <span className="lime">{up}▲</span>}{g.length - up > 0 && <span className="red">{g.length - up}▼</span>}
             </button>
           );
         }
@@ -266,10 +240,12 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         const pnl = m.b.pnl ?? 0;
         const label = m.b.reason === "blown" ? "💀" : `${pnl >= 0 ? "+" : "−"}$${Math.abs(pnl).toFixed(0)}`;
         const right = m.x2 > width - 60;
-        return <span key={`x-${m.b.id}`} className={`exit-mark ${pnl >= 0 ? "win" : "loss"} ${m.b.is_you ? "me" : ""} ${right ? "left" : ""}`}
-          style={{ left: m.x2, top: m.y2 }} data-testid="exit-mark" title={`@${m.b.handle} closed ${m.b.side} ×${m.b.quantity}`}>
-          <i aria-hidden="true">✕</i>{labelled.has(m.b.id) && <span>{m.b.is_you ? "" : `${m.b.handle[0]?.toUpperCase() ?? "?"} `}{label}</span>}
-        </span>;
+        const who = m.b.is_you ? "You" : `@${m.b.handle}`;
+        return <button type="button" key={`x-${m.b.id}`} className={`exit-mark ${pnl >= 0 ? "win" : "loss"} ${m.b.is_you ? "me" : ""} ${right ? "left" : ""}`}
+          style={{ left: m.x2, top: m.y2 }} data-testid="exit-mark" onClick={() => setShownMark(shownMark === m.b.id ? null : m.b.id)}
+          aria-label={`${who} closed ${m.b.side} ×${m.b.quantity}: ${label}`} aria-expanded={shownMark === m.b.id}>
+          <i aria-hidden="true" />{shownMark === m.b.id && <span>{m.b.is_you ? "" : `${m.b.handle[0]?.toUpperCase() ?? "?"} `}{label}</span>}
+        </button>;
       })}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
