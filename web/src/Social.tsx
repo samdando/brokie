@@ -30,7 +30,7 @@ export function GlobalBoard() {
           <GlobalLine r={g.me} last />
         </>
       )}
-      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Ranked by season return. Faded rows haven't hit 5 trading days yet; qualified players rank first.</div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Ranked by season return, qualified players first. Other ranks are provisional until 5 trading days.</div>
       <div className="panel row between" style={{ padding: 14, marginTop: 14, borderRadius: 14 }}>
         <div style={{ minWidth: 0 }}><b style={{ fontSize: 13 }}>Show me on the global board</b>
           <div className="muted" style={{ fontSize: 11, marginTop: 3 }}>{visible ? "Everyone can see your @handle and return." : "Hidden. Your squad still sees you."}</div></div>
@@ -44,15 +44,15 @@ export function GlobalBoard() {
 function GlobalLine({ r, last }: { r: import("./types").GlobalRow; last: boolean }) {
   return (
     <div>
-      <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="global-row" style={{ opacity: r.qualified ? 1 : 0.7, filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
+      <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="global-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
         <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{r.rank === 1 && r.return_pct > 0 ? "👑" : r.rank <= 3 && r.qualified ? ["🥇", "🥈", "🥉"][r.rank - 1] : String(r.rank).padStart(2, "0")}</span>
         <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}>{r.is_you ? "You" : `@${r.handle}`}
             {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }}>💀 REKT</span>}
             {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒</span>}
-            {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}</div>
-          <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"}` : `${r.trading_days}/5 days · ${r.trades} ${r.trades === 1 ? "trade" : "trades"}`}</div>
+            {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}</div>
+          <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"}` : `Qualifying · ${r.trading_days}/5 days · ${r.trades} ${r.trades === 1 ? "trade" : "trades"}`}</div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div className={`mono ${r.return_pct >= 0 ? "lime" : "red"}`} style={{ fontSize: 14, fontWeight: 600 }}>{r.return_pct >= 0 ? "+" : ""}{r.return_pct.toFixed(2)}%</div>

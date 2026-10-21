@@ -18,13 +18,20 @@ export function App() {
   const [toast, setToast] = useToast();
   const now = useNow(30_000);
   const [fb, setFb] = useState(false);
+  const [reviewHistory, setReviewHistory] = useState(false);
   useEffect(() => { void game.start(); }, []);
   useEffect(() => {
     const onVis = () => game.setActive(!document.hidden);
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
-  useEffect(() => { window.scrollTo(0, 0); }, [tab]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    if (tab === "you" && reviewHistory) {
+      const frame = requestAnimationFrame(() => { document.getElementById("receipts")?.scrollIntoView({ block: "start" }); });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [tab, reviewHistory]);
 
   if (st.phase === "unconfigured") return <Centered title="Brokie isn't connected yet" body="This build has no server address. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY and rebuild." />;
   if (st.phase === "connecting" && !st.me) return <Centered title="" body="" spinner />;
@@ -42,18 +49,18 @@ export function App() {
         </div>
         <EventStrip />
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
-        {tab === "trade" && <TradeScreen toast={setToast} goSquad={() => setTab("squad")} />}
-        {tab === "squad" && <SquadScreen />}
-        {tab === "learn" && <LearnScreen />}
+        {tab === "trade" && <TradeScreen toast={setToast} goSquad={() => setTab("squad")} goHistory={() => { setReviewHistory(true); setTab("you"); }} />}
+        {tab === "squad" && <SquadScreen toast={setToast} />}
+        {tab === "learn" && <LearnScreen goTrade={() => setTab("trade")} />}
         {tab === "you" && <YouScreen toast={setToast} />}
       </div>
       {tab !== "squad" && <MiniBar onOpen={() => setTab("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
         {(["trade", "squad", "learn", "you"] as Tab[]).map((t) => (
-          <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => setTab(t)} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
+          <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => { setReviewHistory(false); setTab(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
         ))}
       </div></nav>
-      {toast && <div className="toast" data-testid="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />

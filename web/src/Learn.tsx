@@ -14,8 +14,8 @@ const LESSONS = [
     q: "You halve your contracts. Your P&L per point…", a: ["Doubles", "Stays the same", "Halves"], c: 2, why: "Position size scales losses as well as gains. Half the contracts means half the P&L per point." },
 ];
 
-export function LearnScreen() {
-  const [done, setDone] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem("brokie.lessons") ?? "[]"); } catch { return []; } });
+export function LearnScreen({ goTrade }: { goTrade: () => void }) {
+  const [done, setDone] = useState<number[]>(() => { try { const saved: unknown = JSON.parse(localStorage.getItem("brokie.lessons") ?? "[]"); return Array.isArray(saved) ? [...new Set(saved.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < LESSONS.length))] : []; } catch { return []; } });
   const [open, setOpen] = useState<number | null>(null);
   const [pick, setPick] = useState<number | null>(null);
   const finish = (i: number) => { if (!done.includes(i)) { const d = [...done, i]; setDone(d); localStorage.setItem("brokie.lessons", JSON.stringify(d)); } };
@@ -24,13 +24,15 @@ export function LearnScreen() {
     <div className="stack" style={{ gap: 24 }}>
       <div><h1 className="title">{"Less guessing.\nMore getting it."}</h1><div className="muted" style={{ fontSize: 13 }}>Tiny lessons. Fewer expensive habits.</div></div>
       <div className="panel row" style={{ gap: 16 }}>
-        <span style={{ width: 48, height: 48, borderRadius: "50%", border: "5px solid var(--line)", borderTopColor: done.length ? "var(--lime)" : "var(--line)", display: "grid", placeItems: "center" }}>⚡</span>
-        <div><b style={{ fontSize: 14 }}>Build your market brain</b><div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{done.length} of 3 essentials complete</div></div>
+        <span className="lesson-ring" style={{ ["--progress" as string]: `${done.length / LESSONS.length * 360}deg` }} aria-label={`${done.length} of ${LESSONS.length} complete`}><span>{done.length === LESSONS.length ? "✓" : "⚡"}</span></span>
+        <div><b style={{ fontSize: 14 }}>{done.length === LESSONS.length ? "Essentials complete." : "Build your market brain"}</b><div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{done.length} of {LESSONS.length} essentials complete</div></div>
       </div>
+      {done.length === LESSONS.length && <Button onClick={goTrade}>Put it into practice →</Button>}
+      <Eyebrow>The essentials · tap to learn or review</Eyebrow>
       {LESSONS.map((x, i) => (
-        <button key={i} className="panel" style={{ textAlign: "left", border: "1px solid var(--line)" }} onClick={() => { setOpen(i); setPick(null); }}>
-          <div className="row between"><span className="eyebrow">0{i + 1} / The essentials</span><span className="lime">{done.includes(i) ? "✓" : "↗"}</span></div>
-          <div style={{ font: "600 23px var(--round)", letterSpacing: -0.5, margin: "18px 0" }}>{x.title}</div>
+        <button key={i} className="panel lesson-card" style={{ textAlign: "left", border: "1px solid var(--line)" }} onClick={() => { setOpen(i); setPick(null); }}>
+          <div className="row between"><span className="eyebrow">Lesson 0{i + 1}</span><span className="lime">{done.includes(i) ? "✓" : "↗"}</span></div>
+          <div style={{ font: "600 23px var(--round)", letterSpacing: -0.5, margin: "10px 0" }}>{x.title}</div>
           <div className="muted" style={{ fontSize: 12 }}>{x.sub}</div>
         </button>
       ))}

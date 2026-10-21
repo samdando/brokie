@@ -1,18 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
 import { Button, Eyebrow, Sheet, countdown, money, signedMoney, useNow } from "./ui";
+import { Pit } from "./Trade";
 import { ChatCard, GlobalBoard } from "./Social";
 
-export function SquadScreen() {
+export function SquadScreen({ toast }: { toast: (message: string) => void }) {
   const st = useGame();
+  const [chatOpen, setChatOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"squad" | "global">(() => { try { return localStorage.getItem("brokie.board") === "global" ? "global" : "squad"; } catch { return "squad"; } });
   const pick = (v: "squad" | "global") => { setView(v); try { localStorage.setItem("brokie.board", v); } catch { /* ignore */ } };
   const squad = game.squad;
+  useEffect(() => {
+    if (!squad || chatOpen) return;
+    void game.refreshChat();
+    const timer = setInterval(() => { if (!document.hidden) void game.refreshChat(); }, 15_000);
+    return () => clearInterval(timer);
+  }, [squad?.id, chatOpen]);
   return (
     <div className="stack" style={{ gap: 24 }}>
-      <div><h1 className="title">{"Good friends.\nQuestionable trades."}</h1><div className="muted" style={{ fontSize: 13 }}>Bragging rights are the only payout.</div></div>
+      <div><h1 className="title">{squad ? "Your squad." : "Good friends.\nQuestionable trades."}</h1><div className="muted" style={{ fontSize: 13 }}>Bragging rights are the only payout.</div></div>
       <div className="seg" role="tablist" aria-label="Leaderboard">
         <button role="tab" aria-selected={view === "squad"} className={view === "squad" ? "on" : ""} onClick={() => pick("squad")} data-testid="seg-squad">My squad</button>
         <button role="tab" aria-selected={view === "global"} className={view === "global" ? "on" : ""} onClick={() => pick("global")} data-testid="seg-global">🌍 Global</button>
@@ -24,9 +32,11 @@ export function SquadScreen() {
             <button className="squad-chip add" onClick={() => setAdding(true)}>+ Squad</button>
           </div>
           {squad && <SquadCard />}
-          {squad && <VoiceCard />}
-          {squad && <ChatCard />}
           {squad && <Leaderboard />}
+          {squad && <button className="panel row between chat-preview" onClick={() => setChatOpen(true)}><span><b>Squad chat</b><span className="muted">{st.chat[st.chat.length - 1]?.body || "Drop a message to your mates."}</span></span><span className="lime">Open →</span></button>}
+          {squad && <VoiceCard />}
+          {squad && <Pit full goSquad={() => setChatOpen(true)} toast={toast} />}
+          <Sheet open={chatOpen} onClose={() => setChatOpen(false)}><button className="text-action lime" onClick={() => setChatOpen(false)}>Done</button><ChatCard key={st.squadId} /></Sheet>
         </>
       )}
       <Sheet open={adding} onClose={() => setAdding(false)}><SquadStarter onDone={() => setAdding(false)} /></Sheet>
@@ -47,6 +57,7 @@ export async function shareInvite(squad: { invite_code: string }): Promise<"shar
 
 function SquadCard() {
   const squad = game.squad!;
+  const [options, setOptions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -57,16 +68,15 @@ function SquadCard() {
     if (r === "copied") { setCopied(true); setTimeout(() => setCopied(false), 2000); }
   }
   return (
-    <div className="panel stack" style={{ gap: 18 }}>
-      <div className="row between"><Eyebrow>Your squad · {squad.member_count} {squad.member_count === 1 ? "player" : "players"}</Eyebrow>
-        <button className="muted" style={{ fontSize: 11 }} onClick={() => setConfirm(true)}>Leave</button></div>
-      <div className="row between"><h2 style={{ font: "600 29px var(--round)", letterSpacing: -1, margin: 0 }} data-testid="squad-title">{squad.name}</h2><span style={{ fontSize: 26 }}>🏁</span></div>
-      <div className="invite">
-        <div style={{ flex: 1 }}><div className="eyebrow" style={{ fontSize: 8 }}>Invite code</div><div className="code" data-testid="invite-code">{squad.invite_code}</div></div>
-        <button className="big-btn lime" style={{ width: "auto", padding: "0 16px", height: 42, fontSize: 13 }} onClick={invite}>{copied ? "Copied ✓" : "Invite ↗"}</button>
-      </div>
-      {note && <div className="err" role="status">{note}</div>}
-      {squad.member_count === 1 && <div className="muted" style={{ fontSize: 12 }}>It's just you so far. Send the code to the group chat.</div>}
+    <div className="squad-summary">
+      <div className="row between"><div><h2 className="h2" data-testid="squad-title">{squad.name}</h2><span className="muted">{squad.member_count} players</span></div><button className="text-action lime" onClick={() => setOptions(true)}>Invite / manage ↗</button></div>
+      <Sheet open={options} onClose={() => setOptions(false)}>
+        <div className="stack"><div className="row between"><h3 className="h3">{squad.name}</h3><button className="text-action" onClick={() => setOptions(false)}>Done</button></div>
+        <div><Eyebrow>Invite code</Eyebrow><div className="code" data-testid="invite-code">{squad.invite_code}</div></div>
+        <Button onClick={invite}>{copied ? "Copied ✓" : "Invite friends ↗"}</Button>
+        {note && <div className="err" role="status">{note}</div>}
+        <button className="text-action red" onClick={() => { setOptions(false); setConfirm(true); }}>Leave squad</button></div>
+      </Sheet>
       <Sheet open={confirm} onClose={() => setConfirm(false)}>
         <div className="stack" style={{ gap: 16 }}>
           <h3 className="h3">Leave {squad.name}?</h3><div className="muted" style={{ fontSize: 13 }}>You can rejoin any time with the invite code.</div>
@@ -107,6 +117,7 @@ export function SquadStarter({ onDone }: { onDone?: () => void }) {
 }
 
 function VoiceCard() {
+  const [moreRooms, setMoreRooms] = useState(false);
   const v = useVoice();
   const joined = v.status === "live" || v.status === "connecting";
   const status = v.status === "connecting" ? "Connecting…" : v.deafened ? "Deafened · mic muted" : voice.micOn ? "Mic on" : "Mic muted";
@@ -115,15 +126,15 @@ function VoiceCard() {
       <Eyebrow>Voice</Eyebrow>
       {!joined ? (
         <>
-          <h3 className="h3">Hop on the call.</h3>
-          <div className="muted" style={{ fontSize: 12 }}>Talk through trades live with your squad. You always join muted.</div>
-          {ROOMS.map((r) => (
+          <div className="muted" style={{ fontSize: 12 }}>Join the call. Your mic starts muted.</div>
+          {(moreRooms ? ROOMS : ROOMS.slice(0, 1)).map((r) => (
             <button key={r.id} className="row" style={{ background: "var(--bg)", borderRadius: 13, padding: 12, textAlign: "left" }} onClick={() => voice.join(r.id)} data-testid={`voice-join-${r.id}`}>
               <span className="badge-sq" style={{ background: "rgba(214,254,89,.1)", color: "var(--lime)" }}>🎙</span>
               <div style={{ flex: 1 }}><b style={{ fontSize: 13 }}>{r.title}</b><div className="muted" style={{ fontSize: 11 }}>{r.subtitle}</div></div>
               <span className="mono lime" style={{ fontSize: 9, fontWeight: 800 }}>JOIN</span>
             </button>
           ))}
+          <button className="text-action muted" onClick={() => setMoreRooms(!moreRooms)} aria-expanded={moreRooms}>{moreRooms ? "Fewer rooms" : "More voice rooms"}</button>
         </>
       ) : (
         <>
@@ -169,16 +180,16 @@ function Leaderboard() {
       {st.leaderboard.length === 0 && <div style={{ textAlign: "center", padding: 30 }}><span className="spinner lime" /></div>}
       {st.leaderboard.map((r, i) => (
         <div key={r.handle}>
-          <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="leader-row" style={{ opacity: r.qualified === false ? 0.7 : 1, filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
+          <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="leader-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i === 0 && r.return_pct > 0 ? "👑" : String(i + 1).padStart(2, "0")}</span>
             <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>@{r.handle} {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
                 {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
-                {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
+                {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
                 {(r.resets_used ?? 0) > 0 && r.status !== "blown" && <span className="chip-status" style={{ background: "var(--line)", color: "var(--muted)" }}>BUY-BACK</span>}</div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"} · worst ${signedMoney(r.worst_trade)}`}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"} · lowest trade ${signedMoney(r.worst_trade)}`}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div className={`mono ${r.return_pct >= 0 ? "lime" : "red"}`} style={{ fontSize: 14, fontWeight: 600 }}>{r.return_pct >= 0 ? "+" : ""}{r.return_pct.toFixed(2)}%</div>
@@ -188,7 +199,7 @@ function Leaderboard() {
           {i < st.leaderboard.length - 1 && <div className="sep" />}
         </div>
       ))}
-      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Prop rules: 5% daily loss, 10% trailing drawdown, +10% to get funded. 5 trading days to qualify (faded rows haven't yet).</div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Qualified players rank first; other ranks are provisional until 5 trading days. The +10% target earns a game badge, not funding or cash. See Trade for your current risk limits.</div>
     </div>
   );
 }

@@ -376,3 +376,75 @@ a { color: var(--lime); }
 .confetti i:nth-child(3n) { background: #fff; } .confetti i:nth-child(4n) { background: var(--gold); }
 @keyframes confetti { 0% { transform: rotate(var(--a)) translateY(0) rotate(0); opacity: 1; } 100% { transform: rotate(var(--a)) translateY(-90px) rotate(400deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .spam-btn.squash, .spam-pop, .pos-card.crack, .confetti { animation: none !important; } }
+
+/* Focused mobile layouts: retain the Brokie palette and give daily actions priority. */
+.header { margin-bottom: 18px; }
+.title { font-size: 29px; line-height: 1.12; }
+.text-action { min-height: 44px; font-size: 12px; font-weight: 600; text-align: left; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+.trade-screen { gap: 12px; padding-bottom: 80px; }
+.account-summary .equity { font-size: 32px; }
+.account-summary .tagline { display: none; }
+.account-summary .info-link { font-size: 10px; }
+.compact-rules { padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; }
+.compact-rules > summary { display: flex; justify-content: space-between; gap: 8px; align-items: center; cursor: pointer; min-height: 44px; font-size: 11px; list-style: none; }
+.compact-rules > summary::-webkit-details-marker { display: none; }
+.compact-rules summary b { margin-left: 6px; font-family: var(--mono); }
+.compact-rules[open] { padding-bottom: 12px; }
+.compact-rules .meters { margin-top: 12px; }
+.target-progress { font-size: 10px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+.target-progress progress { width: 70px; height: 5px; accent-color: var(--lime); }
+.compact-rules .target-ring { width: 40px; height: 40px; }
+.markets { gap: 8px; }
+.market { padding: 9px 10px; border-radius: 11px; }
+.market .mono { margin-top: 4px; font-size: 11px; }
+.chart-card { padding: 12px; border-radius: 16px; }
+.chart-context { margin: 4px 0; }
+.chart-help { font-size: 11px; line-height: 1.5; padding-bottom: 8px; }
+.chart-activity { height: 22px; font-size: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.chart-card .chip.lime.on { background: var(--line); color: var(--lime); }
+.chart-card .chips { gap: 4px; }
+.chart-card .chip { min-width: 36px; padding: 0 6px; }
+.trade-dock { position: fixed; bottom: calc(66px + var(--safe-b)); left: 50%; transform: translateX(-50%); width: min(100%, 480px); z-index: 21; background: var(--bg); padding: 8px 20px; border-top: 1px solid var(--line); }
+.trade-dock .spam-btn { min-height: 60px; height: 60px; border-radius: 12px; }
+.trade-dock .spam-label { font-size: 22px; }
+.trade-dock .spam-sub { font-size: 10px; }
+.app:has(.trade-dock) + .minibar { bottom: calc(148px + var(--safe-b)); }
+.toast { top: auto; bottom: calc(158px + var(--safe-b)); width: max-content; max-width: min(400px, 90vw); border-radius: 12px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); color: #fff; font-size: 12px; pointer-events: none; }
+.activity-feed > .panel, .activity-group .panel { background: transparent; border-radius: 0 !important; border-bottom: 1px solid var(--line); padding: 12px 0 !important; }
+.activity-group > summary { padding: 14px 0; font-size: 12px; cursor: pointer; }
+.activity-group > summary span { display: block; margin: 5px 0 0 16px; font-size: 10px; }
+.squad-summary { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.squad-summary .muted { font-size: 11px; }
+.chat-preview { text-align: left; padding: 16px; }
+.chat-preview > span:first-child { min-width: 0; }
+.chat-preview .muted { display: block; font-size: 12px; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }
+.sheet:has([data-testid="chat"]) { height: 85dvh; display: flex; flex-direction: column; }
+.sheet [data-testid="chat"] { flex: 1; min-height: 0; padding: 12px 0 0; background: none; }
+.sheet .chat-log { flex: 1; max-height: none; min-height: 100px; }
+.lesson-ring { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center; background: conic-gradient(var(--lime) var(--progress), var(--line) 0); }
+.lesson-ring > span { width: 38px; height: 38px; border-radius: 50%; background: var(--panel); display: grid; place-items: center; color: var(--lime); }
+.lesson-card { padding: 16px; }
+.profile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.profile-stats .panel:last-child { grid-column: 1 / -1; }
+.profile-stats .eyebrow { min-height: 20px; line-height: 1.5; }
+.receipt-meta { font-size: 10px; line-height: 1.5; margin-top: 6px; }
+.receipt-meta span { display: block; }
+.season-results { display: grid; gap: 12px; }
+.season-result { display: grid; grid-template-columns: 28px 1fr 76px; gap: 12px; align-items: center; font-size: 11px; }
+.season-result .mono { text-align: right; }
+@media (max-width: 360px) {
+  .app { padding-left: 14px; padding-right: 14px; }
+  .header { gap: 5px; }
+  .pill-btn { font-size: 8px; padding: 8px; letter-spacing: .5px; }
+  .wordmark { font-size: 26px; }
+  .chart-card .chip { min-width: 32px; }
+  .lb-row { gap: 8px; padding-left: 4px; padding-right: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-b)); }
+.season-result .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.season-result .bar i { display: block; height: 100%; }

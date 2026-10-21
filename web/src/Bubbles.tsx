@@ -9,8 +9,8 @@ import { MARKETS, direction } from "./types";
 interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
 
 const FLIP_MS = 1100;
-const MAX_MARKS = 5;    // closed trades kept on the chart
-const MAX_LABELS = 2;   // of those, how many show their P&L text
+const MAX_MARKS = 2;    // closed trades kept on the chart
+const MAX_LABELS = 1;   // of those, how many show their P&L text
 
 /** Ids that showed up after the first render, kept "fresh" for one flip-in animation. */
 export function useFreshIds(ids: string[]): Set<string> {
@@ -262,7 +262,7 @@ function BubbleDot({ p, fresh, onClick }: { p: Placed; fresh: boolean; onClick: 
       style={{ left: p.x, top: p.y, width: hitSize, height: hitSize }} onClick={onClick}
       data-testid="bubble" aria-label={`${p.b.handle} ${p.b.side} ${p.b.quantity} micros at ${p.b.entry_price}, ${tag}${p.hedged ? ", hedged" : ""}`}>
       <CoinBubble side={p.b.side} initial={p.b.handle[0] ?? "?"} size={p.r * 2} qty={p.b.quantity} me={p.b.is_you}
-        fresh={fresh} hedged={p.hedged} danger={p.danger} tag={Math.abs(p.pct) >= 0.1 ? tag : undefined} tagUp={p.pct >= 0} style={{ left: "50%", top: "50%" }} />
+        fresh={fresh} hedged={p.hedged} danger={p.danger} style={{ left: "50%", top: "50%" }} />
     </button>
   );
 }

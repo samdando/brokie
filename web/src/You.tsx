@@ -6,6 +6,8 @@ import { MARKETS, Trade, pnlOf } from "./types";
 export function YouScreen({ toast }: { toast: (m: string) => void }) {
   const st = useGame();
   const me = st.me!;
+  const [period, setPeriod] = useState<"season" | "lifetime">("season");
+  const [settings, setSettings] = useState(false);
   const [edit, setEdit] = useState(false);
   const [card, setCard] = useState<Trade | null>(null);
   const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (q ? pnlOf(p, q) : 0); }, 0);
@@ -22,28 +24,31 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
           <div className="eyebrow" style={{ fontSize: 8, marginTop: 5 }}>Founding brokie · resets in {countdown(me.season_ends_at, game.now())}</div>
         </div>
       </div>
-      <div className="row" style={{ gap: 10 }}>
-        {[["Recent trades", String(me.trades.length)], ["Recent win rate", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
+      <button className="text-action muted" onClick={() => setSettings(true)}>Account settings →</button>
+      <div className="seg" role="tablist" aria-label="Performance period"><button role="tab" aria-selected={period === "season"} className={period === "season" ? "on" : ""} onClick={() => setPeriod("season")}>This season</button><button role="tab" aria-selected={period === "lifetime"} className={period === "lifetime" ? "on" : ""} onClick={() => setPeriod("lifetime")}>Lifetime</button></div>
+      {period === "season" ? <>
+      <div className="profile-stats">
+        {[["Trades in latest 50", String(me.trades.length)], ["Win rate · latest 50", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
           <div key={k} className="panel" style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
         ))}
       </div>
       <div className="panel stack" style={{ gap: 14, padding: 18, borderRadius: 16 }}>
         <div className="detail"><span>Paper cash</span><span>{money(me.cash)}</span></div>
         <div className="detail"><span>Open P&amp;L (unrealized)</span><span>{signedMoney(unrealized)}</span></div>
-        <div className="muted" style={{ fontSize: 10 }}>Season P&amp;L = realized + open. Recent trades covers your latest 50 receipts; Lifetime below has full stats.</div>
+        <div className="muted" style={{ fontSize: 10 }}>Season totals include all closed trades and open positions. Trade count and win rate cover your latest 50 closed trades.</div>
         {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit</span><span>{money(me.protection_credit)}</span></div>}
       </div>
 
-      <LifetimeCard />
-      <BackupRow />
+      </> : <LifetimeCard />}
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><BackupRow /></div></Sheet>
 
-      <div className="stack" style={{ gap: 14 }}>
-        <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Tap to share</span></div>
+      <div id="receipts" className="stack" style={{ gap: 14 }}>
+        <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
         {me.trades.length === 0 && <div className="panel muted" style={{ fontSize: 13, padding: 18 }}>Close your first trade and it will land here. Wins, losses, character development.</div>}
         {me.trades.map((t) => (
           <button key={t.id} className="panel row" style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[t.market].title} · {t.side === "long" ? "Long" : "Short"} · {t.quantity} micro{t.reason !== "closed" ? ` · ${t.reason.replace("_", " ")}` : ""}</div>
-              <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[t.market].title} · {t.side === "long" ? "Long" : "Short"} · {t.quantity} micro</div>
+              <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div><div className="receipt-meta muted">{new Date(t.closed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{t.reason !== "closed" && <span>Closed: {t.reason.replace(/_/g, " ")}</span>}</div></div>
             <span className={`mono ${t.pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 700 }}>{signedMoney(t.pnl)}</span>
             <span className="muted" style={{ fontSize: 12 }}>↗</span>
           </button>
@@ -171,7 +176,8 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
   return (
     <Sheet open={!!trade} onClose={onClose}>
       <div className="stack" style={{ gap: 20 }}>
-        <div className="row between"><Eyebrow>Trade card</Eyebrow><button className="lime" style={{ fontWeight: 700, fontSize: 13 }} onClick={onClose}>Done</button></div>
+        <div className="row between"><Eyebrow>Trade details</Eyebrow><button className="lime" style={{ fontWeight: 700, fontSize: 13 }} onClick={onClose}>Done</button></div>
+        {trade && <div className="stack" style={{ gap: 12 }}><h3 className="h3">{MARKETS[trade.market].title} · {trade.side} · {trade.quantity} micros</h3><div className="detail"><span>Result</span><span className={trade.pnl >= 0 ? "lime" : "red"}>{signedMoney(trade.pnl)}</span></div><div className="detail"><span>Entry → exit</span><span>{px(trade.entry_price)} → {px(trade.exit_price)}</span></div><div className="detail"><span>Closed</span><span>{new Date(trade.closed_at).toLocaleString()}</span></div><div className="detail"><span>Reason</span><span>{trade.reason.replace(/_/g, " ")}</span></div></div>}
         {url && <img src={url} alt="Trade card" className="card-preview" />}
         <Button onClick={share} disabled={!blob} id="share-card">Share to the group chat ↗</Button>
       </div>
@@ -181,27 +187,20 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
 
 function LifetimeCard() {
   const lt = useGame().lifetime;
-  if (!lt) return null;
+  if (!lt) return <div className="panel muted" role="status">Lifetime stats are unavailable. <button className="text-action lime" onClick={() => void game.refreshLifetime()}>Retry</button></div>;
   const maxAbs = Math.max(1, ...lt.seasons.map((x) => Math.abs(x.return_pct)));
   return (
     <div className="panel stack" style={{ gap: 14 }} data-testid="lifetime">
       <div className="row between"><h2 className="h2">Lifetime</h2><span className="eyebrow">Never resets</span></div>
       <div className="meters">
         {[["Win rate", lt.win_rate == null ? "—" : `${lt.win_rate}%`], ["Trades", String(lt.total_trades)], ["Max DD", `${(+lt.max_drawdown).toFixed(1)}%`],
-          ["Seasons", String(lt.seasons_played)], ["Funded 🏆", String(lt.seasons_funded)], ["Blown 💀", String(lt.seasons_blown)]].map(([k, v]) => (
+          ["Seasons", String(lt.seasons_played)], ["Target badges 🏆", String(lt.seasons_funded)], ["Blown 💀", String(lt.seasons_blown)]].map(([k, v]) => (
           <div key={k} className="meter" style={{ background: "var(--bg)" }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><b>{v}</b></div>
         ))}
       </div>
-      <div>
-        <div className="eyebrow" style={{ fontSize: 7, marginBottom: 8 }}>Season by season</div>
-        <div className="row" style={{ alignItems: "flex-end", gap: 6, height: 54 }}>
-          {lt.seasons.map((x) => (
-            <div key={x.season} style={{ flex: 1, maxWidth: 36, textAlign: "center" }}>
-              <div style={{ height: Math.max(3, Math.abs(x.return_pct) / maxAbs * 40), background: x.status === "blown" ? "#555" : x.return_pct >= 0 ? "var(--lime)" : "var(--red)", borderRadius: 3 }} />
-              <div className="mono muted" style={{ fontSize: 8, marginTop: 4 }}>S{x.number}{x.funded ? "🏆" : x.status === "blown" ? "💀" : ""}</div>
-            </div>
-          ))}
-        </div>
+      <div className="season-results"><Eyebrow>Return by season</Eyebrow>
+        {lt.seasons.length === 0 && <p className="muted">Your first season will appear here.</p>}
+        {lt.seasons.map(x => <div className="season-result" key={x.season}><span>S{x.number}</span><div className="bar"><i style={{ width: `${Math.abs(x.return_pct) / maxAbs * 100}%`, background: x.return_pct >= 0 ? "var(--lime)" : "var(--red)" }} /></div><span className={`mono ${x.return_pct >= 0 ? "lime" : "red"}`}>{x.return_pct >= 0 ? "+" : ""}{x.return_pct.toFixed(2)}%</span></div>)}
       </div>
     </div>
   );

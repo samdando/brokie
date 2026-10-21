@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { TAP_SIZE, game, stacksOf, useGame } from "./game";
-import { EmojiBar, } from "./Social";
+
 import { shareInvite } from "./Squad";
 import { BrokieChart, vibeOf } from "./Chart";
 import { Button, Eyebrow, Sheet, ago, money, px, signedMoney } from "./ui";
@@ -10,7 +10,7 @@ import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
 
-export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; goSquad: () => void }) {
+export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
   const me = st.me!;
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
@@ -18,6 +18,9 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
+  const [chartInfo, setChartInfo] = useState(false);
+  const [activity, setActivity] = useState("");
+  useEffect(() => { setActivity(""); }, [st.market, st.squadId]);
   const mark = (m: Market) => game.quote(m)?.price ?? null;
   const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
@@ -54,14 +57,14 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
   }, [st.me]);
 
   return (
-    <div className="stack">
-      <div className="row between" style={{ alignItems: "flex-end" }}>
+    <div className="stack trade-screen">
+      <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
         <div>
           <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
           <div className="equity" data-testid="equity">{money(equity)}</div>
           <div className={equity >= base ? "lime" : "red"} style={{ fontSize: 12, fontWeight: 500 }}>
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
-            {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}
+            {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
           </div>
           <button className="muted info-link" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="How is this P&L calculated?">Season P&amp;L · equity vs starting balance ⓘ</button>
         </div>
@@ -70,7 +73,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         </div>
       </div>
 
-      {rules && <RuleStatus rules={rules} toast={toast} />}
+      {rules && <RuleStatus rules={rules} toast={toast} goHistory={goHistory} />}
       {rules && <Meters rules={rules} equity={equity} />}
 
       <div className="markets">
@@ -95,17 +98,18 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
             <span className="dot" style={{ width: 5, height: 5, ["--c" as string]: open ? "var(--red)" : "var(--muted)" }} />{open ? "LIVE" : "MARKET CLOSED"}
           </span>
         </div>
-        <div className="row between" style={{ margin: "12px 0 6px" }}>
+        <div className="row between chart-context">
           <span className="vibe" style={{ color: vibe.color, background: vibe.color + "1F" }}>{vibe.label}</span>
-          <span className="muted" style={{ fontSize: 9, marginRight: "auto", marginLeft: 8 }}>vs 20-bar avg</span>
-          {hi !== null && <span className="mono muted" style={{ fontSize: 9 }}>H {px(hi)} L {px(lo!)}</span>}
+          <button className="text-action muted" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo}>Chart info ⓘ</button>
         </div>
+        {chartInfo && <div className="chart-help muted">Compared with the 20-bar average. {hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
+        <div className="chart-activity muted" role="status">{activity || "Squad trades · tap a marker for details"}</div>
         <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => game.setBracket(id, b)} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           overlay={(toXY, width) => crowd && (
             <BubbleLayer hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
-              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; toast(`@${b.handle} aped ${b.side === "long" ? "LONG" : "SHORT"} ${b.quantity} micro${b.quantity === 1 ? "" : "s"} 🚀`); }} />
+              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity(`@${b.handle} · ${b.side === "long" ? "Long" : "Short"} ${b.quantity} micros`); }} />
           )} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
@@ -118,7 +122,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
             onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>👥</button>
         </div>
         <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
-          {open ? `OANDA practice prices · pinch to zoom · drag to pan · double-tap for live` : "Market's closed. New trades open when prices are live again."}
+          {open ? `OANDA practice prices` : "Market's closed. New trades open when prices are live again."}
         </div>
         <div className="chart-attribution">
           Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
@@ -126,15 +130,15 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
         </div>
       </div>
 
-      <SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} />
+      <div className="trade-dock"><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
       <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
       <div className="stack" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>
         {me.positions.length === 0 && (
           <div className="panel" style={{ padding: 18, borderRadius: 15 }}>
-            <b style={{ fontSize: 13 }}>No trades. Peak risk management.</b>
-            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>Pick a market and make your first paper trade.</div>
+            <b style={{ fontSize: 13 }}>No open positions.</b>
+            <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>{me.trades.length > 0 || (rules && rules.status !== "active") ? "Your closed trades are in your history." : "Pick a market and make your first paper trade."}</div>
           </div>
         )}
         {stacks.map(({ merged: p, ids }) => {
@@ -177,7 +181,7 @@ function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; 
   );
 }
 
-function Pit({ goSquad, toast }: { goSquad: () => void; toast: (m: string) => void }) {
+export function Pit({ goSquad, toast, full = false }: { goSquad: () => void; toast: (m: string) => void; full?: boolean }) {
   const st = useGame();
   const squad = game.squad;
   const [busy, setBusy] = useState(false);
@@ -203,15 +207,24 @@ function Pit({ goSquad, toast }: { goSquad: () => void; toast: (m: string) => vo
           <span className="muted" style={{ fontSize: 12 }}>Quiet in here. Be the first to make a move{squad.member_count === 1 ? ", or bring your mates." : "."}</span>
           {squad.member_count === 1 && <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={invite} disabled={busy} data-testid="pit-invite">{busy ? <span className="spinner" /> : "Invite friends ↗"}</button>}
         </div>
-      ) : st.feed.slice(0, 5).map((e) => <FeedRow key={`${e.kind}-${e.id}`} e={e} />)}
-      {squad && squad.member_count > 1 && (
-        <>
-          <div className="react-hint">React to your squad · tap to send to {squad.name}</div>
-          <EmojiBar compact onSent={(e) => toast(e ?? `Sent to ${squad.name}`)} />
-        </>
-      )}
+      ) : <ActivityFeed full={full} />}
+      {squad && !full && <button className="text-action lime" onClick={goSquad}>Open squad activity →</button>}
     </div>
   );
+}
+
+function ActivityFeed({ full }: { full: boolean }) {
+  const feed = useGame().feed;
+  const groups: typeof feed[] = [];
+  for (const event of feed) {
+    const prev = groups[groups.length - 1];
+    const first = prev?.[0];
+    if (first && event.kind === "opened" && first.kind === event.kind && first.handle === event.handle && first.market === event.market && first.side === event.side && Math.abs(Date.parse(first.at) - Date.parse(event.at)) < 60_000) prev.push(event);
+    else groups.push([event]);
+  }
+  return <div className="activity-feed">{(full ? groups : groups.slice(0, 2)).map((events) => events.length === 1
+    ? <FeedRow key={`${events[0].kind}-${events[0].id}`} e={events[0]} />
+    : <details key={`${events[0].kind}-${events[0].id}`} className="activity-group"><summary>@{events[0].handle} · {events.length} {MARKETS[events[0].market].title} {events[0].side === "long" ? "buys" : "sells"}<span className="muted">View trades</span></summary>{events.map(e => <FeedRow key={e.id} e={e} />)}</details>)}</div>;
 }
 
 export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
@@ -227,7 +240,7 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
         </div>
         <div style={{ fontSize: 13, marginTop: 5, color: "rgba(255,255,255,.85)" }}>
           {e.kind === "rekt" ? <b style={{ color: "#bbb" }}>💀 Blew the account. REKT.</b>
-          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Hit +10%. FUNDED.</b>
+          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Hit +10%. Target badge earned.</b>
           : e.kind === "closed" && e.pnl !== null ? (
             <>{e.reason === "blown" ? `Blown out of ${size} ` : e.reason === "daily_limit" ? `Daily limit closed ${size} ` : `Closed ${e.side} ${size} `}
               <b className={`mono ${e.pnl >= 0 ? "lime" : "red"}`}>{signedMoney(e.pnl)}</b>{e.reason === "closed" && (e.pnl >= 0 ? " 🔥" : " 💀")}</>
@@ -238,13 +251,13 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
   );
 }
 
-function RuleStatus({ rules, toast }: { rules: Rules; toast: (m: string) => void }) {
+function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: string) => void; goHistory: () => void }) {
   const [busy, setBusy] = useState(false);
   if (rules.status === "active") return null;
   if (rules.status === "locked") return (
     <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
       <span style={{ fontSize: 26 }}>🔒</span>
-      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Trading unlocks at midnight Brisbane time.</div></div>
+      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Unlocks at midnight Brisbane time.</div><button className="text-action lime" onClick={goHistory}>Review your trades →</button></div>
     </div>
   );
   return (
@@ -282,10 +295,12 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   const explanations: Record<string, string> = {
     "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until midnight Brisbane time.`,
     "meter-dd": `Your current trailing floor is ${money(rules.drawdown_floor, 0)}. Reaching it closes your positions and marks this season's account REKT.`,
-    "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Funded badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
+    "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Target badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
   };
   return (
-    <div className="rule-summary">
+    <details className="rule-summary compact-rules">
+      <summary><span>Daily loss room <b style={{ color: tone(df) }}>{money(dailyRoom, 0)}</b></span><span className="muted">Target {Math.round(progress * 100)}% ⌄</span></summary>
+      <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded ? 1 : progress} /></div>
       <div className="meters">
         {m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
         {m("Max drawdown", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
@@ -295,11 +310,11 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
         <span className="target-ring" style={{ ["--progress" as string]: `${(rules.funded ? 1 : progress) * 360}deg` }} aria-hidden="true"><span>{rules.funded ? "✓" : `${Math.round(progress * 100)}%`}</span></span>
         <span className="target-copy"><span className="meter-heading">Profit target <span aria-hidden="true">ⓘ</span></span>
           <strong>{money(gain, 0)} <span className="muted">/ {money(targetGain, 0)}</span></strong>
-          <span className="meter-caption">{rules.funded ? "Funded badge earned · " : ""}{rules.trading_days}/{rules.qualify_days} trading days · {rules.trading_days >= rules.qualify_days ? "Leaderboard qualified" : "To qualify for leaderboard"}</span>
+          <span className="meter-caption">{rules.funded ? "Target badge earned · " : ""}{rules.trading_days}/{rules.qualify_days} trading days · {rules.trading_days >= rules.qualify_days ? "Leaderboard qualified" : "To qualify for leaderboard"}</span>
         </span>
       </button>
       <div id="rule-explainer" hidden={!expanded} className="rule-explainer">{expanded ? explanations[expanded] : ""}</div>
-    </div>
+    </details>
   );
 }
 
