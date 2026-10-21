@@ -219,7 +219,7 @@ export class Game {
 
   async refreshCandles(m: Market = this.state.market) {
     try {
-      const bars = await this.api.rpc<Candle[]>("candles", { p_market: m, p_bucket_seconds: this.state.candleSeconds, p_limit: 60 });
+      const bars = await this.api.rpc<Candle[]>("candles", { p_market: m, p_bucket_seconds: this.state.candleSeconds, p_limit: 300 });
       this.set({ candles: { ...this.state.candles, [m]: bars } });
     } catch { /* keep last */ }
   }

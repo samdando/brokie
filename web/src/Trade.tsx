@@ -92,9 +92,10 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           {hi !== null && <span className="mono muted" style={{ fontSize: 9 }}>H {px(hi)} L {px(lo!)}</span>}
         </div>
         <BrokieChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={me.positions} style={style}
+          sizePctOf={(p) => st.bubbles.find((b) => b.is_you && b.state === "open" && b.side === p.side && b.entry_price === p.entry_price && b.quantity === p.quantity)?.size_pct ?? null}
           overlay={(toXY, width) => (
-            <BubbleLayer bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
-              onEnter={(b) => toast(`@${b.handle} ${b.side === "long" ? "longed" : "shorted"} ${MARKETS[market].title} ×${b.quantity}`)} />
+            <BubbleLayer hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
+              onEnter={(b) => toast(`@${b.handle} aped ${b.side === "long" ? "LONG" : "SHORT"} ${b.quantity} micro${b.quantity === 1 ? "" : "s"} 🚀`)} />
           )} />
         <div className="chips" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
@@ -104,7 +105,7 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
         </div>
         <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
-          {open ? `Live prices · OANDA practice feed · tap the chart to read a bar` : "Market's closed. New trades open when prices are live again."}
+          {open ? `Live prices · OANDA practice feed · pinch to zoom · drag to pan · hold for crosshair · double-tap for live` : "Market's closed. New trades open when prices are live again."}
         </div>
         <div className="chart-attribution">
           Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
@@ -139,7 +140,8 @@ export function TradeScreen({ toast, goSquad }: { toast: (m: string) => void; go
             <div className="card-row" key={p.id} data-testid="position">
               <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{MARKETS[p.market].title} · {p.side === "long" ? "Long" : "Short"}</div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{MARKETS[p.market].title} · {p.side === "long" ? "Long" : "Short"}
+                  {me.positions.some((q) => q.market === p.market && q.side !== p.side) && <span className="hedge-pill inline" data-testid="hedged-row">HEDGED</span>}</div>
                 <div className="muted" style={{ fontSize: 10, marginTop: 4 }}>{p.quantity} micro · at {px(p.entry_price)} · open P&amp;L</div>
               </div>
               <span className={`mono ${pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 600 }}>{signedMoney(pnl)}</span>

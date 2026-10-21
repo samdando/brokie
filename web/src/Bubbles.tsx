@@ -1,12 +1,54 @@
 // pump.fun-style live trade bubbles: every squad mate's open trade sits on
 // the chart at its fill, with live P&L. Exits pop (green), deflate (red) or
 // crack and sink (REKT).
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { ToXY } from "./Chart";
-import type { Bubble, Market } from "./types";
+import type { Bubble, Market, Side } from "./types";
 import { MARKETS, direction } from "./types";
 
-interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null }
+interface Placed { b: Bubble; x: number; y: number; r: number; edge: boolean; pnl: number; pct: number; danger: boolean; markY: number | null; hedged: boolean }
+
+const FLIP_MS = 1100;
+
+/** Ids that showed up after the first render, kept "fresh" for one flip-in animation. */
+export function useFreshIds(ids: string[]): Set<string> {
+  const seen = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+  const key = ids.join("|");
+  useEffect(() => {
+    if (seen.current === null) { seen.current = new Set(ids); return; }
+    const added = ids.filter((id) => !seen.current!.has(id));
+    if (!added.length) return;
+    added.forEach((id) => seen.current!.add(id));
+    setFresh((f) => new Set([...f, ...added]));
+    const t = setTimeout(() => setFresh((f) => { const n = new Set(f); added.forEach((id) => n.delete(id)); return n; }), FLIP_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return fresh;
+}
+
+/** The shared trade bubble: gradient ring, glow, avatar initial, ▲/▼ and size badge. When `fresh`
+ *  it plays the entry: 3D coin flip with overshoot, a ring shockwave and a short glow trail.
+ *  Transform/opacity only, so it stays on the compositor at 60fps. */
+export function CoinBubble({ side, initial, size, qty, me, fresh, hedged, danger, tag, tagUp, style, testId, label }:
+  { side: Side; initial: string; size: number; qty: number; me?: boolean; fresh?: boolean; hedged?: boolean; danger?: boolean;
+    tag?: string; tagUp?: boolean; style?: CSSProperties; testId?: string; label?: string }) {
+  const long = side === "long";
+  return (
+    <span className={`coin ${long ? "long" : "short"} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${danger ? "danger" : ""}`}
+      style={{ width: size, height: size, fontSize: size * 0.4, ...style }} data-testid={testId} aria-label={label} role={label ? "img" : undefined}>
+      {fresh && <><i className="coin-trail" aria-hidden="true" /><i className="coin-wave" aria-hidden="true" /></>}
+      <span className="coin-face" aria-hidden="true">
+        <span className="coin-av">{initial.toUpperCase()}</span>
+        <span className="coin-dir">{long ? "▲" : "▼"}</span>
+        <span className="coin-qty">{qty}</span>
+      </span>
+      {tag && <span className={`bub-tag ${tagUp ? "lime" : "red"}`} aria-hidden="true">{tag}</span>}
+      {hedged && <span className="coin-hedge" aria-hidden="true">H</span>}
+    </span>
+  );
+}
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }
 
 const pctOf = (b: Bubble, mark: number, mkt: Market) => {
@@ -14,9 +56,10 @@ const pctOf = (b: Bubble, mark: number, mkt: Market) => {
   return { pnl, pct: b.equity ? (pnl / b.equity) * 100 : 0 };
 };
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter }:
-  { bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
+export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine }:
+  { hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
+  const fresh = useFreshIds(bubbles.filter((b) => b.state === "open").map((b) => b.id));
   const seenExit = useRef<Set<string>>(new Set());
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
@@ -64,6 +107,8 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     const out: Placed[] = [];
     for (const b of bubbles) {
       if (b.state !== "open") continue;
+      // Your own open trade is drawn by the chart itself (pinned at entry, ticket C1).
+      if (hideMine && b.is_you) continue;
       // Opened before the visible window? Keep it on the left edge at its price instead of dropping it.
       const at = toXY(Date.parse(b.opened_at) / 1000, b.entry_price) ?? toXY(Date.now() / 1000, b.entry_price);
       if (!at) continue;
@@ -75,8 +120,12 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       // Trades opened before the visible window hug the edge instead of clipping off-screen.
       const min = r + 6, max = Math.max(min, width - r - 6);
       const x = Math.min(max, Math.max(min, at.x));
-      out.push({ b, x, y: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null });
+      out.push({ b, x, y: at.y, r, edge: x !== at.x, pnl, pct, danger: room < 0.2, markY: mark?.y ?? null, hedged: false });
     }
+    // A player holding a long and a short at once is hedged: show both bubbles, flagged.
+    const sides = new Map<string, Set<string>>();
+    for (const b of bubbles) if (b.state === "open") sides.set(b.handle, (sides.get(b.handle) ?? new Set()).add(b.side));
+    for (const p of out) p.hedged = (sides.get(p.b.handle)?.size ?? 0) > 1;
     return out;
   }, [bubbles, toXY, quote, market, width]);
 
@@ -103,7 +152,8 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     return out.slice(-12);
   }, [bubbles, toXY, width]);
 
-  const longs = placed.filter((p) => p.b.side === "long").length, shorts = placed.length - longs;
+  const openAll = bubbles.filter((b) => b.state === "open");
+  const longs = openAll.filter((b) => b.side === "long").length, shorts = openAll.length - longs;
 
   return (
     <>
@@ -114,14 +164,14 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         {placed.map((p) => p.markY !== null && <line key={p.b.id} x1={p.x} y1={p.y} x2={p.x} y2={p.markY}
           stroke={p.b.side === "long" ? "var(--lime)" : "var(--red)"} strokeWidth="1" strokeDasharray="2 4" opacity="0.4" />)}
       </svg>
-      {placed.length > 0 && (
+      {openAll.length > 0 && (
         <div className="sentiment" title={`${longs} long / ${shorts} short`} data-testid="sentiment" aria-label={`${longs} long, ${shorts} short`}>
           <span className="lime">{longs}▲</span><span className="red">{shorts}▼</span>
         </div>
       )}
       {groups.map((g) => {
         const key = g.map((p) => p.b.id).join("|");
-        if (g.length > 1 && expanded !== key) {
+        if (g.length > 1 && expanded !== key && !g.some((p) => fresh.has(p.b.id))) {
           const cx = g.reduce((s, p) => s + p.x, 0) / g.length, cy = g.reduce((s, p) => s + p.y, 0) / g.length;
           const up = g.filter((p) => p.b.side === "long").length;
           return (
@@ -146,10 +196,10 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
                 <line x1={p.x} y1={p.y} x2={fanX} y2={p.y} stroke="var(--muted)" strokeWidth="1" strokeDasharray="2 3" />
                 <circle cx={p.x} cy={p.y} r="2" fill="var(--muted)" />
               </svg>}
-              <BubbleDot p={{ ...p, x: fanX }} onClick={() => onSelect(p.b)} />
+              <BubbleDot p={{ ...p, x: fanX }} fresh={fresh.has(p.b.id)} onClick={() => onSelect(p.b)} />
             </Fragment>;
           })}
-          {g.length > 1 && <button type="button" className="cluster cluster-collapse" style={{ left: centerX, top: centerY + 47 }}
+          {g.length > 1 && expanded === key && <button type="button" className="cluster cluster-collapse" style={{ left: centerX, top: centerY + 47 }}
             onClick={() => setExpanded(null)} aria-label="Collapse trade cluster" aria-expanded={true}>Collapse</button>}
         </Fragment>;
       })}
@@ -170,20 +220,15 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   );
 }
 
-function BubbleDot({ p, onClick }: { p: Placed; onClick: () => void }) {
-  const long = p.b.side === "long";
+function BubbleDot({ p, fresh, onClick }: { p: Placed; fresh: boolean; onClick: () => void }) {
   const tag = `${p.pct >= 0 ? "+" : "−"}${Math.abs(p.pct).toFixed(2)}%`;
   const hitSize = Math.max(44, p.r * 2);
   return (
     <button type="button" className="bub-hit"
       style={{ left: p.x, top: p.y, width: hitSize, height: hitSize }} onClick={onClick}
-      data-testid="bubble" aria-label={`${p.b.handle} ${p.b.side} ${p.b.quantity} micros at ${p.b.entry_price}, ${tag}`}>
-      <span aria-hidden="true" className={`bub ${long ? "long" : "short"} ${p.b.is_you ? "me" : "friend"} ${p.danger ? "danger" : ""}`}
-        style={{ left: "50%", top: "50%", width: p.r * 2, height: p.r * 2, fontSize: p.r * 0.8 }}>
-        <span className="bub-av">{p.b.handle[0]?.toUpperCase() ?? "?"}</span>
-        <span className="bub-dir">{long ? "▲" : "▼"}</span>
-        <span className={`bub-tag ${p.pct >= 0 ? "lime" : "red"}`}>{tag}</span>
-      </span>
+      data-testid="bubble" aria-label={`${p.b.handle} ${p.b.side} ${p.b.quantity} micros at ${p.b.entry_price}, ${tag}${p.hedged ? ", hedged" : ""}`}>
+      <CoinBubble side={p.b.side} initial={p.b.handle[0] ?? "?"} size={p.r * 2} qty={p.b.quantity} me={p.b.is_you}
+        fresh={fresh} hedged={p.hedged} danger={p.danger} tag={tag} tagUp={p.pct >= 0} style={{ left: "50%", top: "50%" }} />
     </button>
   );
 }
