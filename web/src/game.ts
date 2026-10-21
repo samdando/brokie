@@ -35,7 +35,9 @@ export interface GameState {
   /** Client-side SL/TP brackets per position id (ticket 14). */
   brackets: Record<string, Bracket>;
   /** Spam taps waiting to be sent (ticket 15). */
-  pending: { side: Side; count: number } | null;
+  pending: { side: Side; count: number; reduce?: boolean } | null;
+  /** What tapping the opposite button does while you hold a position: open a hedge or take a partial. */
+  opposite: "hedge" | "partial";
 }
 export interface Bracket { sl?: number; tp?: number }
 /** Same market + same side = one stack: size-weighted avg entry, total size, id = oldest leg's id.
@@ -57,6 +59,7 @@ export const TAP_SIZE = 1;
 const SQUAD_KEY = "brokie.squad";
 const MARKET_KEY = "brokie.market";
 const QTY_KEY = "brokie.qty";
+const OPPOSITE_KEY = "brokie.opposite";
 const SEEN_KEY = "brokie.seen";
 const SEASON_KEY = "brokie.lastSeason";
 export const QTY_CHOICES = [1, 5, 10];
@@ -73,6 +76,7 @@ export class Game {
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
     global: null, chat: [], chatPop: null, chatOpen: false, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
+    opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
   private submitting = false;
@@ -201,21 +205,34 @@ export class Game {
   // last one into a single open_position call (max 10 micros per order, server rule). The opposite
   // side opens the other leg, i.e. a hedge, exactly like the existing Go long / Go short. ----
   private tapTimer: number | null = null;
-  tap(side: Side, onDone: (err: string | null, qty: number) => void) {
+  setOpposite(mode: "hedge" | "partial") { write(OPPOSITE_KEY, mode); this.set({ opposite: mode }); }
+  /** Micros you hold on this market against `side` (what a partial-mode tap would take off). */
+  heldAgainst(side: Side): number {
+    return (this.state.me?.positions ?? []).filter((p) => p.market === this.state.market && p.side !== side).reduce((s, p) => s + p.quantity, 0);
+  }
+  /** True when tapping `side` takes micros off your opposite position instead of opening a hedge. */
+  tapReduces(side: Side): boolean {
+    const holdsSame = (this.state.me?.positions ?? []).some((p) => p.market === this.state.market && p.side === side);
+    return this.state.opposite === "partial" && !holdsSame && this.heldAgainst(side) > 0;
+  }
+  tap(side: Side, onDone: (err: string | null, qty: number, pnl?: number) => void) {
     const cur = this.state.pending;
     if (cur && cur.side !== side) this.flushTaps(onDone);
     const p = this.state.pending;
-    const count = Math.min(10, (p && p.side === side ? p.count : 0) + TAP_SIZE);
-    this.set({ pending: { side, count } });
+    const reduce = this.tapReduces(side);
+    const cap = reduce ? this.heldAgainst(side) : 10;
+    const count = Math.min(cap, (p && p.side === side ? p.count : 0) + TAP_SIZE);
+    this.set({ pending: { side, count, reduce } });
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = window.setTimeout(() => this.flushTaps(onDone), 300);
   }
-  private flushTaps(onDone: (err: string | null, qty: number) => void) {
+  private flushTaps(onDone: (err: string | null, qty: number, pnl?: number) => void) {
     if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
     const p = this.state.pending; if (!p) return;
     this.set({ pending: null });
     const send = async () => {
       while (this.submitting) await new Promise((r) => setTimeout(r, 60));
+      if (p.reduce) { const r = await this.reduce(p.side === "long" ? "short" : "long", p.count); onDone(r.error ?? null, r.closed ?? 0, r.pnl); return; }
       const err = await this.open(p.side, p.count);
       onDone(err, p.count);
     };
@@ -234,6 +251,21 @@ export class Game {
       return null;
     } catch (e) { return (e as Error).message; }
     finally { this.submitting = false; }
+  }
+
+  /** Take `quantity` micros off your `side` stack on this market (newest orders first). */
+  async reduce(side: Side, quantity: number): Promise<{ closed?: number; pnl?: number; error?: string }> {
+    if (this.submitting) return { error: "One order at a time." };
+    this.submitting = true;
+    try {
+      const r = await this.api.rpc<{ closed: number; pnl: number }>("reduce_position", { p_market: this.state.market, p_side: side, p_quantity: quantity });
+      await this.refreshState();
+      void this.refreshBoard();
+      return { closed: r.closed, pnl: Number(r.pnl) };
+    } catch (e) {
+      const msg = (e as Error).message;
+      return { error: /reduce_position|could not find the function|schema cache/i.test(msg) ? "Partials aren't switched on yet. Ask Sam to run the server update." : msg };
+    } finally { this.submitting = false; }
   }
 
   /** Closes every leg of a stack; sums the P&L. Stops at the first error. */

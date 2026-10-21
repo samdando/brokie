@@ -41,7 +41,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
       </div>
 
       </> : <LifetimeCard />}
-      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><BackupRow /></div></Sheet>
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><BackupRow /></div></Sheet>
 
       <div id="receipts" className="stack" style={{ gap: 14 }}>
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
@@ -189,6 +189,23 @@ function LifetimeCard() {
         {lt.seasons.length === 0 && <p className="muted">Your first season will appear here.</p>}
         {lt.seasons.map(x => <div className="season-result" key={x.season}><span>S{x.number}</span><div className="bar"><i style={{ width: `${Math.abs(x.return_pct) / maxAbs * 100}%`, background: x.return_pct >= 0 ? "var(--lime)" : "var(--red)" }} /></div><span className={`mono ${x.return_pct >= 0 ? "lime" : "red"}`}>{x.return_pct >= 0 ? "+" : ""}{x.return_pct.toFixed(2)}%</span></div>)}
       </div>
+    </div>
+  );
+}
+
+/** Tapping SELL while long (or BUY while short): take micros off (default) or open a hedge (opt-in). */
+function OppositeSetting() {
+  const mode = useGame().opposite;
+  return (
+    <div className="stack" style={{ gap: 8 }} data-testid="opposite-setting">
+      <div><b style={{ fontSize: 13 }}>Tapping the other button</b>
+        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>When you're long and tap SELL (or short and tap BUY).</div></div>
+      <div className="seg" role="radiogroup" aria-label="Tapping the other button">
+        {([["partial", "✂️ Take partials"], ["hedge", "🛡 Open a hedge"]] as const).map(([v, label]) => (
+          <button key={v} type="button" role="radio" aria-checked={mode === v} className={`seg-btn ${mode === v ? "on" : ""}`} onClick={() => game.setOpposite(v)}>{label}</button>
+        ))}
+      </div>
+      <div className="muted" style={{ fontSize: 11 }}>{mode === "partial" ? "Each tap closes 1 micro, newest first. Your SL/TP stays on what's left." : "Each tap opens a micro the other way, so you're long and short at once."}</div>
     </div>
   );
 }

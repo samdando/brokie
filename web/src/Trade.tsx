@@ -341,7 +341,8 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   function tap(side: Side) {
     if (disabled) return;
     const n = pend && pend.side === side ? pend.count : 0;
-    if (n >= 10) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
+    const cap = game.tapReduces(side) ? game.heldAgainst(side) : 10;
+    if (n >= cap) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
     streak.current = n + 1;
     const lvl = Math.min(2, Math.floor(n / 5));
     buzz([12, 22, 35][lvl]);
@@ -350,8 +351,9 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 420);
     setSquash(null); requestAnimationFrame(() => setSquash(side));
     const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
-    game.tap(side, (err, q) => {
+    game.tap(side, (err, q, pnl) => {
       if (err) { buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
+      else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`✂️ Took ${q} off ${MARKETS[st.market].title} · ${signedMoney(pnl)}`); }
       else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${MARKETS[st.market].title}`); }
     });
   }
@@ -359,14 +361,15 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const n = pend && pend.side === side ? pend.count : 0;
     const label = side === "long" ? "BUY" : "SELL";
     const hedge = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
+    const partial = st.opposite === "partial" && hedge;
     return (
       <button type="button" className={`spam-btn ${side} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
         onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
         onAnimationEnd={() => setSquash(null)} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
-        <span className="spam-sub">{n ? `x${n}` : hedge ? "tap = hedge" : tapHint ? `+${TAP_SIZE} per tap` : "\u00a0"}</span>
-        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">+{TAP_SIZE}</span>)}
+        <span className="spam-sub">{n ? (partial ? `−${n}` : `x${n}`) : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `+${TAP_SIZE} per tap` : "\u00a0"}</span>
+        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">{partial ? "−" : "+"}{TAP_SIZE}</span>)}
       </button>
     );
   };
