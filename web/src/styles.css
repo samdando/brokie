@@ -535,3 +535,67 @@ html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-
   .chart-card .chips .chip { min-width: 30px; padding: 0 5px; }
   .chart-card .chips > span[style] { display: none; }   /* the thin divider */
 }
+
+/* Round 2 / Trade: an account hero, a market stage and a tactile controller. */
+:root { --bg: #090C10; --panel: #151B22; --line: #2B343D; --muted: #9CAAB5; }
+.header { padding-bottom: 12px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.wordmark { font-style: italic; font-weight: 950; letter-spacing: -2px; }
+.avatar-btn, .pill-btn { min-height: 44px; min-width: 44px; }
+.trade-screen { gap: 18px; padding-bottom: 100px; }
+.account-hero { position: relative; isolation: isolate; overflow: hidden; padding: 22px 18px 0; border: 1px solid #465237; border-radius: 26px 26px 10px 10px; background: radial-gradient(ellipse at 100% 0, #3c4a20 0, transparent 70%), linear-gradient(140deg, #1f2921, #111a1c); box-shadow: 0 16px 40px #0004; }
+.season-watermark { position: absolute; right: -6px; top: -12px; font: 950 112px/1 var(--round); letter-spacing: -8px; opacity: .055; z-index: -1; }
+.account-summary .eyebrow { font-size: 9px; letter-spacing: 1.4px; color: #c4ceb6; }
+.account-summary .equity { font-size: clamp(36px, 11.5vw, 53px); font-weight: 850; letter-spacing: -2.8px; margin: 12px 0; }
+.season-gain { font: 750 17px var(--mono); letter-spacing: -.6px; }
+.account-summary .info-link { min-height: 44px; text-align: left; }
+.risk-strips { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; padding: 8px 0 14px; }
+.risk-strips span { font: 650 7px var(--mono); color: #c1cbb9; letter-spacing: .2px; }
+.risk-strips i { display: block; height: 5px; background: #ffffff18; border-radius: 4px; margin-top: 7px; overflow: hidden; }
+.risk-strips b { display: block; height: 100%; background: var(--lime); border-radius: inherit; }
+.hero-risk .compact-rules { border: 0; border-top: 1px solid #ffffff20; border-radius: 0; padding: 0; }
+.hero-risk .compact-rules[open] { padding-bottom: 16px; }
+.account-hero.locked { border-color: var(--red); background: linear-gradient(130deg,#40232c,#15151c); }
+.account-hero.blown { border-color: #666; background: repeating-linear-gradient(135deg,#202329 0 12px,#1b1e23 12px 24px); }
+.markets { gap: 0; border-bottom: 1px solid var(--line); }
+.market { border: 0; border-radius: 0; background: transparent; padding: 10px 12px 14px; min-height: 66px; }
+.market.on { background: linear-gradient(0deg,#d6fe5910,transparent); border-bottom: 3px solid var(--lime); }
+.market b { font-size: 15px; }
+.market .mono { color: var(--muted); }
+.chart-card { margin: 0 -12px; padding: 16px 8px 10px; background: linear-gradient(180deg,#182029,#0e141b 65%); border-radius: 22px; border: 1px solid #34404b; box-shadow: 0 12px 32px #0004; }
+.market-heading { padding: 0 8px 12px; gap: 8px; }
+.market-heading > div { min-width: 0; }
+.quote { font-size: clamp(29px,8.5vw,39px); font-weight: 800; letter-spacing: -1.8px; }
+.market-heading > .row { flex-direction: column-reverse; gap: 0 !important; align-items: flex-end; }
+.chart-card .chart-controls { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 3px; padding: 8px 0; border-top: 1px solid var(--line); }
+.chart-controls > span[style] { display: none; }
+.chart-card .chart-controls .chip { margin-left: 0 !important; min-width: 44px; min-height: 44px; padding: 0 3px; border-radius: 10px; font-size: 11px; }
+.chart-card .chart-controls .chip.on { background: #303b30; color: var(--lime); box-shadow: inset 0 0 0 1px #d6fe5930; }
+.chart-attribution { padding: 0 6px; line-height: 1.6; }
+.trade-dock { padding: 10px 16px 12px; background: #10161ef2; backdrop-filter: blur(18px); border: 1px solid #3a4550; border-bottom: 0; border-radius: 24px 24px 0 0; }
+.trade-dock .spam-pad { gap: 14px; }
+.trade-dock .spam-btn { height: 70px; border-radius: 16px; box-shadow: inset 0 2px 0 #ffffff90, 0 5px 0 color-mix(in srgb,var(--c) 45%,#000), 0 8px 18px #0008; }
+.trade-dock .spam-label { font-size: 27px; font-weight: 950; letter-spacing: 1px; }
+.trade-dock .spam-sub { font-size: 10px; }
+.trade-dock .spam-btn:active { transform: translateY(3px); box-shadow: inset 0 2px 6px #0003,0 2px 0 color-mix(in srgb,var(--c) 45%,#000); }
+.app:has(.trade-dock) + .minibar { bottom: calc(168px + var(--safe-b)); }
+.pos-card { background: linear-gradient(110deg,#25352b,#172029); border-left: 4px solid var(--lime); border-radius: 8px 20px 20px 8px; }
+.pos-card:has(.pos-pnl.red) { background: linear-gradient(110deg,#35252d,#172029); border-left-color: var(--red); }
+.pos-pnl { font-size: 21px; letter-spacing: -.8px; }
+.pit-section { padding: 18px 0; }
+.pit-section .h2 { font-size: 25px; font-style: italic; }
+.activity-feed > .panel, .activity-group .panel { background: #141c24; border: 1px solid var(--line); border-radius: 16px !important; padding: 14px !important; margin-top: 8px; }
+.activity-group > summary { padding: 16px; border-left: 3px solid var(--purple); background: linear-gradient(100deg,#b5a0fe15,transparent); border-radius: 4px 14px 14px 4px; }
+.chart-info-btn, .player-link, .seg button, .chat-pop-x { min-width: 44px; min-height: 44px; }
+/* Legacy exit effects are noninteractive; the hollow trade markers must accept taps. */
+button.tm { pointer-events: auto; }
+.tm::after { inset: -14px; }
+.earlier-pill, .tc-x, .bracket-x { min-height: 44px; min-width: 44px; }
+.bracket-x { margin: -16px -7px -16px 0; }
+.pos-pill::after { inset: -14px -4px; }
+@media (max-width: 380px) {
+  .chart-card .chart-controls { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .chart-card .chart-controls .chip { min-width: 44px; }
+  .chart-card .chart-controls .chip:last-child { grid-column: span 2; }
+  .account-hero { padding-left: 14px; padding-right: 14px; }
+  .season-gain { font-size: 15px; }
+}

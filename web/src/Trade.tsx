@@ -69,11 +69,12 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
   return (
     <div className="stack trade-screen">
+      <section className={`account-hero ${rules?.status ?? "active"}`}><span className="season-watermark" aria-hidden="true">S{String(me.season_number ?? 1).padStart(2, "0")}</span>
       <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
         <div>
           <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
           <div className="equity" data-testid="equity">{money(equity)}</div>
-          <div className={equity >= base ? "lime" : "red"} style={{ fontSize: 12, fontWeight: 500 }}>
+          <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
             {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
           </div>
@@ -86,6 +87,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
       {rules && <RuleStatus rules={rules} toast={toast} goHistory={goHistory} />}
       {rules && <Meters rules={rules} equity={equity} />}
+      </section>
 
       <div className="markets">
         {(Object.keys(MARKETS) as Market[]).map((m) => (
@@ -97,7 +99,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       </div>
 
       <div className="chart-card">
-        <div className="row between" style={{ alignItems: "flex-start" }}>
+        <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[market].subtitle} <span className="mono muted" style={{ fontSize: 9 }}>{MARKETS[market].symbol}</span></div>
             <div className="row" style={{ gap: 8, alignItems: "baseline", marginTop: 6 }}>
@@ -123,7 +125,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             {activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
               : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
           </>} />
-        <div className="chips" style={{ marginTop: 10 }}>
+        <div className="chips chart-controls" style={{ marginTop: 10 }}>
           {(["candles", "line"] as const).map((s) => (
             <button key={s} className={`chip lime ${style === s ? "on" : ""}`} aria-label={s === "candles" ? "Candlestick chart" : "Line chart"} aria-pressed={style === s} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
           ))}
@@ -138,7 +140,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </button>
         </div>
         <div className="chart-attribution">
-          {open ? "Real market prices from OANDA, fake money. Not financial advice." :"Market's closed. New trades open when prices are live again."}
+          Real market prices from OANDA, fake money. Not financial advice. {!open && "Market’s closed. New trades open when prices are live again."}
           {" "}Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
           {" "}(<a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">notice</a>).
         </div>
@@ -206,7 +208,7 @@ export function Pit({ goSquad, toast, full = false }: { goSquad: () => void; toa
     else if (r === "failed") toast(`Couldn't copy. Your code is ${squad.invite_code}.`);
   }
   return (
-    <div className="stack" style={{ gap: 12 }}>
+    <div className="stack pit-section" style={{ gap: 12 }}>
       <div className="row between"><h2 className="h2">The pit</h2><span className="eyebrow">{squad?.name ?? "Your squad"}</span></div>
       {!squad ? (
         <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
@@ -310,6 +312,8 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
     "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Target badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
   };
   return (
+    <div className="hero-risk">
+      <div className="risk-strips" aria-hidden="true">{[["DAILY ROOM", df], ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
     <details className="rule-summary compact-rules">
       <summary><span>Daily loss room <b style={{ color: tone(df) }}>{money(dailyRoom, 0)}</b></span><span className="muted">Target {Math.round(progress * 100)}% ⌄</span></summary>
       <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded ? 1 : progress} /></div>
@@ -327,6 +331,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       </button>
       <div id="rule-explainer" hidden={!expanded} className="rule-explainer">{expanded ? explanations[expanded] : ""}</div>
     </details>
+    </div>
   );
 }
 
