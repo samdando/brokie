@@ -508,7 +508,7 @@ html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-
 @media (max-width: 360px) {
   .trade-screen { gap: 11px; }
   .chart-card { padding: 11px !important; }
-  .chart-controls { gap: 5px; }
+  .chart-controls { gap: 5px; flex-wrap: wrap; }
   .chart-card .chart-controls .chip { min-width: 44px; height: 44px; padding: 0 6px; }
   .chart-controls .chart-style-control .chip { min-width: 44px; }
   .chart-controls .chart-social-control .chip { min-width: 44px; }
