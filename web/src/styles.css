@@ -663,3 +663,29 @@ button.tm { pointer-events: auto; }
 .player-card > .profile-stats .panel:last-child { grid-column: auto; }
 .player-card > .profile-stats b { font-size: 15px; overflow-wrap: anywhere; }
 .player-card .eyebrow { font-size: 8px; }
+
+/* Round 2 / You: a season scorecard and perforated trade receipts. */
+.you-heading .eyebrow { color: var(--purple); letter-spacing: 1.5px; }
+.you-heading .title { font-size: 40px; font-weight: 900; letter-spacing: -2px; line-height: 1; margin: 10px 0; }
+.you-identity { padding: 16px 0; border-block: 1px solid var(--line); }
+.you-identity > div { min-width: 0; }
+.you-identity > span { flex: none; transform: rotate(-5deg); box-shadow: 5px 5px 0 #d6fe5920; }
+.you-identity button { min-height: 44px; overflow-wrap: anywhere; text-align: left; }
+.season-score { padding: 22px; border: 1px solid #b5a0fe55; border-radius: 24px 24px 6px 24px; background: radial-gradient(ellipse at top right,#b5a0fe24,transparent 70%),#171e28; }
+.season-score .eyebrow { font-size: 9px; }
+.season-score strong { display: block; font: 900 clamp(44px,14vw,62px)/1.15 var(--round); letter-spacing: -3px; margin: 16px 0 4px; }
+.season-score-money { font: 750 20px var(--mono); margin-bottom: 16px; }
+.season-score > .muted { display: block; font-size: 11px; line-height: 1.5; }
+.you-screen > .profile-stats { gap: 8px; }
+.you-screen > .profile-stats .panel { border: 1px solid var(--line); }
+.season-balance { background: transparent; border: 1px solid var(--line); }
+.you-screen #receipts .h2 { font-size: 26px; font-style: italic; }
+.you-screen #receipts > .row { flex-wrap: wrap; gap: 8px; }
+.you-screen .receipt-ticket { position: relative; display: grid; grid-template-columns: minmax(0,1fr) 20px; gap: 10px; padding: 20px !important; border-radius: 4px !important; border: 1px solid #47515a; border-top: 2px dashed #73808c; background: linear-gradient(100deg,#25303a,#1b242d); }
+.receipt-ticket > div { grid-column: 1 / -1; padding-bottom: 14px; border-bottom: 1px dashed #73808c; }
+.receipt-ticket > .mono { font-size: 26px !important; font-weight: 850 !important; letter-spacing: -1px; }
+.receipt-ticket::before, .receipt-ticket::after { content: ''; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--bg); bottom: 52px; }
+.receipt-ticket::before { left: -8px; }.receipt-ticket::after { right: -8px; }
+.settings-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px; border-block: 1px solid var(--line); font-weight: 750; }
+.settings-entry span { color: var(--muted); font-size: 11px; font-weight: 500; }
+.sheet:has([data-testid="opposite-setting"]) .text-action, .sheet:has([data-testid="opposite-setting"]) [data-testid="backup-code-button"] { min-height: 44px; padding: 12px 0; border-bottom: 1px solid var(--line); }

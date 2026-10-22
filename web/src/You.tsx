@@ -16,26 +16,27 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
   const base = me.rules?.start_balance ?? 10000;
   useEffect(() => { void game.refreshLifetime(); }, []);
   return (
-    <div className="stack" style={{ gap: 24 }}>
-      <div><h1 className="title">Your trading arc.</h1><div className="muted" style={{ fontSize: 13 }}>Every great trader starts somewhere.</div></div>
-      <div className="row" style={{ gap: 16 }}>
+    <div className="stack you-screen" style={{ gap: 24 }}> 
+      <div className="you-heading"><span className="eyebrow">YOUR SEASON / YOUR STORY</span><h1 className="title">Your trading arc.</h1><div className="muted" style={{ fontSize: 13 }}>Every great trader starts somewhere.</div></div>
+      <div className="row you-identity" style={{ gap: 16 }}> 
         <span style={{ width: 60, height: 60, borderRadius: 20, background: "var(--lime)", color: "var(--bg)", display: "grid", placeItems: "center", font: "700 26px var(--round)" }}>{me.handle[0].toUpperCase()}</span>
         <div>
           <button onClick={() => setEdit(true)} style={{ font: "700 23px var(--round)" }} data-testid="edit-handle">@{me.handle} <span className="muted" style={{ fontSize: 14 }}>✎</span></button>
           <div className="eyebrow" style={{ fontSize: 8, marginTop: 5 }}>Founding brokie · resets in {countdown(me.season_ends_at, game.now())}</div>
         </div>
       </div>
-      <button className="text-action muted" onClick={() => setSettings(true)}>Account settings →</button>
+
       <div className="seg" role="tablist" aria-label="Performance period"><button role="tab" aria-selected={period === "season"} className={period === "season" ? "on" : ""} onClick={() => setPeriod("season")}>This season</button><button role="tab" aria-selected={period === "lifetime"} className={period === "lifetime" ? "on" : ""} onClick={() => setPeriod("lifetime")}>Lifetime</button></div>
       {period === "season" ? <>
+      <section className="season-score"><div className="row between"><Eyebrow>Season {me.season_number ?? ""} · total return</Eyebrow><span aria-hidden="true">↗</span></div><strong className={me.cash + unrealized >= base ? "lime" : "red"}>{((me.cash + unrealized - base) / base * 100) >= 0 ? "+" : ""}{((me.cash + unrealized - base) / base * 100).toFixed(2)}%</strong><div className={`season-score-money ${me.cash + unrealized >= base ? "lime" : "red"}`}>{signedMoney(me.cash + unrealized - base)}</div><span className="muted">{money(me.cash + unrealized)} equity · fake money, real progress.</span></section>
       <div className="profile-stats">
         {[["Trades in latest 50", String(me.trades.length)], ["Win rate · latest 50", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
-          <div key={k} className="panel" style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
+          <div key={k} className={`panel ${k === "Realized P&L" ? me.cash >= base ? "lime" : "red" : ""}`} style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
         ))}
       </div>
-      <div className="panel stack" style={{ gap: 14, padding: 18, borderRadius: 16 }}>
+      <div className="panel stack season-balance" style={{ gap: 14, padding: 18, borderRadius: 16 }}>
         <div className="detail"><span>Paper cash</span><span>{money(me.cash)}</span></div>
-        <div className="detail"><span>Open P&amp;L (unrealized)</span><span>{signedMoney(unrealized)}</span></div>
+        <div className="detail"><span>Open P&amp;L (unrealized)</span><span className={unrealized >= 0 ? "lime" : "red"}>{signedMoney(unrealized)}</span></div>
         <div className="muted" style={{ fontSize: 10 }}>Season totals include all closed trades and open positions. Trade count and win rate cover your latest 50 closed trades.</div>
         {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit</span><span>{money(me.protection_credit)}</span></div>}
       </div>
@@ -47,7 +48,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
         {me.trades.length === 0 && <div className="panel muted" style={{ fontSize: 13, padding: 18 }}>Close your first trade and it will land here. Wins, losses, character development.</div>}
         {me.trades.map((t) => (
-          <button key={t.id} className="panel row" style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
+          <button key={t.id} className="panel row receipt-ticket" style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
             <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[t.market].title} · {t.side === "long" ? "Long" : "Short"} · {t.quantity} micro</div>
               <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div><div className="receipt-meta muted">{new Date(t.closed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{t.reason !== "closed" && <span>Closed: {t.reason.replace(/_/g, " ")}</span>}</div></div>
             <span className={`mono ${t.pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 700 }}>{signedMoney(t.pnl)}</span>
@@ -55,6 +56,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
           </button>
         ))}
       </div>
+      <button className="text-action settings-entry" onClick={() => setSettings(true)}>⚙ Account settings <span>Manage →</span></button>
       <InstallTip />
       <div className="mono muted" style={{ fontSize: 10, textAlign: "center", lineHeight: 1.8 }}>BROKIE / 0.2 WEB<br />All the market. None of the rent money.</div>
       <HandleSheet open={edit} onClose={() => setEdit(false)} toast={toast} />
