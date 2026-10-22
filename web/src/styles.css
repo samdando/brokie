@@ -589,7 +589,9 @@ html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-
 /* Legacy exit effects are noninteractive; the hollow trade markers must accept taps. */
 button.tm { pointer-events: auto; }
 .tm::after { inset: -14px; }
-.earlier-pill, .tc-x, .bracket-x { min-height: 44px; min-width: 44px; }
+/* Small on screen, 44px to the finger: invisible hit areas instead of big boxes over the chart. */
+.tc-x, .bracket-x { position: relative; }
+.earlier-pill::after, .tc-x::after, .bracket-x::after { content: ""; position: absolute; inset: -12px -8px; }
 .bracket-x { margin: -16px -7px -16px 0; }
 .pos-pill::after { inset: -14px -4px; }
 @media (max-width: 380px) {
@@ -778,13 +780,32 @@ button.tm { pointer-events: auto; }
 .chart-card.chart-fullscreen { position: fixed; inset: 0; z-index: 150; margin: 0; border-radius: 0; padding: calc(12px + var(--safe-t)) 12px calc(12px + var(--safe-b)); overflow: hidden; touch-action: none; overscroll-behavior: none; animation: none; }
 .chart-fullscreen .chart-host { touch-action: none !important; overscroll-behavior: none; }
 .header { flex-wrap: wrap; }
-.header .season-timer { order: 4; flex: 0 0 100%; }
+.header .season-timer { flex: 1 1 auto; min-width: 0; text-align: center; white-space: nowrap; }
+.header .season-timer .season-progress { max-width: 170px; margin-inline: auto; }
+.season-word { display: none; }
+/* Very narrow phones: the countdown gets its own row under the logo, with room for the full word. */
+@media (max-width: 379px) {
+  .header .season-timer { order: 4; flex: 0 0 100%; text-align: left; }
+  .header .season-timer .season-progress { max-width: none; margin-inline: 0; }
+  .season-word { display: inline; } .season-short { display: none; }
+}
 .header .wordmark { margin-right: auto; }
-.season-timer { font: 600 12px/1.5 var(--mono); font-variant-numeric: tabular-nums; color: var(--lime); }
-.season-digits { display: inline-block; min-width: 11ch; text-align: right; }
-.season-progress { height: 3px; margin-top: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.season-timer { font: 600 11px/1.4 var(--mono); font-variant-numeric: tabular-nums; color: var(--lime); }
+.season-digits { display: inline-block; min-width: 10ch; text-align: right; }
+.season-progress { height: 3px; margin-top: 4px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .season-progress i { display: block; height: 100%; background: var(--lime); }
 .tc-grid b { overflow-wrap: anywhere; }
 /* Your position pill pinned to the chart edge when its entry is zoomed off screen. */
 .pos-pill.pinned { box-shadow: inset 0 0 0 1px var(--pc), 0 3px 10px rgba(0,0,0,.55); }
 .pos-pill.pinned .pos-grip { opacity: 1; color: #fff; font-weight: 900; }
+
+/* ---- Slimmer hero so the chart is on screen without scrolling (keeps Astra's look) ---- */
+.account-hero { padding: 14px 16px 0; border-radius: 22px 22px 10px 10px; }
+.season-watermark { font-size: 84px; top: -8px; letter-spacing: -6px; }
+.account-summary .equity { font-size: clamp(32px, 10vw, 46px); margin: 6px 0 4px; }
+.account-summary .info-link { min-height: 32px; }
+.account-summary .info-link::after { content: ""; position: absolute; inset: -6px 0; }
+.account-summary .info-link { position: relative; }
+.risk-strips { padding: 2px 0 8px; gap: 8px; }
+.risk-strips i { margin-top: 5px; }
+.hero-risk .compact-rules > summary { min-height: 40px; }

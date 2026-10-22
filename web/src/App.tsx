@@ -126,8 +126,8 @@ function SeasonTimer({ number, end, offset }: { number: number; end: string; off
   const remaining = Math.max(0, Date.parse(end) - now);
   const minutes = Math.ceil(remaining / 60000);
   const progress = Math.max(0, Math.min(100, (1 - remaining / (56 * 86400000)) * 100));
-  return <div className="season-timer" data-testid="season-pill" title="8-week season · ends Monday 00:00 Brisbane">
-    <span>Season {number} · <span className="season-digits">{Math.floor(minutes / 1440)}d {String(Math.floor(minutes / 60) % 24).padStart(2, "0")}h {String(minutes % 60).padStart(2, "0")}m</span> left</span>
+  return <div className="season-timer" data-testid="season-pill" title={`Season ${number} · 8 weeks · ends Monday 00:00 Brisbane`}>
+    <span><span className="season-word">Season </span><span className="season-short">S</span>{number} · <span className="season-digits">{Math.floor(minutes / 1440)}d {String(Math.floor(minutes / 60) % 24).padStart(2, "0")}h {String(minutes % 60).padStart(2, "0")}m</span> left</span>
     <div className="season-progress" role="progressbar" aria-label="Season elapsed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><i style={{ width: `${progress}%` }} /></div>
   </div>;
 }
