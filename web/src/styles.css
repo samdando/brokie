@@ -463,3 +463,58 @@ html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-
   .big-btn:active, .market:active, .squad-chip:active { transform: scale(.98); }
   @keyframes screen-arrival { from { opacity: .45; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 }
+
+/* Astra visual pass: deliberate hierarchy, tighter control groups, clearer type. */
+:root { --radius-card: 18px; --shadow-card: 0 12px 32px rgba(0,0,0,.2); }
+.panel, .chart-card { box-shadow: var(--shadow-card); }
+.header { margin-bottom: 16px; }
+.wordmark { letter-spacing: -1.35px; }
+.eyebrow { font-size: 10px; letter-spacing: .9px; }
+.app { padding-bottom: calc(112px + var(--safe-b)); }
+.trade-screen { gap: 14px; }
+.account-summary { order: 0; padding: 3px 2px 1px; }
+.account-summary .equity { font-size: clamp(32px, 8vw, 38px); letter-spacing: -1.5px; }
+.account-summary .info-link { font-size: 11px; }
+.markets { order: 1; gap: 7px; }
+.market { min-height: 68px; padding: 10px; border-radius: 13px; transition: transform .14s ease, border-color .14s ease, background .14s ease; }
+.market:active { transform: scale(.98); }
+.market b { font-size: 12px; }
+.market .mono { font-size: 12px; font-weight: 650; }
+.trade-screen > :nth-child(2), .trade-screen > :nth-child(3) { order: 3; }
+.trade-screen > .chart-card { order: 2; padding: 14px; border-radius: 20px; border-color: rgba(255,255,255,.08); box-shadow: 0 16px 40px rgba(0,0,0,.26), inset 0 1px rgba(255,255,255,.025); }
+.quote { font-size: clamp(25px, 6vw, 31px); font-weight: 650; letter-spacing: -1px; }
+.chart-card .badge { font-size: 9px; font-family: var(--round); letter-spacing: .3px; }
+.chart-context { margin: 7px 0 5px; }
+.chart-activity { min-height: 25px; display: flex; align-items: center; padding: 0 2px; color: #BBC2B2; font-size: 11px; }
+.chart-controls { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.chart-controls .chips { gap: 0; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: rgba(12,14,11,.72); }
+.chart-card .chart-controls .chip { min-width: 44px; height: 44px; border-radius: 8px; background: transparent; color: var(--muted); font: 700 11px var(--round); }
+.chart-card .chart-controls .chip.on, .chart-card .chart-controls .chip.lime.on { background: #343a2b; color: var(--lime); }
+.chart-controls .chart-style-control .chip { min-width: 37px; }
+.chart-controls .chart-frame-control { flex: 1; justify-content: center; }
+.chart-controls .chart-frame-control .chip { flex: 1; min-width: 0; }
+.chart-controls .chart-social-control .chip { min-width: 42px; background: var(--panel); border: 1px solid var(--line); }
+.chart-controls .chart-social-control .chip.on { background: rgba(214,254,89,.14); border-color: rgba(214,254,89,.3); }
+.chart-attribution { font-size: 10px; }
+.trade-dock { padding: 9px 16px calc(8px + var(--safe-b)); border-color: rgba(255,255,255,.1); background: rgba(12,14,11,.96); backdrop-filter: blur(14px); }
+.trade-dock .spam-pad { gap: 10px; }
+.trade-dock .spam-btn { height: 64px; min-height: 64px; border-radius: 16px; box-shadow: 0 5px 0 rgba(0,0,0,.42), 0 8px 22px rgba(var(--g),.12); transition: transform .12s ease, filter .12s ease; }
+.trade-dock .spam-btn:active:not(:disabled) { transform: translateY(2px) scale(.985); }
+.trade-dock .spam-label { font-size: 21px; }
+.pos-card { border: 1px solid rgba(255,255,255,.065); box-shadow: 0 10px 24px rgba(0,0,0,.16); }
+.disclaimer { order: 5; }
+
+
+@media (max-width: 360px) {
+  .trade-screen { gap: 11px; }
+  .chart-card { padding: 11px !important; }
+  .chart-controls { gap: 5px; }
+  .chart-card .chart-controls .chip { min-width: 44px; height: 44px; padding: 0 6px; }
+  .chart-controls .chart-style-control .chip { min-width: 44px; }
+  .chart-controls .chart-social-control .chip { min-width: 44px; }
+  .lb-row > div:nth-child(3) { min-width: 0; }
+  .lb-row .mono { font-size: 12px !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .market, .seg [role="tab"], .trade-dock .spam-btn, .chat-preview, button[data-testid="receipt"] { transition: none; }
+}

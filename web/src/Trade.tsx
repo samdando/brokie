@@ -112,15 +112,20 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={setPicked}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity(`@${b.handle} · ${b.side === "long" ? "Long" : "Short"} ${b.quantity} micros`); }} />
           )} />
-        <div className="chips" style={{ marginTop: 10 }}>
+        <div className="chart-controls" aria-label="Chart controls">
+        <div className="chips chart-style-control" role="group" aria-label="Chart style">
           {(["candles", "line"] as const).map((s) => (
             <button key={s} className={`chip lime ${style === s ? "on" : ""}`} aria-label={s === "candles" ? "Candlestick chart" : "Line chart"} aria-pressed={style === s} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
           ))}
-          <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
+        </div>
+        <div className="chips chart-frame-control" role="group" aria-label="Candle interval">
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
+        </div>
+        <div className="chips chart-social-control">
           <button className={`chip lime ${crowd ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={crowd} data-testid="crowd-toggle"
             aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
             onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>👥</button>
+        </div>
         </div>
         <div className="muted" style={{ fontSize: 9, marginTop: 10 }}>
           {open ? `OANDA practice prices` : "Market's closed. New trades open when prices are live again."}
