@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./you.css";
 import { game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
 import { drawTradeImage, receiptURL } from "./TradeImage";
@@ -18,11 +19,11 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
   return (
     <div className="stack" style={{ gap: 24 }}>
       <div><h1 className="title">Your trading arc.</h1><div className="muted" style={{ fontSize: 13 }}>Every great trader starts somewhere.</div></div>
-      <div className="row" style={{ gap: 16 }}>
+      <div className="row you-identity" style={{ gap: 16 }}>
         <span style={{ width: 60, height: 60, borderRadius: 20, background: "var(--lime)", color: "var(--bg)", display: "grid", placeItems: "center", font: "700 26px var(--round)" }}>{me.handle[0].toUpperCase()}</span>
         <div>
           <button onClick={() => setEdit(true)} style={{ font: "700 23px var(--round)" }} data-testid="edit-handle">@{me.handle} <span className="muted" style={{ fontSize: 14 }}>✎</span></button>
-          <div className="eyebrow" style={{ fontSize: 8, marginTop: 5 }}>Founding brokie · resets in {countdown(me.season_ends_at, game.now())}</div>
+          <div className="you-meta"><span className={`you-status ${me.rules?.funded ? "funded" : me.rules?.status === "blown" ? "rekt" : me.rules?.status === "locked" ? "locked" : "active"}`}>{me.rules?.funded ? "🏆 FUNDED" : me.rules?.status === "blown" ? "💀 REKT" : me.rules?.status === "locked" ? "🔒 LOCKED" : "IN PLAY"}</span><span className="eyebrow">S{me.season_number ?? ""} · resets in {countdown(me.season_ends_at, game.now())}</span></div>
         </div>
       </div>
       <button className="text-action muted" onClick={() => setSettings(true)}>Account settings →</button>
@@ -47,7 +48,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
         {me.trades.length === 0 && <div className="panel muted" style={{ fontSize: 13, padding: 18 }}>Close your first trade and it will land here. Wins, losses, character development.</div>}
         {me.trades.map((t) => (
-          <button key={t.id} className="panel row" style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
+          <button key={t.id} className={`panel row receipt-card ${t.pnl >= 0 ? "win" : "loss"}`} style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
             <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[t.market].title} · {t.side === "long" ? "Long" : "Short"} · {t.quantity} micro</div>
               <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div><div className="receipt-meta muted">{new Date(t.closed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{t.reason !== "closed" && <span>Closed: {t.reason.replace(/_/g, " ")}</span>}</div></div>
             <span className={`mono ${t.pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 700 }}>{signedMoney(t.pnl)}</span>
