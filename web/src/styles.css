@@ -589,7 +589,9 @@ html { scroll-padding-top: 16px; scroll-padding-bottom: calc(150px + var(--safe-
 /* Legacy exit effects are noninteractive; the hollow trade markers must accept taps. */
 button.tm { pointer-events: auto; }
 .tm::after { inset: -14px; }
-.earlier-pill, .tc-x, .bracket-x { min-height: 44px; min-width: 44px; }
+/* Small on screen, 44px to the finger: invisible hit areas instead of big boxes over the chart. */
+.tc-x, .bracket-x { position: relative; }
+.earlier-pill::after, .tc-x::after, .bracket-x::after { content: ""; position: absolute; inset: -12px -8px; }
 .bracket-x { margin: -16px -7px -16px 0; }
 .pos-pill::after { inset: -14px -4px; }
 @media (max-width: 380px) {
@@ -773,3 +775,14 @@ button.tm { pointer-events: auto; }
 @keyframes combo-number { 0% { transform: scale(1.3); } 100% { transform: scale(1); } }
 @media (max-width: 360px) { .combo-badge { gap: 5px; padding-inline: 6px; } .combo-symbol { font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .combo-fuse { display: none; } }
+
+/* ---- Slimmer hero so the chart is on screen without scrolling (keeps Astra's look) ---- */
+.account-hero { padding: 14px 16px 0; border-radius: 22px 22px 10px 10px; }
+.season-watermark { font-size: 84px; top: -8px; letter-spacing: -6px; }
+.account-summary .equity { font-size: clamp(32px, 10vw, 46px); margin: 6px 0 4px; }
+.account-summary .info-link { min-height: 32px; }
+.account-summary .info-link::after { content: ""; position: absolute; inset: -6px 0; }
+.account-summary .info-link { position: relative; }
+.risk-strips { padding: 2px 0 8px; gap: 8px; }
+.risk-strips i { margin-top: 5px; }
+.hero-risk .compact-rules > summary { min-height: 40px; }
