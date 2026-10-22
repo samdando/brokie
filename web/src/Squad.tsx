@@ -1,4 +1,5 @@
 import { PlayerLink } from "./Profiles";
+import "./squad.css";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
