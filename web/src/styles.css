@@ -689,3 +689,59 @@ button.tm { pointer-events: auto; }
 .settings-entry { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px; border-block: 1px solid var(--line); font-weight: 750; }
 .settings-entry span { color: var(--muted); font-size: 11px; font-weight: 500; }
 .sheet:has([data-testid="opposite-setting"]) .text-action, .sheet:has([data-testid="opposite-setting"]) [data-testid="backup-code-button"] { min-height: 44px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+
+/* Motion pass: direct input feedback, brief entrances, and exact live-value ticks. */
+.tick-value { display: inline-block; font-variant-numeric: tabular-nums; }
+.tap-feedback, .tap-fx { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; }
+.tap-fx { overflow: hidden; }
+.tap-ring { position: absolute; inset: 6px; border: 2px solid #fff; border-radius: 12px; opacity: 0; }
+.tap-spark { position: absolute; width: 5px; height: 13px; border-radius: 3px; background: #fff; opacity: 0; top: 40%; left: 16%; --dx: -12px; --dy: -18px; --turn: -25deg; }
+.spark-two { left: auto; right: 15%; --dx: 14px; --dy: -14px; --turn: 35deg; }
+.spark-three { top: 65%; left: 70%; --dx: 12px; --dy: 16px; --turn: -40deg; }
+@media (prefers-reduced-motion: no-preference) {
+  /* No ancestor transform: the fixed trading controller stays anchored to the viewport. */
+  .app > .stack { animation: screen-fade 200ms ease-out; }
+  .account-hero, .chart-card, .competition-heading, .you-heading, .season-score, .player-live { animation: card-reveal 420ms cubic-bezier(.2,.8,.2,1) backwards; }
+  .chart-card { animation-delay: 60ms; }
+  .market, .podium-place, .lb-row, .receipt-ticket, .chat-preview, .voice-card, .profile-stats > .panel { animation: card-reveal 380ms cubic-bezier(.2,.8,.2,1) backwards; }
+  .markets > :nth-child(2), .podium > :nth-child(2), .profile-stats > :nth-child(2), .competition-board > div:nth-child(4) .lb-row { animation-delay: 45ms; }
+  .markets > :nth-child(3), .podium > :nth-child(3), .profile-stats > :nth-child(3), .competition-board > div:nth-child(5) .lb-row { animation-delay: 90ms; }
+  .swipe-wrap, .activity-feed > *, .chat-log > * { animation: screen-fade 280ms ease-out; }
+  .sheet { animation: sheet-arrive 320ms cubic-bezier(.16,1,.3,1); }
+  .scrim { animation: screen-fade 220ms ease-out; }
+  .trade-card { animation: card-reveal 220ms cubic-bezier(.16,1,.3,1); }
+  .tab, .chip, .seg button, .market, .big-btn, .squad-chip, .player-link, .text-action, .receipt-ticket, .chat-preview, .avatar-btn, .pill-btn, .emoji-bar button { transition: transform 150ms cubic-bezier(.2,.8,.2,1), background-color 180ms, border-color 180ms, color 180ms, box-shadow 180ms; }
+  :is(.tab,.chip,.seg button,.market,.big-btn,.squad-chip,.player-link,.text-action,.receipt-ticket,.chat-preview,.avatar-btn,.pill-btn,.emoji-bar button):not(:disabled):active { transform: scale(.96); }
+  .tab.on svg { animation: icon-land 320ms cubic-bezier(.2,.8,.2,1); }
+  .chip.on, .seg button.on { animation: selection-land 240ms ease-out; }
+  .trade-dock .spam-btn.squash { animation: controller-press 330ms cubic-bezier(.2,.8,.2,1); }
+  .spam-btn.squash > .spam-label { animation: label-kick 330ms ease-out; }
+  .tap-ring { animation: tap-ring 480ms ease-out; }
+  .tap-spark { animation: tap-spark 440ms ease-out; }
+  .spam-pop { animation: tap-count 580ms cubic-bezier(.2,.8,.2,1) both; }
+  .meter .bar i, .risk-strips i b, .season-result .bar i { transition: width 450ms cubic-bezier(.2,.8,.2,1), background-color 250ms; }
+  .voice-card.joined > .eyebrow::after { animation: voice-ready 600ms ease-out; }
+  .lb-row.funded { animation: card-reveal 380ms ease-out, winner-glow 900ms ease-out; }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :is(.market,.chip,.seg button,.receipt-ticket,.chat-preview,.squad-chip,.big-btn):not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 5px 16px #0003; }
+}
+@keyframes screen-fade { from { opacity: .35; } to { opacity: 1; } }
+@keyframes card-reveal { from { opacity: .25; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes sheet-arrive { from { opacity: .5; transform: translateY(32px); } to { opacity: 1; transform: none; } }
+@keyframes icon-land { 0% { transform: translateY(3px) scale(.85); } 55% { transform: translateY(-3px) scale(1.1); } 100% { transform: none; } }
+@keyframes selection-land { from { box-shadow: inset 0 0 0 2px #ffffff65; } to { box-shadow: inset 0 0 0 0 transparent; } }
+@keyframes controller-press { 0% { transform: translateY(0) scale(1); } 25% { transform: translateY(4px) scale(.96); } 65% { transform: translateY(-2px) scale(1.015); } 100% { transform: none; } }
+@keyframes label-kick { 25% { transform: translateY(2px); } 65% { transform: translateY(-2px); } }
+@keyframes tap-ring { 0% { opacity: .85; transform: scale(.65); } 100% { opacity: 0; transform: scale(1.08); } }
+@keyframes tap-spark { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: translate(var(--dx),var(--dy)) rotate(var(--turn)) scale(.2); } }
+@keyframes tap-count { 0% { opacity: 0; transform: translate(-50%,4px) scale(.7); } 20% { opacity: 1; transform: translate(-50%,-8px) scale(1.1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%,-30px) scale(.95); } }
+@keyframes winner-glow { 35% { box-shadow: inset 3px 0 var(--lime),0 0 26px #d6fe5933; } }
+@keyframes voice-ready { 50% { opacity: .5; transform: scaleY(.6); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .tap-feedback { display: none; }
+  .trade-dock .spam-btn:active { transform: none; box-shadow: inset 0 0 0 3px #ffffff80; }
+  /* Keep loading feedback visible without a rotating spinner. */
+  .spinner { border-style: dotted; }
+}

@@ -2,7 +2,7 @@ import { createContext, ReactNode, useContext, useEffect, useState } from "react
 import { game, useGame } from "./game";
 import type { Bubble, Lifetime, Market } from "./types";
 import { MARKETS, direction } from "./types";
-import { Sheet, ago, money, px, signedMoney } from "./ui";
+import { Sheet, TickValue, ago, money, px, signedMoney } from "./ui";
 
 const OpenProfile = createContext<(handle: string) => void>(() => {});
 export function PlayerLink({ handle, children }: { handle: string; children?: ReactNode }) {
@@ -80,9 +80,9 @@ function LiveNow({ handle }: { handle: string }) {
     <div className={`stack player-live ${row?.status === "blown" ? "rekt" : ""}`} style={{ gap: 10 }} data-testid="profile-live">
       <div className="row between"><div className="eyebrow">◉ Right now</div><span className="player-state">{row?.status === "blown" ? "💀 REKT" : row?.status === "locked" ? "🔒 LOCKED" : row?.funded ? "🏆 TARGET HIT" : "IN THE GAME"}</span></div>
       <div className="profile-stats three">
-        <div className="panel"><div className="eyebrow">Equity</div><b>{row ? money(row.equity, 0) : "—"}</b></div>
+        <div className="panel"><div className="eyebrow">Equity</div><b><TickValue value={row?.equity ?? null}>{row ? money(row.equity, 0) : "—"}</TickValue></b></div>
         <div className="panel"><div className="eyebrow">Season</div><b className={row && row.return_pct < 0 ? "red" : "lime"}>{row ? `${row.return_pct >= 0 ? "+" : ""}${Number(row.return_pct).toFixed(2)}%` : "—"}</b></div>
-        <div className="panel"><div className="eyebrow">Open P&amp;L</div><b className={openPnl < 0 ? "red" : "lime"} data-testid="profile-open-pnl">{rows.length ? signedMoney(openPnl) : "—"}</b></div>
+        <div className="panel"><div className="eyebrow">Open P&amp;L</div><b className={openPnl < 0 ? "red" : "lime"} data-testid="profile-open-pnl"><TickValue value={openPnl}>{rows.length ? signedMoney(openPnl) : "—"}</TickValue></b></div>
       </div>
       {legs === null ? <span className="spinner lime" aria-label="Loading positions" />
         : rows.length === 0 ? <div className="muted" style={{ fontSize: 12 }}>No open positions.</div>

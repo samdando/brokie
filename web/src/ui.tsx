@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 export const money = (n: number, d = 2) =>
   n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: d, maximumFractionDigits: d });
@@ -87,3 +87,24 @@ export function nextSessionOpen(now = Date.now()): Date {
 }
 export const sessionOpenLabel = (now = Date.now()) =>
   nextSessionOpen(now).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(":00", "");
+
+/** Show the exact latest value immediately; animate only its presentation. */
+export function TickValue({ value, children }: { value: number | null; children: ReactNode }) {
+  const node = useRef<HTMLSpanElement>(null);
+  const previous = useRef(value);
+  useEffect(() => {
+    const changed = previous.current !== value;
+    previous.current = value;
+    if (!changed || !node.current) return;
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (preference.matches) return;
+    const animation = node.current.animate([
+      { opacity: .65, transform: "translateY(3px)" },
+      { opacity: 1, transform: "translateY(0)" },
+    ], { duration: 280, easing: "cubic-bezier(.2,.8,.2,1)" });
+    const stop = () => { if (preference.matches) animation.cancel(); };
+    preference.addEventListener("change", stop);
+    return () => { animation.cancel(); preference.removeEventListener("change", stop); };
+  }, [value]);
+  return <span className="tick-value" ref={node}>{children}</span>;
+}

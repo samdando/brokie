@@ -6,7 +6,7 @@ import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
-import { Button, Eyebrow, Sheet, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
+import { Button, Eyebrow, Sheet, TickValue, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
@@ -73,7 +73,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
         <div>
           <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
-          <div className="equity" data-testid="equity">{money(equity)}</div>
+          <div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div>
           <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
             {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
@@ -103,7 +103,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[market].subtitle} <span className="mono muted" style={{ fontSize: 9 }}>{MARKETS[market].symbol}</span></div>
             <div className="row" style={{ gap: 8, alignItems: "baseline", marginTop: 6 }}>
-              <span className="quote">{quote ? px(quote) : "—"}</span>
+              <span className="quote"><TickValue value={quote}>{quote ? px(quote) : "—"}</TickValue></span>
               <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change))}</span>
             </div>
           </div>
@@ -359,7 +359,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     buzz([12, 22, 35][lvl]);
     const id = ++seq.current;
     setPops((p) => [...p.slice(-8), { id, side }]);
-    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 420);
+    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 600);
     setSquash(null); requestAnimationFrame(() => setSquash(side));
     const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
     game.tap(side, (err, q, pnl) => {
@@ -378,10 +378,10 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
       <button type="button" className={`spam-btn ${side} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
         onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
-        onAnimationEnd={() => setSquash(null)} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
+        onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSquash(null); }} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
         <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `${sign}${TAP_SIZE} per tap` : "\u00a0"}</span>
-        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="spam-pop">{sign}{TAP_SIZE}</span>)}
+        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{TAP_SIZE}</span></span>)}
       </button>
     );
   };
@@ -442,7 +442,7 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose }:
             {hedged && <span className="hedge-pill inline" data-testid="hedged-row">HEDGED</span>}</div>
           <div className="muted mono" style={{ fontSize: 10, marginTop: 4 }}>x{p.quantity} · {px(p.entry_price)}</div>
         </div>
-        <span className={`mono pos-pnl ${win ? "lime" : "red"}`}>{signedMoney(pnl)}</span>
+        <span className={`mono pos-pnl ${win ? "lime" : "red"}`}><TickValue value={pnl}>{signedMoney(pnl)}</TickValue></span>
         {busy && <span className="spinner" style={{ width: 12, height: 12 }} />}
       </div>
       {fx === "win" && <div className="confetti" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ ["--i" as string]: i }} />)}</div>}
