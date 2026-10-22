@@ -45,7 +45,7 @@ export function GlobalBoard() {
 function GlobalLine({ r, last }: { r: import("./types").GlobalRow; last: boolean }) {
   return (
     <div>
-      <div className={`lb-row ${r.is_you ? "you" : ""}`} data-testid="global-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
+      <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="global-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
         <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{r.rank === 1 && r.return_pct > 0 ? "👑" : r.rank <= 3 && r.qualified ? ["🥇", "🥈", "🥉"][r.rank - 1] : String(r.rank).padStart(2, "0")}</span>
         <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
