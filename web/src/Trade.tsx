@@ -139,7 +139,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <div className="trade-dock"><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
       <div className="disclaimer">SIMULATED TRADING · NOT FINANCIAL ADVICE · NO REAL MONEY</div>
 
-      <div className="stack" style={{ gap: 12 }}>
+      <div className="stack trade-positions" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>
         {me.positions.length === 0 && (
           <div className="panel" style={{ padding: 18, borderRadius: 15 }}>
@@ -200,7 +200,7 @@ export function Pit({ goSquad, toast, full = false }: { goSquad: () => void; toa
     else if (r === "failed") toast(`Couldn't copy. Your code is ${squad.invite_code}.`);
   }
   return (
-    <div className="stack" style={{ gap: 12 }}>
+    <div className={`stack pit-stack ${full ? "full" : ""}`} style={{ gap: 12 }}>
       <div className="row between"><h2 className="h2">The pit</h2><span className="eyebrow">{squad?.name ?? "Your squad"}</span></div>
       {!squad ? (
         <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
