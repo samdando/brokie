@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
       window.testGame = game; window.tapCalls = [];
       for (const name of ['setActive', 'refreshState', 'refreshSquads', 'refreshBoard', 'refreshBubbles', 'refreshLifetime', 'refreshChat', 'refreshGlobal', 'refreshEvents', 'refreshCandles']) game[name] = async () => {};
       game.checkBrackets = async () => [];
-      game.tap = side => window.tapCalls.push(side);
+      game.tap = (side, done) => { window.tapCalls.push(side); window.lastTapDone = done; };
       const now = new Date().toISOString();
       const rules = { status:'active', start_balance:100000, peak_equity:103500, day_start_equity:100000, daily_loss_pct:5, max_dd_pct:10, daily_floor:95000, drawdown_floor:93150, target:110000, funded:false, resets_used:0, trading_days:3, qualify_days:5, equity:103500 };
       game.set({ phase:'ready', market:'nas', me:{ handle:'sam', season:'s1', season_number:1, season_ends_at:'2026-12-14T00:00:00Z', server_time:now, cash:103500, rules, protection_credit:0, liquidations:0, has_backup_code:true, positions:[], trades:[], quotes:['nas','gold','es'].map(market=>({market,price:29700,quoted_at:now})) } });
@@ -43,6 +43,56 @@ const assert = require('node:assert/strict');
     await page.waitForTimeout(50);
     assert.equal(await page.locator('[data-testid="equity"] .tick-value').evaluate(el => el.getAnimations().length), 0);
     assert.equal(await page.evaluate(() => document.getAnimations().filter(a => a.playState==='running').length), 0, 'reduced motion stops all decorative animations');
+    // Combo counts taps, not quantities: tiers, direction changes, expiry and caps.
+    const combo = page.getByTestId('tap-combo');
+    async function taps(button, count) {
+      const box = await button.boundingBox();
+      for (let i = 0; i < count; i++) await page.mouse.click(box.x+box.width/2, box.y+box.height/2);
+    }
+    await page.waitForTimeout(1250);
+    await taps(buy, 3);
+    assert.equal(await combo.getAttribute('data-count'), '3');
+    assert((await combo.textContent()).includes('COMBO'));
+    await taps(buy, 3);
+    assert.equal(await combo.getAttribute('data-count'), '6');
+    assert((await combo.textContent()).includes('ON FIRE'));
+    await taps(buy, 4);
+    assert.equal(await combo.getAttribute('data-count'), '10');
+    assert((await combo.textContent()).includes('UNREAL'));
+    assert.equal(await combo.evaluate(el => el.getAnimations().length), 0, 'reduced-motion combo is static');
+    const beforeCap = await page.evaluate(() => window.tapCalls.length);
+    await page.evaluate(() => window.testGame.set({pending:{side:'long',count:10}}));
+    await taps(buy, 1);
+    assert.equal(await page.evaluate(() => window.tapCalls.length), beforeCap, 'capped taps do not submit');
+    assert.equal(await combo.getAttribute('data-count'), '10', 'capped taps do not increase the combo');
+    await page.evaluate(() => window.testGame.set({pending:null}));
+    await taps(sell, 1);
+    assert.equal(await combo.count(), 0, 'switching sides starts a fresh combo');
+    await taps(sell, 2);
+    assert.equal(await combo.getAttribute('data-side'), 'short');
+    await page.waitForTimeout(1250);
+    assert.equal(await combo.count(), 0, 'idle combo expires');
+    await taps(buy, 3);
+    await page.evaluate(() => window.lastTapDone('Test rejection', 0));
+    await combo.waitFor({state:'hidden'});
+    assert.equal(await combo.count(), 0, 'rejected batch clears its combo');
+    await taps(buy, 3);
+    await page.evaluate(() => window.testGame.set({market:'gold'}));
+    await combo.waitFor({state:'hidden'});
+    assert.equal(await combo.count(), 0, 'market changes reset combo');
+    await taps(buy, 3);
+    await page.evaluate(() => window.testGame.set({opposite:'hedge'}));
+    await combo.waitFor({state:'hidden'});
+    assert.equal(await combo.count(), 0, 'order-mode changes reset combo');
+    // Exercise the animated tier at every width and ensure it cannot intercept taps.
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    for (const width of [320,393,430]) {
+      await page.setViewportSize({width,height:852});
+      await page.waitForFunction(() => document.documentElement.scrollWidth<=innerWidth);
+      await taps(buy, 3);
+      assert.equal(await combo.evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+      assert(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth));
+    }
     // Disabled trading must not produce an input call or a fresh effect.
     await page.waitForTimeout(650);
     await page.evaluate(() => {const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,status:'locked'}}});});
@@ -60,6 +110,6 @@ const assert = require('node:assert/strict');
       assert(dock.y+dock.height<=nav.y, 'controller stays above nav');
     }
     assert.deepEqual(errors, []);
-    console.log('PASS: tap bursts, rapid pointer input, keyboard input, exact value ticks, effect cleanup, disabled input, reduced motion, three mobile widths.');
+    console.log('PASS: tap bursts, pointer/keyboard input, live-value ticks, combo tiers/caps/expiry/resets, disabled input, reduced motion, three mobile widths.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

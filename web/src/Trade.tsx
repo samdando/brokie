@@ -337,14 +337,28 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
 
 const buzz = (ms: number | number[]) => { try { navigator.vibrate?.(ms); } catch { /* */ } };
 
-/** Ticket 15: spam BUY / SELL. Every tap = +1 micro instantly (squash, pop, thump); taps batch into
- *  one order 300ms after the last. SELL while long (or BUY while short) opens the hedge leg. */
+/** Order taps retain the game’s batching and partial/hedge rules; combo feedback is visual only. */
+const COMBO_WINDOW_MS = 900;
+type TapCombo = { side: Side; count: number; at: number; id: number };
 function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: boolean }) {
   const st = useGame();
   const [pops, setPops] = useState<{ id: number; side: Side }[]>([]);
   const [squash, setSquash] = useState<Side | null>(null);
   const [shake, setShake] = useState<Side | null>(null);
-  const streak = useRef(0);
+  const [combo, setCombo] = useState<TapCombo | null>(null);
+  const comboRef = useRef<TapCombo | null>(null);
+  const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function clearCombo() {
+    if (comboTimer.current !== null) clearTimeout(comboTimer.current);
+    comboTimer.current = null;
+    comboRef.current = null;
+    setCombo(null);
+  }
+  // A streak belongs to one market, squad and order mode, and never survives a lockout.
+  useEffect(() => {
+    clearCombo();
+    return () => { if (comboTimer.current !== null) clearTimeout(comboTimer.current); };
+  }, [disabled, st.market, st.squadId, st.opposite]);
   const seq = useRef(0);
   const pend = st.pending;
   const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
@@ -354,16 +368,23 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const n = pend && pend.side === side ? pend.count : 0;
     const cap = game.tapReduces(side) ? game.heldAgainst(side) : 10;
     if (n >= cap) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
-    streak.current = n + 1;
     const lvl = Math.min(2, Math.floor(n / 5));
     buzz([12, 22, 35][lvl]);
     const id = ++seq.current;
+    const now = performance.now();
+    const previous = comboRef.current;
+    const next = { side, count: previous?.side === side && now - previous.at < COMBO_WINDOW_MS ? previous.count + 1 : 1, at: now, id };
+    comboRef.current = next;
+    setCombo(next);
+    if (comboTimer.current !== null) clearTimeout(comboTimer.current);
+    // A short fade follows the chain window; taps after that window start a fresh streak.
+    comboTimer.current = setTimeout(clearCombo, COMBO_WINDOW_MS + 300);
     setPops((p) => [...p.slice(-8), { id, side }]);
     setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 600);
     setSquash(null); requestAnimationFrame(() => setSquash(side));
     const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
     game.tap(side, (err, q, pnl) => {
-      if (err) { buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
+      if (err) { if (comboRef.current?.id === id) clearCombo(); buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
       else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`✂️ Took ${q} off ${MARKETS[st.market].title} · ${signedMoney(pnl)}`); }
       else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${MARKETS[st.market].title}`); }
     });
@@ -373,12 +394,17 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const label = side === "long" ? "BUY" : "SELL";
     const hedge = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
     const partial = st.opposite === "partial" && hedge;
+    const chain = !disabled && combo?.side === side && combo.count >= 3 ? combo : null;
+    const tier = chain ? chain.count >= 10 ? 3 : chain.count >= 6 ? 2 : 1 : 0;
     const sign = side === "long" ? "+" : "−";   // BUY adds, SELL subtracts
     return (
-      <button type="button" className={`spam-btn ${side} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
+      <button type="button" className={`spam-btn ${side} combo-tier-${tier} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
         onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
         onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSquash(null); }} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
+        {chain && <span key={chain.id} className={`combo-badge tier-${tier}`} data-testid="tap-combo" data-count={chain.count} data-side={side} aria-hidden="true">
+          <span className="combo-count">{chain.count}</span><span className="combo-copy"><b>{tier === 3 ? "UNREAL" : tier === 2 ? "ON FIRE" : "COMBO"}</b><small>TAP STREAK</small></span><span className="combo-symbol">{tier >= 2 ? "🔥" : "ϟ"}</span><i className="combo-fuse" />
+        </span>}
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
         <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `${sign}${TAP_SIZE} per tap` : "\u00a0"}</span>
         {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{TAP_SIZE}</span></span>)}

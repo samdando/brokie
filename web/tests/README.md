@@ -6,4 +6,4 @@ Checks 320, 393 and 430 pixel widths, horizontal overflow, Buy/Sell placement, r
 
 This is a UI regression check, not a live backend, order execution, microphone or physical iOS Safari test.
 
-`node tests/motion-smoke.cjs` uses the same local server and Playwright setup. It checks BUY/SELL bursts, rapid taps, keyboard input, exact live-value updates, animation cleanup, disabled input, reduced-motion preferences, overflow and controller placement. Order submission is replaced with a local call recorder.
+`node tests/motion-smoke.cjs` uses the same local server and Playwright setup. It checks BUY/SELL bursts, rapid taps, keyboard input, exact live-value updates, animation cleanup, combo tiers and expiry, direction/market/order-mode resets, capped and rejected inputs, disabled input, reduced-motion preferences, overflow and controller placement. Order submission is replaced with a local call recorder.
