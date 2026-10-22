@@ -2,13 +2,13 @@
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
 (async () => {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, headless: true } : { channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 393, height: 852 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
-    await page.goto('http://127.0.0.1:5173');
+    await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
     await page.evaluate(async () => {
       const { game } = await import('/src/game.ts');
       window.testGame = game; window.tapCalls = [];

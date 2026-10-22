@@ -20,10 +20,36 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
   const [chartInfo, setChartInfo] = useState(false);
-  // Fuko: a bigger chart option. Tall mode uses most of the screen; remembered per device.
-  const [big, setBig] = useState(() => { try { return localStorage.getItem("brokie.bigChart") === "on"; } catch { return false; } });
-  const bigH = typeof window === "undefined" ? 480 : Math.round(Math.max(380, Math.min(window.innerHeight * 0.62, 620)));
-  const toggleBig = () => { const v = !big; setBig(v); try { localStorage.setItem("brokie.bigChart", v ? "on" : "off"); } catch { /* */ } };
+  const [big, setBig] = useState(false);
+  const [viewportH, setViewportH] = useState(window.visualViewport?.height ?? window.innerHeight);
+  useEffect(() => {
+    const resize = () => setViewportH(window.visualViewport?.height ?? window.innerHeight);
+    window.addEventListener("resize", resize); window.visualViewport?.addEventListener("resize", resize);
+    return () => { window.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("resize", resize); };
+  }, []);
+  const bigH = Math.max(120, viewportH - (window.innerWidth <= 360 ? 290 : 240));
+  // Remember where the page was BEFORE the chart leaves the page flow: once it's fixed, the browser
+  // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
+  const pageScroll = useRef({ x: 0, y: 0 });
+  const toggleBig = () => { if (!big) pageScroll.current = { x: window.scrollX, y: window.scrollY }; setBig(v => !v); };
+  useEffect(() => {
+    if (!big) return;
+    const { x, y } = pageScroll.current;
+    const body = document.body, root = document.documentElement;
+    const bodyStyle = body.style.cssText, rootStyle = root.style.cssText;
+    Object.assign(body.style, { position: "fixed", top: `-${y}px`, left: `-${x}px`, width: "100%", overflow: "hidden", touchAction: "none", overscrollBehavior: "none" });
+    Object.assign(root.style, { overflow: "hidden", touchAction: "none", overscrollBehavior: "none" });
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setBig(false); };
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("keydown", escape);
+      body.style.cssText = bodyStyle; root.style.cssText = rootStyle;
+      // Put the page back where it was. Again over the next two frames: until the chart is back in
+      // the page at its small size, the page can be too short and the browser cuts the scroll short.
+      const restore = () => window.scrollTo({ left: x, top: y, behavior: "instant" });
+      restore(); requestAnimationFrame(() => { restore(); requestAnimationFrame(restore); });
+    };
+  }, [big]);
   const [activity, setActivity] = useState<{ text: string; n: number } | null>(null);
   useEffect(() => { setActivity(null); }, [st.market, st.squadId]);
   useEffect(() => { if (!activity) return; const t = setTimeout(() => setActivity(null), 5000); return () => clearTimeout(t); }, [activity]);
@@ -98,7 +124,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         ))}
       </div>
 
-      <div className="chart-card">
+      <div className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[market].subtitle} <span className="mono muted" style={{ fontSize: 9 }}>{MARKETS[market].symbol}</span></div>
@@ -277,11 +303,11 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
   return (
     <div className="status-card" style={{ background: "#1b1b1b", border: "1px solid #444", flexDirection: "column", alignItems: "stretch" }} data-testid="status-blown">
       <div className="row"><span style={{ fontSize: 30, filter: "grayscale(1)" }}>💀</span>
-        <div><b style={{ fontSize: 17 }}>REKT.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>You hit the {rules.max_dd_pct}% max drawdown. Account blown for this season.</div></div></div>
+        <div><b style={{ fontSize: 17 }}>REKT.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>You hit the {rules.max_dd_pct}% max loss limit. Account blown for this season.</div></div></div>
       {rules.resets_used === 0 ? (
         <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
-          onClick={async () => { setBusy(true); try { await game.buyBack(); toast("Back in. Tighter rules: 4% daily, 8% drawdown."); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
-          {busy ? <span className="spinner" /> : "Use your one buy-back (4% / 8% rules)"}
+          onClick={async () => { setBusy(true); try { await game.buyBack(); toast("Back in. 4% daily limit, and 5 new trading days to qualify."); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
+          {busy ? <span className="spinner" /> : "Use your one buy-back (4% daily · 8% max loss)"}
         </button>
       ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Buy-back used. See you next season.</div>}
     </div>
@@ -291,7 +317,8 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
 function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const dailyRoom = Math.max(0, equity - rules.daily_floor), dailyMax = rules.day_start_equity - rules.daily_floor;
-  const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = rules.peak_equity - rules.drawdown_floor;
+  const trailing = rules.dd_mode === "trailing";
+  const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = (rules.dd_base ?? rules.peak_equity) - rules.drawdown_floor;
   const targetGain = Math.max(0, rules.target - rules.start_balance);
   const gain = Math.max(0, equity - rules.start_balance);
   const progress = targetGain > 0 ? Math.min(1, gain / targetGain) : 0;
@@ -302,13 +329,15 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       <div className="meter-heading">{label} <span aria-hidden="true">ⓘ</span></div>
       <b style={{ color: tone(frac) }}>{money(remaining, 0)} <small>left</small></b>
       <div className="bar" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: tone(frac) }} /></div>
-      <div className="meter-caption">{cap}% {id === "meter-daily" ? "daily cap" : "trailing limit"}</div>
+      <div className="meter-caption">{cap}% {id === "meter-daily" ? "daily cap" : trailing ? "trailing limit" : "end-of-day limit"}</div>
     </button>
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
   const explanations: Record<string, string> = {
     "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until the next session opens at ${sessionOpenLabel()} your time (5pm New York).`,
-    "meter-dd": `Your current trailing floor is ${money(rules.drawdown_floor, 0)}. Reaching it closes your positions and marks this season's account REKT.`,
+    "meter-dd": trailing
+      ? `Your current trailing floor is ${money(rules.drawdown_floor, 0)}, ${rules.max_dd_pct}% under your highest equity. Reaching it closes your positions and marks this season's account REKT.`
+      : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_dd_pct}% under your best end-of-day balance (${money(rules.dd_base ?? rules.peak_equity, 0)}). It only moves up when a session closes higher (5pm New York), not on intraday spikes. Touching it at any time closes your positions and marks this season's account REKT.`,
     "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Target badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
   };
   return (
@@ -319,7 +348,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded ? 1 : progress} /></div>
       <div className="meters">
         {m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
-        {m("Max drawdown", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
+        {m("Max loss limit", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
       </div>
       <button type="button" className="target-meter" data-testid="meter-target" aria-expanded={expanded === "meter-target"} aria-controls="rule-explainer"
         onClick={() => setExpanded(expanded === "meter-target" ? null : "meter-target")}>

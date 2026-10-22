@@ -25,8 +25,27 @@ language sql stable security definer set search_path = public as $$
   select jsonb_build_object('handle', p.handle, 'trade', jsonb_build_object(
     'id', t.id, 'market', t.market, 'side', t.side, 'quantity', t.quantity,
     'entry_price', t.entry_price, 'exit_price', t.exit_price, 'pnl', t.pnl,
-    'closed_at', t.closed_at, 'reason', t.reason))
+    'opened_at', t.opened_at, 'closed_at', t.closed_at, 'reason', t.reason),
+    'bucket_seconds', history.size, 'candles', history.bars)
   from trade_shares s join trades t on t.id = s.trade_id join profiles p on p.id = t.user_id
+  cross join lateral (
+    with params as (
+      select greatest(60, ceil(extract(epoch from (t.closed_at - t.opened_at)) / 60)::int) as size
+    ), ticks as (
+      select floor(extract(epoch from q.quoted_at) / params.size)::bigint as bucket, q.price, q.quoted_at
+      from quote_ticks q, params
+      where q.market = t.market
+        and q.quoted_at >= t.opened_at - make_interval(secs => params.size * 3)
+        and q.quoted_at <= t.closed_at + make_interval(secs => params.size * 3)
+    ), bars as (
+      select bucket, (array_agg(price order by quoted_at))[1] as open,
+        max(price) as high, min(price) as low, (array_agg(price order by quoted_at desc))[1] as close
+      from ticks group by bucket
+    )
+    select params.size, coalesce((select jsonb_agg(jsonb_build_object(
+      'index', bucket, 'open', open, 'high', high, 'low', low, 'close', close
+    ) order by bucket) from bars), '[]'::jsonb) as bars from params
+  ) history
   where s.token = p_token
 $$;
 revoke all on function public.share_trade(uuid), public.shared_trade(uuid) from public, anon, authenticated;

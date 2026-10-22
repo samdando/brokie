@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
 import { isConfigured } from "./config";
-import type { Bubble, Candle, Position, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Side, Squad, Trade } from "./types";
+import type { Bubble, Candle, Position, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Quote, Side, Squad, Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -84,6 +84,7 @@ export class Game {
   private bubbleRequest = 0;
   private listeners = new Set<() => void>();
   private timer: number | null = null;
+  private quoteTimer: number | null = null;
   private beat = 0;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
@@ -111,27 +112,55 @@ export class Game {
   }
 
   setActive(active: boolean) {
-    if (!active) { if (this.timer) window.clearTimeout(this.timer); this.timer = null; return; }
+    if (!active) {
+      if (this.timer) window.clearTimeout(this.timer);
+      if (this.quoteTimer) window.clearTimeout(this.quoteTimer);
+      this.timer = this.quoteTimer = null; return;
+    }
     if (this.state.phase === "ready") this.loop(); else if (this.state.phase === "failed") void this.start();
   }
 
   private loop() {
     if (this.timer) window.clearTimeout(this.timer);
     const tick = async () => {
-      try { await this.refreshState(); } catch { /* keep going */ }
-      if (this.beat % 3 === 0) { await this.refreshBoard(); await this.refreshCandles(); }
-      if (this.beat % 12 === 0) await this.refreshSquads();
-      if (this.beat % 6 === 0) await this.refreshEvents();
-      await this.refreshChat();   // every beat, so new messages pop up wherever you are
+      // All at once rather than one after another, so a slow call doesn't hold up the rest.
+      const jobs: Promise<unknown>[] = [this.refreshState().catch(() => { /* keep going */ }), this.refreshChat()];
+      if (this.beat % 3 === 0) jobs.push(this.refreshBoard(), this.refreshCandles());
+      if (this.beat % 12 === 0) jobs.push(this.refreshSquads());
+      if (this.beat % 6 === 0) jobs.push(this.refreshEvents());
+      await Promise.all(jobs);
       this.beat++;
       this.timer = window.setTimeout(tick, 5000);
     };
     this.beat = 0;
     void tick();
+    this.quoteLoop();
+  }
+
+  /** Prices on their own fast lane: a tiny read every 1.5 s while the app is on screen,
+   *  instead of waiting for the full account refresh every 5 s. */
+  private quoteLoop() {
+    if (this.quoteTimer) window.clearTimeout(this.quoteTimer);
+    const tick = async () => {
+      if (!document.hidden && this.state.me) {
+        try { this.mergeQuotes(await this.api.select<Quote[]>("quotes?select=market,price,quoted_at")); } catch { /* next beat */ }
+      }
+      this.quoteTimer = window.setTimeout(tick, 1500);
+    };
+    void tick();
+  }
+
+  /** Keep whichever quote is newer per market, so a slower response never rolls a price back. */
+  private mergeQuotes(incoming: Quote[]) {
+    const me = this.state.me;
+    if (!me || !Array.isArray(incoming) || incoming.length === 0) return;
+    const merged = newestQuotes(me.quotes, incoming);
+    if (merged !== me.quotes) this.set({ me: { ...me, quotes: merged } });
   }
 
   async refreshState() {
     const me = await this.api.rpc<MyState>("my_state");
+    if (this.state.me) me.quotes = newestQuotes(this.state.me.quotes, me.quotes ?? []);
     this.set({ me, clockOffset: Date.parse(me.server_time) - Date.now() });
     this.checkSeason(me);
   }
@@ -465,6 +494,19 @@ export class Game {
     if (!squad) throw new BackendError("Join a squad to use voice.");
     return this.api.fn<{ url: string; token: string; room: string }>("voice-token", { squadId: squad.id, room });
   }
+}
+
+/** Merge two quote lists, keeping the newest per market. Returns `base` itself when nothing changed. */
+export function newestQuotes(base: Quote[], incoming: Quote[]): Quote[] {
+  let changed = false;
+  const out = [...base];
+  for (const q of incoming) {
+    const i = out.findIndex((x) => x.market === q.market);
+    if (i < 0) { out.push(q); changed = true; continue; }
+    const cur = out[i];
+    if (Date.parse(q.quoted_at) > Date.parse(cur.quoted_at) || (q.quoted_at === cur.quoted_at && q.price !== cur.price)) { out[i] = q; changed = true; }
+  }
+  return changed ? out : base;
 }
 
 export const game = new Game();

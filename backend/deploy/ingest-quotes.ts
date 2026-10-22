@@ -1,7 +1,14 @@
 // Brokie · ingest-quotes
 // Pulls Gold, NAS100 and US500 from an OANDA practice account and hands them
 // to the database, which rounds to the tick, stores the candle history and
-// liquidates blown accounts. Called every 10 seconds by pg_cron.
+// liquidates blown accounts.
+//
+// Two ways to call it (pg_cron does, see cron.sql / cron_fast.sql):
+//   body {}                      one price pull, then reply (the old 10-second schedule)
+//   body {"loop_seconds": 55}    reply straight away, then keep pulling every
+//                                "every_ms" (default 2000) for that long in the
+//                                background. Run once a minute, that gives ~2 s prices
+//                                for ~43k function calls a month (free plan: 500k).
 //
 // Secrets (Supabase → Edge Functions → Secrets):
 //   OANDA_TOKEN        your OANDA practice API token
@@ -12,6 +19,8 @@
 // Deploy with "Verify JWT" turned OFF: a secret the database generated for
 // itself (brokie_private.cron_secret) protects it instead.
 
+
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 Deno.serve(async (req) => {
   // Works with the legacy service_role JWT or a newer sb_secret_ key.
@@ -32,24 +41,41 @@ Deno.serve(async (req) => {
   if (!token || !account) return json({ error: "OANDA_TOKEN / OANDA_ACCOUNT_ID not set" }, 500);
   const host = Deno.env.get("OANDA_HOST") ?? "https://api-fxpractice.oanda.com";
 
-  const feed = await fetch(
-    `${host}/v3/accounts/${encodeURIComponent(account)}/pricing?instruments=XAU_USD,NAS100_USD,SPX500_USD`,
-    { headers: { Authorization: `Bearer ${token}`, "Accept-Datetime-Format": "RFC3339" } },
-  );
-  if (!feed.ok) return json({ error: `OANDA ${feed.status}`, detail: (await feed.text()).slice(0, 300) }, 502);
-  const quotes = toQuotes(await feed.json());
+  const pull = async (): Promise<Response> => {
+    const feed = await fetch(
+      `${host}/v3/accounts/${encodeURIComponent(account)}/pricing?instruments=XAU_USD,NAS100_USD,SPX500_USD`,
+      { headers: { Authorization: `Bearer ${token}`, "Accept-Datetime-Format": "RFC3339" } },
+    );
+    if (!feed.ok) return json({ error: `OANDA ${feed.status}`, detail: (await feed.text()).slice(0, 300) }, 502);
+    const quotes = toQuotes(await feed.json());
+    // Nothing tradeable (weekend / maintenance): leave prices stale so the
+    // server pauses new trades instead of filling on old prices.
+    if (quotes.length === 0) return json({ accepted: 0, note: "market closed" });
+    const rpc = await fetch(`${rest}/ingest_quotes`, { method: "POST", headers, body: JSON.stringify({ p_quotes: quotes }) });
+    return new Response(await rpc.text(), { status: rpc.status, headers: { "Content-Type": "application/json" } });
+  };
 
-  // Nothing tradeable (weekend / maintenance): leave prices stale so the
-  // server pauses new trades instead of filling on old prices.
-  if (quotes.length === 0) return json({ accepted: 0, note: "market closed" });
+  let opts: { loop_seconds?: unknown; every_ms?: unknown } = {};
+  try { opts = await req.json(); } catch { /* empty body = single pull */ }
+  const loopSeconds = Math.min(58, Math.max(0, Number(opts.loop_seconds) || 0));
+  if (!loopSeconds || typeof EdgeRuntime === "undefined") return pull();
 
-  const rpc = await fetch(`${rest}/ingest_quotes`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ p_quotes: quotes }),
-  });
-  const body = await rpc.text();
-  return new Response(body, { status: rpc.status, headers: { "Content-Type": "application/json" } });
+  const every = Math.min(10_000, Math.max(1000, Number(opts.every_ms) || 2000));
+  const until = Date.now() + loopSeconds * 1000;
+  EdgeRuntime.waitUntil((async () => {
+    while (Date.now() < until) {
+      const started = Date.now();
+      try {
+        const r = await pull();
+        await r.body?.cancel();
+        if (r.status === 502) break;   // OANDA refused: stop hammering it until the next minute
+      } catch { /* network blip: try again next beat */ }
+      const wait = every - (Date.now() - started);
+      if (Date.now() + Math.max(0, wait) >= until) break;
+      if (wait > 0) await new Promise((res) => setTimeout(res, wait));
+    }
+  })());
+  return json({ looping: loopSeconds, every_ms: every }, 202);
 });
 
 function json(body: unknown, status = 200) {

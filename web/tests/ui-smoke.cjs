@@ -2,11 +2,11 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert=require('node:assert/strict');
 (async()=>{
-const browser=await chromium.launch({channel:'chrome',headless:true});
+const browser=await chromium.launch(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH,headless:true}:{channel:'chrome',headless:true});
 const page=await browser.newPage({viewport:{width:393,height:852},deviceScaleFactor:1});
 const errors=[];page.on('pageerror',e=>{errors.push(e.message); console.error('PAGE ERROR',e.message)});
 await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
-await page.goto('http://127.0.0.1:5173');
+await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
 await page.evaluate(async()=>{
  const {game}=await import('/src/game.ts'); window.testGame=game;
  for(const name of ['setActive','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles']) game[name]=async()=>{};
@@ -39,6 +39,57 @@ assert(await page.getByTestId('go-long').isDisabled());await shot('locked');
 await page.getByRole('button',{name:'Review your trades'}).click();await shot('you');
 await page.getByTestId('receipt').click();await page.getByText('Trade details',{exact:true}).waitFor({state:"visible"});await page.getByTestId('prepare-card').click();await page.getByTestId('share-card').waitFor({state:"visible"});await shot('receipt');await page.getByRole('button',{name:'Done',exact:true}).click();
 await page.getByRole('tab',{name:'Lifetime',exact:true}).click();await page.getByTestId('lifetime').waitFor({state:"visible"});await shot('lifetime');
-for(const width of [320,430]) {await page.setViewportSize({width,height:852}); for(const tab of ['trade','squad','learn','you']){await page.getByTestId('tab-'+tab).click();await shot(tab+'-'+width);}}
-assert.deepEqual(errors,[]); console.log('PASS: 3 mobile widths, navigation, risk disclosure, chart info, squad management/chat, feed grouping, completion, lockout, receipts, lifetime; no runtime errors.');await browser.close();
+const sizes = [[320,568],[375,667],[390,844],[393,852],[430,932],[768,1024],[1024,768],[1440,900]];
+for(const [width,height] of sizes) {
+ await page.setViewportSize({width,height});
+ for(const tab of ['trade','squad','learn','you']){await page.getByTestId('tab-'+tab).click();await shot(tab+'-'+width);}
+ await page.getByTestId('tab-trade').click();
+ // Tap where the page is: Playwright's own click may re-scroll the button clear of the tab bar first.
+ await page.getByTestId('big-chart').evaluate(el=>el.scrollIntoView({block:'center'}));
+ const scroll = await page.getByTestId('big-chart').evaluate(el=>{const y=scrollY; el.click(); return y;});
+ await page.getByRole('dialog',{name:'Fullscreen chart'}).waitFor();
+ assert.equal(await page.evaluate(()=>document.body.style.position),'fixed');
+ assert.equal(await page.locator('.chart-host').evaluate(el=>getComputedStyle(el).touchAction),'none');
+ await page.mouse.move(width/2,40); await page.mouse.wheel(0,500);   // over the fullscreen header: the page must not scroll
+ assert.equal(await page.evaluate(()=>scrollY),0,'page behind fullscreen does not scroll');
+ await shot('fullscreen-'+width);
+ const box=await page.getByTestId('big-chart').boundingBox(); assert(box.y>=0 && box.y+box.height<=height,'fullscreen exit reachable');
+ await page.getByTestId('big-chart').click(); await page.waitForTimeout(150);
+ assert.equal(await page.evaluate(()=>scrollY),scroll,'restore scroll');
+ assert.equal(await page.evaluate(()=>document.body.style.position),'');
+}
+await page.getByTestId('tab-trade').click();
+await page.evaluate(()=>{
+ // On the live bar: the synthetic chart opens zoomed to the newest candle.
+ const g=window.testGame;
+ g.set({market:'nas',me:{...g.state.me,positions:[{id:'open1',market:'nas',side:'long',quantity:2,entry_price:29701,opened_at:new Date(Math.floor(Date.now()/60000)*60000).toISOString()}]}});
+});
+// Tapping your position pill (without dragging) opens the trade's entry details.
+assert.equal(await page.getByTestId('bracket-grip').getAttribute('data-pinned'),null,'entry in view: pill sits on the entry line');
+await page.getByTestId('bracket-grip').click();
+await page.getByTestId('trade-card').getByText('Entry time',{exact:true}).waitFor();
+await page.getByTestId('trade-card').getByText('Current P&L',{exact:true}).waitFor();
+await page.getByRole('button',{name:'Close trade card'}).click();
+// So does your face marker, where the chart draws it (the synthetic test chart doesn't place markers).
+if(await page.getByTestId('my-bubble').count()){await page.getByTestId('my-bubble').click();await page.getByTestId('trade-card').getByText('Entry time',{exact:true}).waitFor();await page.getByRole('button',{name:'Close trade card'}).click();}
+// Entry far off the zoomed chart: the pill pins to the edge so size and P&L stay visible, in fullscreen too.
+await page.evaluate(()=>{const g=window.testGame; g.set({me:{...g.state.me,positions:[{...g.state.me.positions[0],quantity:7,entry_price:29000}]}});});
+await page.getByTestId('bracket-grip').waitFor();
+assert.equal(await page.getByTestId('bracket-grip').getAttribute('data-pinned'),'below','pill pins to the bottom edge');
+assert.match(await page.getByTestId('bracket-grip').innerText(),/L7/);
+const host=await page.locator('.chart-host').boundingBox(), pill=await page.getByTestId('bracket-grip').boundingBox();
+assert(pill.y>=host.y && pill.y+pill.height<=host.y+host.height-20,'pinned pill inside the plot, above the time axis');
+await page.getByTestId('big-chart').click();
+assert.equal(await page.getByTestId('bracket-grip').getAttribute('data-pinned'),'below','still pinned in fullscreen');
+await page.screenshot({path:'/tmp/brokie-pinned-fullscreen.png'});
+await page.getByTestId('big-chart').click();
+// Squad board shows W/L, not the lowest trade.
+await page.evaluate(()=>{const g=window.testGame; g.set({leaderboard:g.state.leaderboard.map((r,i)=>({...r,trades:5,wins:3,losses:2}))});});
+await page.getByTestId('tab-squad').click();
+assert.match(await page.locator('[data-testid="leader-row"]').first().innerText(),/3W–2L/);
+assert.equal(await page.getByText('lowest trade').count(),0);
+await page.getByTestId('tab-trade').click();
+await page.getByTestId('big-chart').click(); await page.keyboard.press('Escape');
+assert.equal(await page.evaluate(()=>document.body.style.position),'');
+assert.deepEqual(errors,[]); console.log('PASS: 8 screen sizes, fullscreen scroll lock/restoration, tap-pill entry details, pinned position pill, squad W/L, navigation, risk disclosure, chart info, squad management/chat, feed grouping, completion, lockout, receipts, lifetime; no runtime errors.');await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

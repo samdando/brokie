@@ -10,12 +10,14 @@ export const MARKETS: Record<Market, { title: string; subtitle: string; symbol: 
 export interface Position { id: string; market: Market; side: Side; quantity: number; entry_price: number; opened_at: string }
 export interface Trade {
   id: string; market: Market; side: Side; quantity: number; entry_price: number; exit_price: number;
-  pnl: number; closed_at: string; reason: string;
+  pnl: number; opened_at?: string; closed_at: string; reason: string;
 }
 export interface Quote { market: Market; price: number; quoted_at: string }
 export interface Rules {
   status: "active" | "locked" | "blown"; start_balance: number; peak_equity: number; day_start_equity: number;
   daily_loss_pct: number; max_dd_pct: number; daily_floor: number; drawdown_floor: number; target: number;
+  /** "eod": the max loss floor sits under your best end-of-day balance (dd_base). "trailing": under the intraday peak. */
+  dd_mode?: "eod" | "trailing"; dd_base?: number;
   funded: boolean; resets_used: number; trading_days: number; qualify_days: number; equity: number;
 }
 export interface MyState {
@@ -27,6 +29,7 @@ export interface Squad { id: string; name: string; invite_code: string; owner_id
 export interface LeaderRow {
   handle: string; is_you: boolean; equity: number; return_pct: number; trades: number; worst_trade: number; open_positions: number;
   status?: "active" | "locked" | "blown"; funded?: boolean; resets_used?: number; trading_days?: number; qualified?: boolean;
+  wins?: number; losses?: number;
 }
 export interface Bubble {
   state: "open" | "closed"; id: string; handle: string; is_you: boolean; side: Side; quantity: number; entry_price: number;
@@ -59,3 +62,5 @@ export interface Candle { index: number; open: number; high: number; low: number
 
 export const direction = (s: Side) => (s === "long" ? 1 : -1);
 export const pnlOf = (p: Position, mark: number) => (mark - p.entry_price) * MARKETS[p.market].pointValue * p.quantity * direction(p.side);
+
+export interface SharedReceipt { handle: string; trade: Trade; candles?: Candle[]; bucket_seconds?: number }

@@ -153,7 +153,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
     };
     for (const b of merged) {
       if (hideMine && b.is_you) continue;   // your own open trade is drawn by the chart (with its SL/TP handle)
-      const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.1) : 1;
+      const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.08) : 1;
       add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, false, room < 0.2);
     }
     for (const b of bubbles) {
@@ -188,7 +188,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
 }
 
 /** The tap-a-marker card (like pump.fun's trader popover): who, size, entry, profit, how long. */
-function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote: number | null; market: Market; now: number; onClose: () => void }) {
+export function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote: number | null; market: Market; now: number; onClose: () => void }) {
   const open = b.state === "open";
   const pnl = open ? (quote != null ? pnlAt(b, quote, market) : 0) : b.pnl ?? 0;
   const pct = b.equity ? pnl / b.equity * 100 : null;
@@ -211,7 +211,8 @@ function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote: numbe
       <div className="tc-grid">
         <div><span>Entry price</span><b>{px(b.entry_price)}</b></div>
         <div><span>{open ? "Price now" : "Exit price"}</span><b>{open ? (quote != null ? px(quote) : "—") : px(b.exit_price ?? b.entry_price)}</b></div>
-        <div><span>{open ? "Profit" : "Result"}</span><b className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}{pct !== null && <small> {pct >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</small>}</b></div>
+        <div><span>{open ? "Current P&L" : "Realised P&L"}</span><b className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}{pct !== null && <small> {pct >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</small>}</b></div>
+        <div><span>Entry time</span><b>{new Date(b.opened_at).toLocaleString()}</b></div>
         <div><span>Held for</span><b>{held((open ? now : Date.parse(b.at)) - Date.parse(b.opened_at))}</b></div>
       </div>
       {!b.is_you && <div className="tc-actions"><PlayerLink handle={b.handle}>Profile</PlayerLink></div>}

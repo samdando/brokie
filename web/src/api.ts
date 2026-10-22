@@ -64,6 +64,15 @@ export class Backend {
   publicRPC<T>(name: "shared_trade", params: Record<string, unknown>): Promise<T> {
     return this.raw(`rest/v1/rpc/${name}`, params, false) as Promise<T>;
   }
+  /** Read a table the player is allowed to see, e.g. "quotes?select=market,price,quoted_at". */
+  async select<T = unknown>(query: string): Promise<T> {
+    const headers: Record<string, string> = { apikey: this.anon, Authorization: `Bearer ${(await this.ensureSession()).access_token}` };
+    let res: Response;
+    try { res = await fetch(`${this.base}/rest/v1/${query}`, { headers, cache: "no-store" }); }
+    catch { throw new BackendError("Can't reach the Brokie server. Check your connection.", "network"); }
+    if (!res.ok) throw new BackendError(`Server error (${res.status}).`, String(res.status));
+    return (await res.json()) as T;
+  }
   fn<T = unknown>(name: string, body: Record<string, unknown>): Promise<T> {
     return this.raw(`functions/v1/${name}`, body, true) as Promise<T>;
   }

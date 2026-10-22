@@ -2,12 +2,13 @@ import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, u
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
-import { TradeMarker, useFreshIds } from "./Bubbles";
+import { TradeCard, TradeMarker, useFreshIds } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
 const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#969D8D";
-export const CHART_SMALL = 256;   // chart height in px (includes the time axis)
+export const CHART_SMALL = 256;
+const PIN_TOP = 36, PIN_BOTTOM = 40;   // px kept clear for the O/H/L/C legend and the time axis   // chart height in px (includes the time axis)
 // One chart on screen at a time, so its height lives here and the overlay pieces read it.
 let H = CHART_SMALL;
 const VIEW_BARS = 60;     // bars shown when snapped to live
@@ -296,11 +297,18 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct, fresh, hedged, b, onSet, onClear }:
   { p: Position; slot: number; handle: string; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
     width: number; sizePct: number | null; fresh: boolean; hedged: boolean; b: Bracket; onSet?: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
+  const [details, setDetails] = useState(false);
   const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
   const [open, setOpen] = useState<keyof Bracket | null>(null);
   const entryY = yOf(p.entry_price);
   const at = toXY(Date.parse(p.opened_at) / 1000, p.entry_price);
   const inView = (v: number | null): v is number => v !== null && v >= 0 && v <= H;
+  // Zoomed in, your entry line can sit off the chart. The pill then pins to the top or bottom edge
+  // (clear of the O/H/L/C legend and the time axis) so size and P&L are always on screen.
+  const pinTop = PIN_TOP + slot * 22, pinBottom = H - PIN_BOTTOM - slot * 22;
+  const rawY = entryY === null ? null : entryY + slot * 22;
+  const pinned = rawY === null ? null : rawY < pinTop ? "above" : rawY > pinBottom ? "below" : null;
+  const pillY = rawY === null ? null : Math.max(pinTop, Math.min(pinBottom, rawY));
   const pnl = quote != null ? pnlOf(p, quote) : 0;
   // Stop or target is decided against the LIVE price, not your entry, so a stop can trail past your
   // entry into profit (a short's stop dragged below entry is still a stop while it's above price).
@@ -330,7 +338,12 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
-      if (!moved) { if (fixed && ev.type === "pointerup") setOpen((o) => (o === fixed ? null : fixed)); return; }
+      if (!moved) {
+        if (ev.type !== "pointerup") return;
+        if (fixed) setOpen((o) => (o === fixed ? null : fixed));
+        else setDetails(true);   // a tap (not a drag) on your pill shows the trade
+        return;
+      }
       setDrag((dr) => {
         if (dr && ev.type === "pointerup") { onSet({ [dr.key]: clampFor(dr.key, dr.price) }); buzz(10); setOpen(null); }
         return null;
@@ -356,18 +369,19 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
 
   return (
     <>
-      {at && inView(at.y) && <TradeMarker handle={handle} long={p.side === "long"} me fresh={fresh} style={{ left: at.x, top: at.y, pointerEvents: "none" }}
+      {at && inView(at.y) && <TradeMarker handle={handle} long={p.side === "long"} me fresh={fresh} style={{ left: at.x, top: at.y }} onClick={() => setDetails(true)}
         testId="my-bubble" label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}`} />}
+      {details && <TradeCard b={{ ...p, state: "open", handle, is_you: true, exit_price: null, pnl: null, reason: null, at: p.opened_at, size_pct: sizePct, dd_floor: null, equity: null }} quote={quote} market={p.market} now={Date.now()} onClose={() => setDetails(false)} />}
       {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
       {drag && line(drag.key, drag.price, true)}
-      {inView(entryY) && (
-        <button type="button" className={`pos-pill ${p.side} ${pnl >= 0 ? "up" : "down"}`} style={{ top: entryY, left: 4, marginTop: slot * 22, touchAction: "none" }}
-          onPointerDown={(e) => start(e)} data-testid="bracket-grip"
-          aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}, ${signedMoney(pnl)}. Drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
+      {pillY !== null && (
+        <button type="button" className={`pos-pill ${p.side} ${pnl >= 0 ? "up" : "down"} ${pinned ? "pinned" : ""}`} style={{ top: pillY, left: 4, touchAction: "none" }}
+          onPointerDown={(e) => start(e)} data-testid="bracket-grip" data-pinned={pinned ?? undefined}
+          aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}, ${signedMoney(pnl)}${pinned ? `. Entry is ${pinned} the visible chart` : ""}. Tap for details, or drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
           <span className="pos-side">{p.side === "long" ? "L" : "S"}{p.quantity}</span>
           {!drag && quote != null && <b data-testid="pnl-tag">{signedMoney(pnl)}</b>}
           {hedged && <span className="pos-h">H</span>}
-          <span aria-hidden="true" className="pos-grip">⇕</span>
+          <span aria-hidden="true" className="pos-grip">{pinned === "above" ? "↑" : pinned === "below" ? "↓" : "⇕"}</span>
         </button>
       )}
     </>

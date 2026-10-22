@@ -9,14 +9,14 @@ Brokie is a SwiftUI iPhone app (plus a web build on GitHub Pages) with a Supabas
 
 ## 2. Prop-firm rules (enforced server-side in Supabase, not just in the app)
 - Max daily loss is 5% of the start-of-day balance. Hitting it closes all positions and locks trading until the next day (pick a timezone and state it).
-- Max total drawdown is 10%, trailing from the peak balance. Hitting it closes all positions and marks the account BLOWN for the season.
+- Max loss limit (MLL) is 8%, measured from the highest end-of-day balance (session close, 5pm New York), not the intraday peak. Touching it at any time closes all positions and marks the account BLOWN for the season. (Changed 22 Oct 2026 from 10% intraday trailing; trailing stays available as `dd_mode = 'trailing'` for a possible hard mode.)
 - Hitting the profit target of +10% earns a "Funded" badge. The player can keep trading and climbing the leaderboard.
-- Players need at least 5 trading days to qualify for the season leaderboard.
+- Players need at least 5 trading days to qualify for the season leaderboard. A buy-back resets this: 5 new trading days from the reset.
 - Show live meters on the Trade screen for the daily loss left, the drawdown left and progress to the target.
 
 ## 3. Blown accounts
 - A blown account shows a public "💀 REKT" bubble on the profile and in the squad feed.
-- One buy-back reset per season, with tougher rules: 4% daily loss and 8% drawdown. This is a paid hook.
+- One buy-back reset per season, with a tougher 4% daily loss limit (the 8% MLL is now the same as everyone's) and qualifying starts again. This is a paid hook.
 
 ## 4. What resets and what stays
 - **Resets each season:** balance, season rank and season badges.
@@ -69,9 +69,14 @@ Everyone's longs and shorts show up live on the chart you're looking at.
 GitHub Pages is free. The Supabase free tier probably holds, but Pro at $25 a month is recommended because free projects pause. The OANDA practice API is free. LiveKit's free tier covers light voice, and voice is the first cost to grow, so check its limits before launch.
 
 ## 12. Season 1 launch plan
-- **Weeks −2 to 0:** a waitlist on the web link with squad codes, a countdown ("$100k fake, 10% drawdown, one shot"), and the first 100 sign-ups get an "S1 OG" badge.
+- **Weeks −2 to 0:** a waitlist on the web link with squad codes, a countdown ("$100k fake, 8% max loss, one shot"), and the first 100 sign-ups get an "S1 OG" badge.
 - **Day 1:** a live voice-room kickoff, with clips of the first bubbles posted.
 - **Weeks 1–8:** a weekly leaderboard drop, a "REKT of the week" roast, a week-4 "who's still alive" post, and a live voice-room finale.
 - **Videos:** (1) "POV: your mate's bubble is about to breach," (2) "Day X of trying to pass a prop challenge with fake money," and (3) "Rating my friends' trades."
 - **Referral:** private leagues need 3+ mates, and a squad of 5 unlocks a squad bubble skin. Each invited friend who survives week 1 gives you a free reset token.
 - **Share cards:** every REKT and Funded moment auto-generates a stats card with a Brokie link.
+
+## Ideas for Season 2 (Sam, 22 Oct 2026)
+- Let players choose their account size, and rank by percentage gain so every size competes fairly.
+- Sizing restrictions per account size.
+- Rule choices (e.g. EOD vs intraday trailing drawdown) that could change how a score counts, with harder rules worth more.

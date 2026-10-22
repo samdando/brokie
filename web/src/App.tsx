@@ -11,7 +11,7 @@ import { EventStrip, FlashOverlay } from "./Events";
 import { FeedbackSheet } from "./Social";
 import { avatarColor } from "./Bubbles";
 import { useVoice, voice, ROOMS } from "./voice";
-import { Icon, countdown, useNow, useToast } from "./ui";
+import { Icon, useNow, useToast } from "./ui";
 
 type Tab = "trade" | "squad" | "learn" | "you";
 
@@ -19,7 +19,6 @@ export function App() {
   const st = useGame();
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has("join") ? "squad" : "trade"));
   const [toast, setToast] = useToast();
-  const now = useNow(30_000);
   const [fb, setFb] = useState(false);
   const [reviewHistory, setReviewHistory] = useState(false);
   const sharedToken = new URLSearchParams(location.search).get("trade");
@@ -49,7 +48,7 @@ export function App() {
       <div className="app">
         <div className="header">
           <div className="wordmark">brokie<i /></div>
-          <span className="pill-btn" data-testid="season-pill">S{st.me.season_number ?? ""} · {countdown(st.me.season_ends_at, now + st.clockOffset).toUpperCase()} LEFT</span>
+          <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
           <button className="icon-btn" onClick={() => setFb(true)} aria-label="Send feedback" data-testid="feedback-btn">💬</button>
           <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
         </div>
@@ -119,4 +118,16 @@ function ChatPop({ onOpen }: { onOpen: () => void }) {
       <span className="chat-pop-x" role="presentation" onClick={(e) => { e.stopPropagation(); game.dismissChatPop(); }}>✕</span>
     </button>
   );
+}
+
+/** Ticks on its own so the rest of the app doesn't re-render every second. */
+function SeasonTimer({ number, end, offset }: { number: number; end: string; offset: number }) {
+  const now = useNow(1000) + offset;
+  const remaining = Math.max(0, Date.parse(end) - now);
+  const minutes = Math.ceil(remaining / 60000);
+  const progress = Math.max(0, Math.min(100, (1 - remaining / (56 * 86400000)) * 100));
+  return <div className="season-timer" data-testid="season-pill" title="8-week season · ends Monday 00:00 Brisbane">
+    <span>Season {number} · <span className="season-digits">{Math.floor(minutes / 1440)}d {String(Math.floor(minutes / 60) % 24).padStart(2, "0")}h {String(minutes % 60).padStart(2, "0")}m</span> left</span>
+    <div className="season-progress" role="progressbar" aria-label="Season elapsed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><i style={{ width: `${progress}%` }} /></div>
+  </div>;
 }

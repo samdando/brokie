@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
 import { drawTradeImage, receiptURL } from "./TradeImage";
-import { MARKETS, Trade, pnlOf } from "./types";
+import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
 
 export function YouScreen({ toast }: { toast: (m: string) => void }) {
   const st = useGame();
@@ -149,17 +149,22 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
     try {
       const token = await game.api.rpc<string>("share_trade", {p_trade:trade.id});
       const target = receiptURL(token);
-      const canvas = await drawTradeImage(trade,handle,target);
+      const receipt = await game.api.publicRPC<SharedReceipt>("shared_trade", { p_token: token }).catch(() => ({ trade, candles: game.state.candles[trade.market], bucket_seconds: game.state.candleSeconds }));
+      const canvas = await drawTradeImage(receipt.trade, handle, target, receipt.candles, receipt.bucket_seconds);
       const image = await new Promise<Blob>((resolve,reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error("Couldn't create the image.")),"image/png"));
-      setUrl(canvas.toDataURL("image/png")); setBlob(image); setLink(target);
+      const dataUrl = canvas.toDataURL("image/png");
+      setUrl(dataUrl); setBlob(image); setLink(target);
+      // One tap: open the share sheet straight away where the phone supports it. If the browser
+      // says the tap is too old to share from, the Share button stays up for a second tap.
+      if (canShareFile(image)) await share(image, target, dataUrl);
     } catch { setError("Couldn't create the share card. Please try again once sharing is available."); }
     finally { setBusy(false); }
   }
-  async function share() {
-    if (!blob) return;
-    const file = new File([blob], "brokie-trade.png", { type: "image/png" });
-    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: "Brokie trade", text: link }); return; } catch { return; } }
-    const a = document.createElement("a"); a.href = url!; a.download = "brokie-trade.png"; a.click();
+  async function share(b = blob, l = link, u = url) {
+    if (!b) return;
+    const file = new File([b], "brokie-trade.png", { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: "Brokie trade", text: l }); return; } catch { return; } }
+    const a = document.createElement("a"); a.href = u!; a.download = "brokie-trade.png"; a.click();
   }
   return (
     <Sheet open={!!trade} onClose={onClose}>
@@ -167,7 +172,7 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
         <div className="row between"><Eyebrow>Trade details</Eyebrow><button className="lime" style={{ fontWeight: 700, fontSize: 13 }} onClick={onClose}>Done</button></div>
         {trade && <div className="stack" style={{ gap: 12 }}><h3 className="h3">{MARKETS[trade.market].title} · {trade.side} · {trade.quantity} micros</h3><div className="detail"><span>Result</span><span className={trade.pnl >= 0 ? "lime" : "red"}>{signedMoney(trade.pnl)}</span></div><div className="detail"><span>Entry → exit</span><span>{px(trade.entry_price)} → {px(trade.exit_price)}</span></div><div className="detail"><span>Closed</span><span>{new Date(trade.closed_at).toLocaleString()}</span></div><div className="detail"><span>Reason</span><span>{trade.reason.replace(/_/g, " ")}</span></div></div>}
         {url && <img src={url} alt="Trade card" className="card-preview" />}
-        {!blob ? <><div className="muted" style={{fontSize:12}}>Create a public receipt link and an image with a QR code. Anyone with the link can view this trade.</div><Button onClick={prepare} busy={busy} id="prepare-card">Create trade image + QR ↗</Button></> : <><Button onClick={share} id="share-card">Share trade image ↗</Button><Button variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError("Couldn't copy the link. Use the link below."); } }}>{copied ? "Copied ✓" : "Copy receipt link"}</Button><a className="receipt-link" href={link}>{link}</a></>}
+        {!blob ? <><div className="muted" style={{fontSize:12}}>Sharing makes a public receipt link and an image with a QR code. Anyone with the link can view this trade.</div><Button onClick={prepare} busy={busy} id="prepare-card">Share</Button></> : <><Button onClick={() => share()} id="share-card">Share</Button><Button variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError("Couldn't copy the link. Use the link below."); } }}>{copied ? "Copied ✓" : "Copy receipt link"}</Button><a className="receipt-link" href={link}>{link}</a></>}
         {error && <div className="err" role="alert">{error}</div>}
       </div>
     </Sheet>
@@ -211,3 +216,5 @@ function OppositeSetting() {
     </div>
   );
 }
+
+const canShareFile = (b: Blob) => { try { return !!navigator.canShare?.({ files: [new File([b], "brokie-trade.png", { type: "image/png" })] }); } catch { return false; } };

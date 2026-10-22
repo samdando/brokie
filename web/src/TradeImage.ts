@@ -1,5 +1,5 @@
 import QRCode from "qrcode";
-import { MARKETS, Trade } from "./types";
+import { Candle, MARKETS, Trade } from "./types";
 import { px, signedMoney } from "./ui";
 
 export function receiptURL(token: string) {
@@ -8,8 +8,8 @@ export function receiptURL(token: string) {
   return url.href;
 }
 
-/** Exact fill prices, not an invented candle history. The QR resolves to a saved server receipt. */
-export async function drawTradeImage(t: Trade, handle: string, url: string): Promise<HTMLCanvasElement> {
+/** Real OHLC history and exact fills; missing history is explicitly labelled. */
+export async function drawTradeImage(t: Trade, handle: string, url: string, candles: Candle[] = [], bucketSeconds = 60): Promise<HTMLCanvasElement> {
   const c = document.createElement("canvas"); c.width = 1080; c.height = 1350;
   const g = c.getContext("2d")!;
   const green = "#D6FE59", red = "#FF7D8B", muted = "#969D8D", tint = t.pnl >= 0 ? green : red;
@@ -22,14 +22,36 @@ export async function drawTradeImage(t: Trade, handle: string, url: string): Pro
   const result = signedMoney(t.pnl); let fontSize = 116;
   do { g.font = `700 ${fontSize}px system-ui`; if (g.measureText(result).width <= 936) break; fontSize -= 4; } while (fontSize > 32);
   text(result, 65, 535, fontSize, tint, 700);
-  text("YOUR FILLS · ENTRY → EXIT", 72, 625, 23, muted);
-  // A two-point fill diagram is intentionally labelled; it doesn't imply historical intratrade prices.
-  const entryY = t.entry_price === t.exit_price ? 755 : t.exit_price > t.entry_price ? 790 : 700;
-  const exitY = t.entry_price === t.exit_price ? 755 : t.exit_price > t.entry_price ? 700 : 790;
+  const entryTime = Date.parse(t.opened_at ?? "") / 1000;
+  const exitTime = Date.parse(t.closed_at) / 1000;
+  const bars = candles.filter(b => [b.index,b.open,b.high,b.low,b.close].every(Number.isFinite) && b.index * bucketSeconds <= exitTime + bucketSeconds * 3 && (!Number.isFinite(entryTime) || (b.index + 1) * bucketSeconds >= entryTime - bucketSeconds * 3)).sort((a,b) => a.index - b.index);
+  text(bars.length ? "PRICE CANDLES · ENTRY → EXIT" : "PRICE HISTORY UNAVAILABLE · EXACT FILLS BELOW", 72, 625, 23, muted);
   g.strokeStyle = "#2C3028"; g.lineWidth = 2;
   for (const y of [675, 735, 795, 855]) { g.beginPath(); g.moveTo(90, y); g.lineTo(990, y); g.stroke(); }
-  g.strokeStyle = tint; g.lineWidth = 5; g.setLineDash([10, 9]); g.beginPath(); g.moveTo(170, entryY); g.lineTo(910, exitY); g.stroke(); g.setLineDash([]);
-  for (const [x,y] of [[170,entryY],[910,exitY]]) { g.fillStyle = tint; g.beginPath(); g.arc(x,y,11,0,Math.PI*2); g.fill(); }
+  if (bars.length) {
+    const low = Math.min(t.entry_price,t.exit_price,...bars.map(b => b.low));
+    const high = Math.max(t.entry_price,t.exit_price,...bars.map(b => b.high));
+    const range = Math.max(high-low, MARKETS[t.market].tick);
+    const y = (price: number) => 835 - (price-low)/range*140;
+    const start = Math.min(bars[0].index * bucketSeconds, Number.isFinite(entryTime) ? entryTime : exitTime);
+    const end = Math.max((bars[bars.length-1].index+1)*bucketSeconds,exitTime);
+    const x = (time: number) => 110 + (time-start)/Math.max(bucketSeconds,end-start)*860;
+    const width = Math.max(1, Math.min(18, 860*bucketSeconds/Math.max(bucketSeconds,end-start)*0.65));
+    for (const b of bars) {
+      const cx = x((b.index+0.5)*bucketSeconds);
+      g.strokeStyle = g.fillStyle = b.close >= b.open ? green : red;
+      g.lineWidth = 2; g.beginPath(); g.moveTo(cx,y(b.high)); g.lineTo(cx,y(b.low)); g.stroke();
+      g.fillRect(cx-width/2,Math.min(y(b.open),y(b.close)),width,Math.max(2,Math.abs(y(b.open)-y(b.close))));
+    }
+    for (const [label,time,price] of [["ENTRY",entryTime,t.entry_price],["EXIT",exitTime,t.exit_price]] as const) {
+      if (!Number.isFinite(time)) continue;
+      const cx=x(time), cy=y(price);
+      g.strokeStyle="#fff"; g.lineWidth=3; g.beginPath(); g.arc(cx,cy,8,0,Math.PI*2); g.stroke();
+      const labelY=label === "ENTRY" ? 670 : 875;
+      g.beginPath(); g.moveTo(cx,cy+(label === "ENTRY" ? -10 : 10)); g.lineTo(cx,labelY+(label === "ENTRY" ? 5 : -22)); g.stroke();
+      text(label,Math.max(90,Math.min(910,cx-30)),labelY,18);
+    }
+  }
   text(px(t.entry_price), 72, 910, 32); text(px(t.exit_price), 760, 910, 32);
   text("Entry", 72, 950, 22, muted); text("Exit", 760, 950, 22, muted);
   text(new Date(t.closed_at).toLocaleDateString(undefined, {day:"numeric",month:"short",year:"numeric"}),72,1060,28,muted);

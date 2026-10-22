@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { game } from "./game";
-import type { Trade } from "./types";
+import type { SharedReceipt } from "./types";
 import { drawTradeImage, receiptURL } from "./TradeImage";
 import { signedMoney } from "./ui";
 
 export function SharedTradePage({ token }: { token: string }) {
-  const [data, setData] = useState<{handle: string; trade: Trade} | null>(null);
+  const [data, setData] = useState<SharedReceipt | null>(null);
   const [image, setImage] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -13,9 +13,9 @@ export function SharedTradePage({ token }: { token: string }) {
     let live = true;
     setError(""); setData(null); setImage("");
     if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(token)) { setError("That receipt link is invalid."); return; }
-    game.api.publicRPC<{handle: string; trade: Trade} | null>("shared_trade", {p_token: token}).then(async result => {
+    game.api.publicRPC<SharedReceipt | null>("shared_trade", {p_token: token}).then(async result => {
       if (!result) throw new Error("This shared receipt is no longer available.");
-      const canvas = await drawTradeImage(result.trade,result.handle,receiptURL(token));
+      const canvas = await drawTradeImage(result.trade,result.handle,receiptURL(token),result.candles,result.bucket_seconds);
       if (live) { setData(result); setImage(canvas.toDataURL("image/png")); }
     }).catch(e => { if (live) setError((e as Error).message); });
     return () => { live = false; };

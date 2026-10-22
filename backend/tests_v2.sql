@@ -1,4 +1,5 @@
 \set ON_ERROR_STOP on
+-- Checks the original 10% intraday-trailing rules: run it on a database WITHOUT rules_v4.sql (tests_rules_v4.sql covers the new rules).
 create or replace function pg_temp.check(ok boolean, msg text) returns void language plpgsql as $$
 begin if not coalesce(ok, false) then raise exception 'FAIL: %', msg; end if; raise notice 'ok: %', msg; end $$;
 create or replace function pg_temp.err(sql text) returns text language plpgsql as $$

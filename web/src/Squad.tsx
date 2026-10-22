@@ -2,7 +2,7 @@ import { PlayerLink } from "./Profiles";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
-import { Button, Eyebrow, Sheet, countdown, money, signedMoney, useNow } from "./ui";
+import { Button, Eyebrow, Sheet, countdown, money, useNow } from "./ui";
 import { Pit } from "./Trade";
 import { ChatCard, GlobalBoard } from "./Social";
 
@@ -194,7 +194,7 @@ function Leaderboard() {
                 {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
                 {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
                 {(r.resets_used ?? 0) > 0 && r.status !== "blown" && <span className="chip-status" style={{ background: "var(--line)", color: "var(--muted)" }}>BUY-BACK</span>}</div>
-              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"} · lowest trade ${signedMoney(r.worst_trade)}`}</div>
+              <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"}${r.wins != null ? ` · ${r.wins}W–${r.losses ?? 0}L` : ""}`}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div className={`mono ${r.return_pct >= 0 ? "lime" : "red"}`} style={{ fontSize: 14, fontWeight: 600 }}>{r.return_pct >= 0 ? "+" : ""}{r.return_pct.toFixed(2)}%</div>
