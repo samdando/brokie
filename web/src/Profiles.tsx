@@ -28,8 +28,8 @@ export function Profiles({ children }: { children: ReactNode }) {
   const close = () => { setHandle(null); const url = new URL(location.href); url.searchParams.delete("player"); history.replaceState(null, "", url); };
   return <OpenProfile.Provider value={setHandle}>{children}
     <Sheet open={!!handle} onClose={close}>
-      <div className="stack" data-testid="player-profile">
-        <div className="row between"><h3 className="h3">@{handle}</h3><button className="text-action lime" onClick={close}>Done</button></div>
+      <div className="stack player-card" data-testid="player-profile">
+        <div className="row between player-card-heading"><div><span className="eyebrow">BROKIE / PLAYER CARD</span><h3 className="h3">@{handle}</h3></div><button className="text-action lime" onClick={close}>Done</button></div>
         {handle && <LiveNow handle={handle} />}
         <div className="eyebrow" style={{ marginTop: 6 }}>Lifetime</div>
         {error ? <div className="err" role="alert">{error}<button className="text-action lime" onClick={() => setAttempt(x => x + 1)}>Try again</button></div>
@@ -77,8 +77,8 @@ function LiveNow({ handle }: { handle: string }) {
   const exits = (legs ?? []).filter((x) => x.b.state === "closed").sort((a, b) => Date.parse(b.b.at) - Date.parse(a.b.at)).slice(0, 5);
   if (!row && legs && legs.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Live positions show for players in your squad.</div>;
   return (
-    <div className="stack" style={{ gap: 10 }} data-testid="profile-live">
-      <div className="eyebrow">Right now</div>
+    <div className={`stack player-live ${row?.status === "blown" ? "rekt" : ""}`} style={{ gap: 10 }} data-testid="profile-live">
+      <div className="row between"><div className="eyebrow">◉ Right now</div><span className="player-state">{row?.status === "blown" ? "💀 REKT" : row?.status === "locked" ? "🔒 LOCKED" : row?.funded ? "🏆 TARGET HIT" : "IN THE GAME"}</span></div>
       <div className="profile-stats three">
         <div className="panel"><div className="eyebrow">Equity</div><b>{row ? money(row.equity, 0) : "—"}</b></div>
         <div className="panel"><div className="eyebrow">Season</div><b className={row && row.return_pct < 0 ? "red" : "lime"}>{row ? `${row.return_pct >= 0 ? "+" : ""}${Number(row.return_pct).toFixed(2)}%` : "—"}</b></div>

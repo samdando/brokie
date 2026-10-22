@@ -638,3 +638,28 @@ button.tm { pointer-events: auto; }
 .voice-card.joined { box-shadow: 0 0 20px #d6fe5915; }
 .voice-card .chip, .voice-card .text-action { min-height: 44px; }
 @media (max-width: 360px) { .competition-heading .title { font-size: 35px; } .podium-place b { font-size: 12px; } }
+
+/* Round 2 / Profile: a collectible player card, with live trading stats. */
+.sheet:has(.player-card) { background: linear-gradient(155deg,#222a39,#10161e 45%); border: 1px solid #737c99; padding: 14px 18px 30px; border-radius: 28px 28px 0 0; }
+.player-card { gap: 18px; }
+.player-card-heading { gap: 12px; border-bottom: 1px solid #ffffff20; padding-bottom: 14px; }
+.player-card-heading > div { min-width: 0; }
+.player-card-heading .eyebrow { font-size: 8px; letter-spacing: 2px; color: var(--purple); }
+.player-card-heading .h3 { font-size: 29px; font-weight: 900; letter-spacing: -1px; overflow-wrap: anywhere; margin-top: 8px; }
+.player-live { padding: 16px; border-radius: 18px; background: radial-gradient(ellipse at top right,#d6fe5920,transparent 70%),#0c141c; border: 1px solid #b5a0fe50; box-shadow: 0 12px 28px #0004; }
+.player-state { font: 800 8px var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--lime); }
+.player-live.rekt { filter: saturate(.3); border-style: dashed; }
+.player-card .profile-stats.three { grid-template-columns: 1fr 1fr; gap: 12px; }
+.player-card .profile-stats.three .panel { padding: 10px 0; background: transparent; border-radius: 0; }
+.player-card .profile-stats.three .panel:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
+.player-card .profile-stats.three .panel:first-child b { font: 850 40px var(--round); letter-spacing: -2px; }
+.player-card .profile-stats.three b { font: 800 22px var(--mono); letter-spacing: -1px; }
+.player-card .detail { padding: 12px 0; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.player-card [data-testid="profile-position"], .player-card [data-testid="profile-exit"] { display: grid; grid-template-columns: minmax(0,1fr); padding: 13px; border-radius: 12px; background: #ffffff06; border: 1px solid var(--line); }
+.player-card [data-testid="profile-position"] > b { font-size: 24px; }
+.player-card [data-testid="profile-exit"] > b { font-size: 19px; }
+.player-card > .profile-stats { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.player-card > .profile-stats .panel { padding: 10px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+.player-card > .profile-stats .panel:last-child { grid-column: auto; }
+.player-card > .profile-stats b { font-size: 15px; overflow-wrap: anywhere; }
+.player-card .eyebrow { font-size: 8px; }
