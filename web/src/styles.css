@@ -837,3 +837,14 @@ button.tm { pointer-events: auto; }
 .sheet { z-index: 210; }
 .chat-pop { z-index: 215; }
 .toast { z-index: 220; }
+/* Chart timeframes picker (You tab settings). */
+.frame-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.frame-picks .chip { height: 34px; min-width: 46px; font-size: 11px; border: 1px solid var(--line); }
+.frame-picks .chip:disabled { opacity: 1; }
+.chart-controls .frame-btn { min-width: 38px; }
+.chart-controls .frame-btn:disabled { opacity: 1; }
+/* Four chart controls now (style, timeframe, size, squad): one row at every width. */
+.chart-card .chart-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.chart-card .chart-controls .chip:last-child { grid-column: auto; }
+.frame-picks { gap: 5px; }
+.frame-picks .chip { min-width: 40px; padding: 0 6px; }

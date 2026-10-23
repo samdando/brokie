@@ -17,6 +17,8 @@ export interface GameState {
   feed: FeedEvent[];
   candles: Partial<Record<Market, Candle[]>>;
   candleSeconds: number;
+  /** The timeframes the chart's one timeframe button cycles through (picked on the You tab). */
+  frames: number[];
   market: Market;
   clockOffset: number;
   freshBackupCode: string | null;
@@ -61,6 +63,24 @@ export const TAP_SIZE = 1;
 const SQUAD_KEY = "brokie.squad";
 const MARKET_KEY = "brokie.market";
 const QTY_KEY = "brokie.qty";
+const FRAMES_KEY = "brokie.frames";
+const FRAME_KEY = "brokie.frame";
+/** Every timeframe the chart can show (the server builds them from 1m / 1h / 1D bars). */
+export const FRAME_OPTIONS: { s: number; l: string }[] = [
+  { s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }, { s: 1800, l: "30m" },
+  { s: 3600, l: "1h" }, { s: 14400, l: "4h" }, { s: 86400, l: "1D" },
+];
+export const DEFAULT_FRAMES = [60, 300, 900];
+export const frameLabel = (s: number) => FRAME_OPTIONS.find((f) => f.s === s)?.l ?? `${Math.round(s / 60)}m`;
+const readFrames = (): number[] => {
+  try {
+    const v = JSON.parse(read(FRAMES_KEY) ?? "null");
+    const ok = Array.isArray(v) ? FRAME_OPTIONS.map((f) => f.s).filter((x) => v.includes(x)) : [];
+    return ok.length ? ok : DEFAULT_FRAMES;
+  } catch { return DEFAULT_FRAMES; }
+};
+/** Starts on the highest timeframe you picked unless you were on another one last time. */
+const readFrame = (frames: number[]): number => { const v = Number(read(FRAME_KEY)); return frames.includes(v) ? v : frames[frames.length - 1]; };
 const OPPOSITE_KEY = "brokie.opposite";
 const SEEN_KEY = "brokie.seen";
 const SEASON_KEY = "brokie.lastSeason";
@@ -74,7 +94,7 @@ export class Game {
   api = new Backend();
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
-    leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
+    leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
@@ -399,7 +419,19 @@ export class Game {
 
   async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }
   async refreshLifetime() { try { this.set({ lifetime: await this.api.rpc<Lifetime>("lifetime_stats") }); } catch { /* */ } }
-  setCandleSeconds(s: number) { this.set({ candleSeconds: s }); void this.refreshCandles(); }
+  setCandleSeconds(s: number) { if (s === this.state.candleSeconds) return; write(FRAME_KEY, String(s)); this.set({ candleSeconds: s }); void this.refreshCandles(); }
+  /** The timeframe a tap goes to: one step down (e.g. 1D → 4h → 15m), then back up to the highest. */
+  frameAfter() { const f = this.state.frames; const i = f.indexOf(this.state.candleSeconds); return i <= 0 ? f[f.length - 1] : f[i - 1]; }
+  nextFrame() { this.setCandleSeconds(this.frameAfter()); }
+  /** Turn a timeframe on or off in your list (at least one stays on). */
+  toggleFrame(s: number) {
+    const cur = this.state.frames;
+    const next = FRAME_OPTIONS.map((f) => f.s).filter((x) => (x === s ? !cur.includes(s) : cur.includes(x)));
+    if (!next.length) return;
+    write(FRAMES_KEY, JSON.stringify(next));
+    this.set({ frames: next });
+    if (!next.includes(this.state.candleSeconds)) this.setCandleSeconds(next[next.length - 1]);
+  }
 
   async refreshCandles(m: Market = this.state.market) {
     try {

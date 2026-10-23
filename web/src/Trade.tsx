@@ -2,14 +2,13 @@ import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
-import { TAP_SIZE, game, stacksOf, useGame } from "./game";
+import { TAP_SIZE, frameLabel, game, stacksOf, useGame } from "./game";
 
 import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
 import { Button, Eyebrow, Sheet, TickValue, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
-const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
 
 export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
@@ -150,7 +149,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           // Your own past trades always show; the 👥 toggle only hides friends'.
           overlay={(toXY, width) => st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={crowd ? st.bubbles : st.bubbles.filter((b) => b.is_you)} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
-              onZoomOut={st.candleSeconds < 900 ? () => game.setCandleSeconds(st.candleSeconds === 60 ? 300 : 900) : undefined}
+              onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
             {crowd && (activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
               : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>)}
@@ -162,8 +161,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
             <span aria-hidden="true">{style === "candles" ? "▮▮" : "∿"}</span>
           </button>
-          <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
-          {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
+          {/* One timeframe button: shows the current timeframe; tap to step down to the next one in your list (You tab), wrapping back to the highest. */}
+          <button type="button" className="chip lime on frame-btn" data-testid="frame-btn" onClick={() => game.nextFrame()} disabled={st.frames.length < 2}
+            aria-label={`${frameLabel(st.candleSeconds)} candles${st.frames.length > 1 ? `. Tap for ${frameLabel(game.frameAfter())}` : ""}`}>{frameLabel(st.candleSeconds)}</button>
           <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
             aria-label={big ? "Smaller chart" : "Bigger chart"} onClick={toggleBig}>{big ? "⤡" : "⤢"}</button>
           <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
