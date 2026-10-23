@@ -155,11 +155,11 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
           </>} />
         <div className="chips chart-controls" style={{ marginTop: 10 }}>
-          {/* One switch: tap to flip between candles and line; the lit half is what's showing. */}
-          <button type="button" className="chip style-switch" role="switch" aria-checked={style === "line"} data-testid="style-switch"
+          {/* One button: shows the chart style you're on; tap to flip between candles and line. */}
+          <button type="button" className="chip lime on style-switch" role="switch" aria-checked={style === "line"} data-testid="style-switch"
             aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"}
             onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
-            <span className={style === "candles" ? "on" : ""} aria-hidden="true">▮▮</span><span className={style === "line" ? "on" : ""} aria-hidden="true">∿</span>
+            <span aria-hidden="true">{style === "candles" ? "▮▮" : "∿"}</span>
           </button>
           <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
