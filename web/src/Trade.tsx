@@ -147,12 +147,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         <BrokieChart height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          overlay={(toXY, width) => crowd && st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
-            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={st.bubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
+          // Your own past trades always show; the 👥 toggle only hides friends'.
+          overlay={(toXY, width) => st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
+            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={crowd ? st.bubbles : st.bubbles.filter((b) => b.is_you)} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.candleSeconds < 900 ? () => game.setCandleSeconds(st.candleSeconds === 60 ? 300 : 900) : undefined}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
-            {activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
-              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
+            {crowd && (activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
+              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>)}
           </>} />
         <div className="chips chart-controls" style={{ marginTop: 10 }}>
           {/* One button: shows the chart style you're on; tap to flip between candles and line. */}

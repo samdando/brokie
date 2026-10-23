@@ -830,3 +830,10 @@ button.tm { pointer-events: auto; }
 
 /* Candles / line: one button showing the current style; tap flips it. */
 .chart-controls .style-switch { min-width: 34px; }
+
+/* Popups always sit above the fullscreen chart (150): profile, chat, settings sheets, toasts, chat pop-ups.
+   Before this, tapping Profile on a trade card in fullscreen opened the sheet behind the chart. */
+.scrim { z-index: 200; }
+.sheet { z-index: 210; }
+.chat-pop { z-index: 215; }
+.toast { z-index: 220; }
