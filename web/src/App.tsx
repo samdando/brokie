@@ -49,7 +49,6 @@ export function App() {
         <div className="header">
           <div className="wordmark">brokie<i /></div>
           <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
-          <button className="icon-btn chat-btn" onClick={() => game.setChatOpen(true)} aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"} data-testid="chat-btn">💬{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</button>
           <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
         </div>
         <EventStrip />
@@ -61,8 +60,14 @@ export function App() {
       </div>
       {tab !== "squad" && <MiniBar onOpen={() => setTab("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
-        {(["trade", "squad", "learn", "you"] as Tab[]).map((t) => (
-          <button key={t} className={`tab ${tab === t ? "on" : ""}`} onClick={() => { setReviewHistory(false); setTab(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
+        {(["trade", "chat", "squad", "learn", "you"] as const).map((t) => t === "chat" ? (
+          // Chat opens over whatever screen you're on, so the chart stays put underneath.
+          <button key={t} className={`tab chat-btn ${st.chatOpen ? "on" : ""}`} onClick={() => game.setChatOpen(true)} data-testid="chat-btn"
+            aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"}>
+            <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat
+          </button>
+        ) : (
+          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} onClick={() => { game.setChatOpen(false); setReviewHistory(false); setTab(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
