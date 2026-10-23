@@ -34,7 +34,7 @@ a { color: var(--lime); }
 .h3 { font: 600 23px var(--round); letter-spacing: -0.6px; margin: 0; }
 
 .equity { font: 600 39px/1 var(--round); letter-spacing: -1.8px; font-variant-numeric: tabular-nums; margin: 7px 0; }
-.markets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.markets { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 10px; }
 .market { text-align: left; padding: 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); }
 .market.on { border-color: color-mix(in srgb, var(--c) 65%, transparent); background: color-mix(in srgb, var(--c) 9%, transparent); }
 .market b { font-size: 13px; }
@@ -814,3 +814,13 @@ button.tm { pointer-events: auto; }
 .tab-ico { position: relative; display: grid; place-items: center; }
 .chat-badge { position: absolute; top: -7px; right: -11px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
   background: var(--lime); color: var(--bg); font: 800 10px/18px var(--round, system-ui); text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+
+/* Four markets (US30 added 23 Oct): tighter tiles so prices fit on the smallest phones. */
+.markets.four .market { padding: 10px 8px 14px; }
+.markets.four .market .row { gap: 5px !important; }
+.markets > :nth-child(4) { animation-delay: 135ms; }
+@media (max-width: 380px) {
+  .markets.four .market { padding: 9px 5px 12px; }
+  .markets.four .market b { font-size: 13px; }
+  .markets.four .market .mono { font-size: 10px; letter-spacing: -.3px; }
+}

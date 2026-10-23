@@ -48,7 +48,7 @@ export function SquadScreen({ toast }: { toast: (message: string) => void }) {
 /** Shares the real invitation for a squad: native share sheet, else clipboard. */
 export async function shareInvite(squad: { invite_code: string }): Promise<"shared" | "copied" | "cancelled" | "failed"> {
   const link = `${location.origin}${location.pathname}?join=${squad.invite_code}`;
-  const text = `Join my squad on Brokie 📈 Paper-trade Gold, NAS & ES with real prices and fake money. Code: ${squad.invite_code}`;
+  const text = `Join my squad on Brokie 📈 Paper-trade Gold, NAS, ES & US30 with real prices and fake money. Code: ${squad.invite_code}`;
   if (navigator.share) {
     try { await navigator.share({ title: "Brokie", text, url: link }); return "shared"; }
     catch (e) { if ((e as Error).name === "AbortError") return "cancelled"; /* else fall through to copy */ }

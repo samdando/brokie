@@ -1,11 +1,14 @@
-export type Market = "gold" | "nas" | "es";
+export type Market = "gold" | "nas" | "es" | "us30";
 export type Side = "long" | "short";
 
 export const MARKETS: Record<Market, { title: string; subtitle: string; symbol: string; pointValue: number; tick: number; color: string }> = {
   gold: { title: "Gold", subtitle: "Micro Gold", symbol: "MGC", pointValue: 10, tick: 0.1, color: "#F2CA73" },
   nas: { title: "NAS", subtitle: "Micro Nasdaq-100", symbol: "MNQ", pointValue: 2, tick: 0.25, color: "#D6FE59" },
   es: { title: "ES", subtitle: "Micro S&P 500", symbol: "MES", pointValue: 5, tick: 0.25, color: "#B5A0FE" },
+  us30: { title: "US30", subtitle: "Micro Dow", symbol: "MYM", pointValue: 0.5, tick: 1, color: "#7CC8FF" },
 };
+/** Decimal places worth showing for a market's price (the Dow trades in whole points). */
+export const digits = (m: Market) => (MARKETS[m].tick >= 1 ? 0 : 2);
 
 export interface Position { id: string; market: Market; side: Side; quantity: number; entry_price: number; opened_at: string }
 export interface Trade {

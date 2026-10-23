@@ -18,7 +18,7 @@ export function Onboarding() {
       <div className="wordmark" style={{ fontSize: 44, letterSpacing: -2.4 }}>brokie<i style={{ width: 11, height: 11 }} /></div>
       <h1 style={{ font: "600 30px/1.1 var(--round)", letterSpacing: -1, margin: "28px 0 0" }}>All the market.<br />None of the rent money.</h1>
       <div className="stack" style={{ gap: 12, marginTop: 26 }}>
-        <div className="point"><i>📈</i>Real Gold, NAS and ES prices. Fake $100k.</div>
+        <div className="point"><i>📈</i>Real Gold, NAS, ES and US30 prices. Fake $100k.</div>
         <div className="point"><i>🏆</i>8-week prop challenge: don't lose 8%, hit +10%.</div>
         <div className="point"><i>🎙</i>Talk trades live with your mates.</div>
       </div>

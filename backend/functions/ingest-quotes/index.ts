@@ -1,5 +1,5 @@
 // Brokie · ingest-quotes
-// Pulls Gold, NAS100 and US500 from an OANDA practice account and hands them
+// Pulls Gold, NAS100, US500 and US30 from an OANDA practice account and hands them
 // to the database, which rounds to the tick, stores the candle history and
 // liquidates blown accounts.
 //
@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
   const pull = async (): Promise<Response> => {
     const feed = await fetch(
-      `${host}/v3/accounts/${encodeURIComponent(account)}/pricing?instruments=XAU_USD,NAS100_USD,SPX500_USD`,
+      `${host}/v3/accounts/${encodeURIComponent(account)}/pricing?instruments=XAU_USD,NAS100_USD,SPX500_USD,US30_USD`,
       { headers: { Authorization: `Bearer ${token}`, "Accept-Datetime-Format": "RFC3339" } },
     );
     if (!feed.ok) return json({ error: `OANDA ${feed.status}`, detail: (await feed.text()).slice(0, 300) }, 502);

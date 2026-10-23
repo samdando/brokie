@@ -7,7 +7,7 @@ const LESSONS = [
     q: "You're short NAS. The price drops. What happens?", a: ["Your position gains", "Your position loses", "Nothing changes"], c: 0,
     why: "A short benefits from a lower price. If price rises, the short loses." },
   { title: "A point isn't just a point.", sub: "Contract sizing · 1 minute",
-    body: "Brokie uses micro contracts: MNQ (NAS) is $2 per point, MES (ES) is $5, and MGC (Gold) is $10. P&L = price movement × point value × contracts, with the direction reversed for shorts. Two contracts double both gains and losses.",
+    body: "Brokie uses micro contracts: MNQ (NAS) is $2 per point, MES (ES) is $5, MGC (Gold) is $10, and MYM (US30) is $0.50. P&L = price movement × point value × contracts, with the direction reversed for shorts. Two contracts double both gains and losses.",
     q: "One long MNQ rises 10 points. Your gross P&L?", a: ["+$10", "+$20", "+$100"], c: 1, why: "10 points × $2 per point × 1 contract = $20 before costs." },
   { title: "Stay in the game.", sub: "Risk & practice margin · 1 minute",
     body: "Margin is collateral, not your maximum possible loss. Brokie reserves a simplified $1,000 per micro contract; real requirements vary. Smaller positions change your P&L less per point. Fills are instant with no costs, so results won't match real trading.",

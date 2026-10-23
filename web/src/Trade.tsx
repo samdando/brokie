@@ -7,7 +7,7 @@ import { TAP_SIZE, game, stacksOf, useGame } from "./game";
 import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
 import { Button, Eyebrow, Sheet, TickValue, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
-import { MARKETS, Market, Position, Side, pnlOf } from "./types";
+import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 const FRAMES = [{ s: 60, l: "1m" }, { s: 300, l: "5m" }, { s: 900, l: "15m" }];
 
@@ -71,6 +71,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     return () => clearInterval(t);
   }, [st.market, st.squadId]);
   const market = st.market;
+  // A market only shows once the price feed has a quote for it (so a new market appears by itself when its feed goes live).
+  const shown = (Object.keys(MARKETS) as Market[]).filter((m) => m === market || mark(m) !== null || !me.quotes?.length);
   const candles = game.liveCandles(market);
   const quote = mark(market);
   const open = game.isOpen(market);
@@ -116,11 +118,11 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {rules && <Meters rules={rules} equity={equity} />}
       </section>
 
-      <div className="markets">
-        {(Object.keys(MARKETS) as Market[]).map((m) => (
+      <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
+        {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
             <div className="row" style={{ gap: 6 }}><span className="dot" /><b>{MARKETS[m].title}</b></div>
-            <span className="mono">{mark(m) ? px(mark(m)!) : "—"}</span>
+            <span className="mono">{mark(m) ? px(mark(m)!, digits(m)) : "—"}</span>
           </button>
         ))}
       </div>
@@ -130,8 +132,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[market].subtitle} <span className="mono muted" style={{ fontSize: 9 }}>{MARKETS[market].symbol}</span></div>
             <div className="row" style={{ gap: 8, alignItems: "baseline", marginTop: 6 }}>
-              <span className="quote"><TickValue value={quote}>{quote ? px(quote) : "—"}</TickValue></span>
-              <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change))}</span>
+              <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
+              <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change), digits(market))}</span>
             </div>
           </div>
           <span className="row" style={{ gap: 6 }}>

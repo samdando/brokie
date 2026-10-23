@@ -1,11 +1,12 @@
 // Maps an OANDA /pricing response to Brokie quotes (mid of best bid/ask).
-export const INSTRUMENTS: Record<string, "gold" | "nas" | "es"> = {
+export const INSTRUMENTS: Record<string, "gold" | "nas" | "es" | "us30"> = {
   XAU_USD: "gold",
   NAS100_USD: "nas",
   SPX500_USD: "es",
+  US30_USD: "us30",
 };
 
-export type BrokieQuote = { market: "gold" | "nas" | "es"; price: number; quoted_at: string; source: string };
+export type BrokieQuote = { market: "gold" | "nas" | "es" | "us30"; price: number; quoted_at: string; source: string };
 
 type OandaPrice = {
   instrument?: string;
