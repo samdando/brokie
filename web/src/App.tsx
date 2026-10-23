@@ -8,10 +8,10 @@ import { Onboarding } from "./Onboarding";
 import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
 import { EventStrip, FlashOverlay } from "./Events";
-import { FeedbackSheet } from "./Social";
+import { ChatCard, FeedbackSheet } from "./Social";
 import { avatarColor } from "./Bubbles";
 import { useVoice, voice, ROOMS } from "./voice";
-import { Icon, useNow, useToast } from "./ui";
+import { Icon, Sheet, useNow, useToast } from "./ui";
 
 type Tab = "trade" | "squad" | "learn" | "you";
 
@@ -49,7 +49,7 @@ export function App() {
         <div className="header">
           <div className="wordmark">brokie<i /></div>
           <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
-          <button className="icon-btn" onClick={() => setFb(true)} aria-label="Send feedback" data-testid="feedback-btn">💬</button>
+          <button className="icon-btn chat-btn" onClick={() => game.setChatOpen(true)} aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"} data-testid="chat-btn">💬{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</button>
           <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
         </div>
         <EventStrip />
@@ -57,7 +57,7 @@ export function App() {
         {tab === "trade" && <TradeScreen toast={setToast} goSquad={() => setTab("squad")} goHistory={() => { setReviewHistory(true); setTab("you"); }} />}
         {tab === "squad" && <SquadScreen toast={setToast} />}
         {tab === "learn" && <LearnScreen goTrade={() => setTab("trade")} />}
-        {tab === "you" && <YouScreen toast={setToast} />}
+        {tab === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
       </div>
       {tab !== "squad" && <MiniBar onOpen={() => setTab("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
@@ -66,7 +66,18 @@ export function App() {
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
-      <ChatPop onOpen={() => { setReviewHistory(false); setTab("squad"); game.setChatOpen(true); }} />
+      <ChatPop onOpen={() => game.setChatOpen(true)} />
+      <Sheet open={st.chatOpen} onClose={() => game.setChatOpen(false)}>
+        <button className="text-action lime" onClick={() => game.setChatOpen(false)}>Done</button>
+        {game.squad ? <>
+          {st.squads.length > 1 && <div className="hscroll">{st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}
+          <ChatCard key={game.squad.id} />
+        </> : <div className="panel stack" style={{ gap: 12 }}>
+          <b>No squad yet</b>
+          <div className="muted" style={{ fontSize: 13 }}>Chat is for your squad. Start one or join with an invite code.</div>
+          <button className="big-btn lime" onClick={() => { game.setChatOpen(false); setReviewHistory(false); setTab("squad"); }}>Go to Squad</button>
+        </div>}
+      </Sheet>
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />

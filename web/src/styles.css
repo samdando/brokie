@@ -809,3 +809,8 @@ button.tm { pointer-events: auto; }
 .risk-strips { padding: 2px 0 8px; gap: 8px; }
 .risk-strips i { margin-top: 5px; }
 .hero-risk .compact-rules > summary { min-height: 40px; }
+
+/* Squad chat lives in the header on every screen; the badge counts messages since you last looked. */
+.chat-btn { position: relative; }
+.chat-badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--lime); color: var(--bg); font: 800 10px/18px var(--round, system-ui); text-align: center; box-shadow: 0 0 0 2px var(--bg); }

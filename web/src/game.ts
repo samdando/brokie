@@ -29,6 +29,8 @@ export interface GameState {
   chatPop: ChatMsg | null;
   /** Squad chat sheet is open (so pop-ups stay quiet). */
   chatOpen: boolean;
+  /** Squad messages from others since you last opened the chat (the badge on the header button). */
+  chatUnread: number;
   events: EventsFeed | null;
   flash: Flash | null;
   qty: number;
@@ -74,7 +76,7 @@ export class Game {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: 60, market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
-    global: null, chat: [], chatPop: null, chatOpen: false, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
+    global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
     opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
   };
@@ -332,7 +334,7 @@ export class Game {
   selectSquad(id: string | null) {
     write(SQUAD_KEY, id);
     this.bubbleRequest++;
-    this.set({ squadId: id, leaderboard: [], feed: [], chat: [], bubbles: [], bubbleScope: null });
+    this.set({ squadId: id, leaderboard: [], feed: [], chat: [], chatUnread: 0, bubbles: [], bubbleScope: null });
     void this.refreshBubbles();
     void this.refreshBoard();
   }
@@ -416,7 +418,7 @@ export class Game {
   }
 
   /** Open or close the squad chat sheet; opening clears any pop-up. */
-  setChatOpen(open: boolean) { this.set(open ? { chatOpen: true, chatPop: null } : { chatOpen: false }); }
+  setChatOpen(open: boolean) { this.set(open ? { chatOpen: true, chatPop: null, chatUnread: 0 } : { chatOpen: false }); }
   dismissChatPop() { this.set({ chatPop: null }); }
   async refreshChat() {
     const squad = this.squad;
@@ -430,7 +432,8 @@ export class Game {
       const fresh = lastSeen === undefined ? [] : msgs.filter((x) => x.id > lastSeen && !x.is_you);
       this.chatSeen.set(squad.id, Math.max(newest, lastSeen ?? 0));
       const pop = fresh.length && !this.state.chatOpen ? fresh[fresh.length - 1] : null;
-      this.set(pop ? { chat: msgs, chatPop: pop } : { chat: msgs });
+      const unread = fresh.length && !this.state.chatOpen ? this.state.chatUnread + fresh.length : this.state.chatUnread;
+      this.set(pop ? { chat: msgs, chatPop: pop, chatUnread: unread } : { chat: msgs, chatUnread: unread });
       if (pop) { try { navigator.vibrate?.([15, 60, 15]); } catch { /* */ } }
     } catch { /* keep last */ }
   }

@@ -22,6 +22,17 @@ await page.evaluate(async()=>{
 await page.getByTestId('equity').waitFor();
 async function shot(name){await page.waitForTimeout(350);await page.screenshot({path:'/tmp/brokie-'+name+'.png',fullPage:false});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow '+name);}
 await shot('trade');
+// Chat is one tap away from any screen: header button with an unread badge.
+await page.evaluate(()=>window.testGame.set({chatUnread:3}));assert.equal(await page.getByTestId('chat-badge').textContent(),'3');
+await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat-header');
+assert.equal(await page.getByTestId('chat-badge').count(),0,'opening chat clears the badge');await page.getByRole('button',{name:'Done',exact:true}).click();
+assert(await page.getByTestId('go-long').isVisible(),'closing chat stays on the trade screen');
+// Target alone is 🎯 TARGET HIT; funded needs the 5 trading days too.
+await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,target_hit:true,funded:false}}})});
+await page.getByTestId('target-chip').waitFor();assert.equal(await page.getByTestId('funded-chip').count(),0);
+await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,target_hit:true,funded:true,trading_days:5}}})});
+await page.getByTestId('funded-chip').waitFor();assert.equal(await page.getByTestId('target-chip').count(),0);
+await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,target_hit:false,funded:false,trading_days:1}}})});
 const buy=await page.getByTestId('go-long').boundingBox(),nav=await page.locator('.tabs').boundingBox();assert(buy.y+buy.height<=nav.y,'buy overlaps nav');
 await page.locator('.compact-rules summary').click();await page.getByTestId('meter-dd').waitFor({state:"visible"});await page.locator('.compact-rules summary').click();
 await page.getByRole('button',{name:'Chart info'}).click();await page.locator('.chart-help').waitFor({state:"visible"});

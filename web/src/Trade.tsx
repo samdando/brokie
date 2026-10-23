@@ -102,7 +102,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div>
           <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
             {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
-            {rules?.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
+            {rules?.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }} data-testid="funded-chip">🏆 FUNDED</span>
+              : rules?.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }} data-testid="target-chip">🎯 TARGET HIT</span>}
           </div>
           <button className="muted info-link" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="How is this P&L calculated?">Season P&amp;L · equity vs starting balance ⓘ</button>
         </div>
@@ -280,7 +281,7 @@ export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
         </div>
         <div style={{ fontSize: 13, marginTop: 5, color: "rgba(255,255,255,.85)" }}>
           {e.kind === "rekt" ? <b style={{ color: "#bbb" }}>💀 Blew the account. REKT.</b>
-          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Hit +10%. Target badge earned.</b>
+          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Funded: +10% and 5 trading days.</b>
           : e.kind === "closed" && e.pnl !== null ? (
             <>{e.reason === "blown" ? `Blown out of ${size} ` : e.reason === "daily_limit" ? `Daily limit closed ${size} ` : `Closed ${e.side} ${size} `}
               <b className={`mono ${e.pnl >= 0 ? "lime" : "red"}`}>{signedMoney(e.pnl)}</b>{e.reason === "closed" && (e.pnl >= 0 ? " 🔥" : " 💀")}</>
@@ -338,24 +339,24 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
     "meter-dd": trailing
       ? `Your current trailing floor is ${money(rules.drawdown_floor, 0)}, ${rules.max_dd_pct}% under your highest equity. Reaching it closes your positions and marks this season's account REKT.`
       : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_dd_pct}% under your best end-of-day balance (${money(rules.dd_base ?? rules.peak_equity, 0)}). It only moves up when a session closes higher (5pm New York), not on intraday spikes. Touching it at any time closes your positions and marks this season's account REKT.`,
-    "meter-target": `Reach ${money(rules.target, 0)} account equity to earn the Target badge. It is a game badge, with no real funding or cash payout. You need ${rules.qualify_days} trading days to qualify for the leaderboard.`,
+    "meter-target": `Get funded: be at ${money(rules.target, 0)} (+10%) with at least ${rules.qualify_days} trading days (any session you open a trade). Hitting the target earlier earns 🎯 Target hit; you still need to be at +10% once the days are in. Funded is a game badge, with no real funding or cash payout. The same ${rules.qualify_days} days qualify you for the leaderboard.`,
   };
   return (
     <div className="hero-risk">
-      <div className="risk-strips" aria-hidden="true">{[["DAILY ROOM", df], ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
+      <div className="risk-strips" aria-hidden="true">{[["DAILY ROOM", df], ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded || rules.target_hit ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
     <details className="rule-summary compact-rules">
       <summary><span>Daily loss room <b style={{ color: tone(df) }}>{money(dailyRoom, 0)}</b></span><span className="muted">Target {Math.round(progress * 100)}% ⌄</span></summary>
-      <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded ? 1 : progress} /></div>
+      <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded || rules.target_hit ? 1 : progress} /></div>
       <div className="meters">
         {m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
         {m("Max loss limit", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
       </div>
       <button type="button" className="target-meter" data-testid="meter-target" aria-expanded={expanded === "meter-target"} aria-controls="rule-explainer"
         onClick={() => setExpanded(expanded === "meter-target" ? null : "meter-target")}>
-        <span className="target-ring" style={{ ["--progress" as string]: `${(rules.funded ? 1 : progress) * 360}deg` }} aria-hidden="true"><span>{rules.funded ? "✓" : `${Math.round(progress * 100)}%`}</span></span>
+        <span className="target-ring" style={{ ["--progress" as string]: `${(rules.funded || rules.target_hit ? 1 : progress) * 360}deg` }} aria-hidden="true"><span>{rules.funded ? "🏆" : rules.target_hit ? "✓" : `${Math.round(progress * 100)}%`}</span></span>
         <span className="target-copy"><span className="meter-heading">Profit target <span aria-hidden="true">ⓘ</span></span>
           <strong>{money(gain, 0)} <span className="muted">/ {money(targetGain, 0)}</span></strong>
-          <span className="meter-caption">{rules.funded ? "Target badge earned · " : ""}{rules.trading_days}/{rules.qualify_days} trading days · {rules.trading_days >= rules.qualify_days ? "Leaderboard qualified" : "To qualify for leaderboard"}</span>
+          <span className="meter-caption" data-testid="target-caption">{rules.funded ? "🏆 Funded · " : rules.target_hit ? "🎯 Target hit · " : ""}{rules.trading_days}/{rules.qualify_days} trading days · {rules.funded ? "Leaderboard qualified" : rules.target_hit ? (rules.trading_days >= rules.qualify_days ? "back to +10% to get funded" : "to get funded") : rules.trading_days >= rules.qualify_days ? "Leaderboard qualified" : "To qualify for leaderboard"}</span>
         </span>
       </button>
       <div id="rule-explainer" hidden={!expanded} className="rule-explainer">{expanded ? explanations[expanded] : ""}</div>

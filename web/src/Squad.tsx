@@ -4,7 +4,7 @@ import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
 import { Button, Eyebrow, Sheet, countdown, money, useNow } from "./ui";
 import { Pit } from "./Trade";
-import { ChatCard, GlobalBoard } from "./Social";
+import { GlobalBoard } from "./Social";
 
 export function SquadScreen({ toast }: { toast: (message: string) => void }) {
   const st = useGame();
@@ -38,7 +38,6 @@ export function SquadScreen({ toast }: { toast: (message: string) => void }) {
           {squad && <button className="panel row between chat-preview" onClick={() => setChatOpen(true)}><span><b>◉ Squad chat</b><span className="muted">{st.chat[st.chat.length - 1]?.body || "Drop a message to your mates."}</span></span><span className="lime">Open →</span></button>}
           {squad && <VoiceCard />}
           {squad && <Pit full goSquad={() => setChatOpen(true)} toast={toast} />}
-          <Sheet open={chatOpen} onClose={() => setChatOpen(false)}><button className="text-action lime" onClick={() => setChatOpen(false)}>Done</button><ChatCard key={st.squadId} /></Sheet>
         </>
       )}
       <Sheet open={adding} onClose={() => setAdding(false)}><SquadStarter onDone={() => setAdding(false)} /></Sheet>
@@ -192,7 +191,7 @@ function Leaderboard() {
               <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
                 {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
-                {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 TARGET HIT</span>}
+                {r.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span> : r.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }}>🎯 TARGET HIT</span>}
                 {(r.resets_used ?? 0) > 0 && r.status !== "blown" && <span className="chip-status" style={{ background: "var(--line)", color: "var(--muted)" }}>BUY-BACK</span>}</div>
               <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"}${r.wins != null ? ` · ${r.wins}W–${r.losses ?? 0}L` : ""}`}</div>
             </div>

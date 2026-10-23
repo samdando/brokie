@@ -18,7 +18,8 @@ export interface Rules {
   daily_loss_pct: number; max_dd_pct: number; daily_floor: number; drawdown_floor: number; target: number;
   /** "eod": the max loss floor sits under your best end-of-day balance (dd_base). "trailing": under the intraday peak. */
   dd_mode?: "eod" | "trailing"; dd_base?: number;
-  funded: boolean; resets_used: number; trading_days: number; qualify_days: number; equity: number;
+  /** Funded = +10% target AND the qualifying trading days. target_hit = reached +10% at some point this season. */
+  funded: boolean; target_hit?: boolean; resets_used: number; trading_days: number; qualify_days: number; equity: number;
 }
 export interface MyState {
   handle: string; season: string; season_number?: number; rules?: Rules; season_ends_at: string; server_time: string; cash: number;
@@ -28,7 +29,7 @@ export interface MyState {
 export interface Squad { id: string; name: string; invite_code: string; owner_id: string; member_count: number }
 export interface LeaderRow {
   handle: string; is_you: boolean; equity: number; return_pct: number; trades: number; worst_trade: number; open_positions: number;
-  status?: "active" | "locked" | "blown"; funded?: boolean; resets_used?: number; trading_days?: number; qualified?: boolean;
+  status?: "active" | "locked" | "blown"; funded?: boolean; target_hit?: boolean; resets_used?: number; trading_days?: number; qualified?: boolean;
   wins?: number; losses?: number;
 }
 export interface Bubble {

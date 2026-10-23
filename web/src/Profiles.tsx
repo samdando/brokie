@@ -36,7 +36,7 @@ export function Profiles({ children }: { children: ReactNode }) {
           : !stats ? <span className="spinner lime" aria-label="Loading profile" /> : <>
           <div className="profile-stats">{[["Trades", stats.total_trades], ["Win rate", stats.win_rate == null ? "—" : `${stats.win_rate}%`], ["Best trade", stats.best_trade == null ? "—" : signedMoney(stats.best_trade)]].map(([label, value]) => <div className="panel" key={label}><div className="eyebrow">{label}</div><b>{value}</b></div>)}</div>
           <div className="detail"><span>Seasons played</span><span>{stats.seasons_played}</span></div>
-          <div className="detail"><span>Target badges</span><span>{stats.seasons_funded}</span></div>
+          <div className="detail"><span>Seasons funded</span><span>{stats.seasons_funded}</span></div>
           <div className="detail"><span>Max drawdown</span><span>{Number(stats.max_drawdown).toFixed(1)}%</span></div>
           <div className="season-results">{stats.seasons.map(s => <div className="detail" key={s.season}><span>Season {s.number}</span><span className={s.return_pct >= 0 ? "lime" : "red"}>{s.return_pct >= 0 ? "+" : ""}{Number(s.return_pct).toFixed(2)}%</span></div>)}</div>
         </>}
@@ -78,7 +78,7 @@ function LiveNow({ handle }: { handle: string }) {
   if (!row && legs && legs.length === 0) return <div className="muted" style={{ fontSize: 12 }}>Live positions show for players in your squad.</div>;
   return (
     <div className={`stack player-live ${row?.status === "blown" ? "rekt" : ""}`} style={{ gap: 10 }} data-testid="profile-live">
-      <div className="row between"><div className="eyebrow">◉ Right now</div><span className="player-state">{row?.status === "blown" ? "💀 REKT" : row?.status === "locked" ? "🔒 LOCKED" : row?.funded ? "🏆 TARGET HIT" : "IN THE GAME"}</span></div>
+      <div className="row between"><div className="eyebrow">◉ Right now</div><span className="player-state">{row?.status === "blown" ? "💀 REKT" : row?.status === "locked" ? "🔒 LOCKED" : row?.funded ? "🏆 FUNDED" : row?.target_hit ? "🎯 TARGET HIT" : "IN THE GAME"}</span></div>
       <div className="profile-stats three">
         <div className="panel"><div className="eyebrow">Equity</div><b><TickValue value={row?.equity ?? null}>{row ? money(row.equity, 0) : "—"}</TickValue></b></div>
         <div className="panel"><div className="eyebrow">Season</div><b className={row && row.return_pct < 0 ? "red" : "lime"}>{row ? `${row.return_pct >= 0 ? "+" : ""}${Number(row.return_pct).toFixed(2)}%` : "—"}</b></div>

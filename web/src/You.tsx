@@ -4,7 +4,7 @@ import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui"
 import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
 
-export function YouScreen({ toast }: { toast: (m: string) => void }) {
+export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; onFeedback: () => void }) {
   const st = useGame();
   const me = st.me!;
   const [period, setPeriod] = useState<"season" | "lifetime">("season");
@@ -57,6 +57,7 @@ export function YouScreen({ toast }: { toast: (m: string) => void }) {
         ))}
       </div>
       <button className="text-action settings-entry" onClick={() => setSettings(true)}>⚙ Account settings <span>Manage →</span></button>
+      <button className="text-action settings-entry" onClick={onFeedback} data-testid="feedback-btn">💡 Send feedback <span>Bug or idea →</span></button>
       <InstallTip />
       <div className="mono muted" style={{ fontSize: 10, textAlign: "center", lineHeight: 1.8 }}>BROKIE / 0.2 WEB<br />All the market. None of the rent money.</div>
       <HandleSheet open={edit} onClose={() => setEdit(false)} toast={toast} />
@@ -188,7 +189,7 @@ function LifetimeCard() {
       <div className="row between"><h2 className="h2">Lifetime</h2><span className="eyebrow">Never resets</span></div>
       <div className="meters">
         {[["Win rate", lt.win_rate == null ? "—" : `${lt.win_rate}%`], ["Trades", String(lt.total_trades)], ["Max DD", `${(+lt.max_drawdown).toFixed(1)}%`],
-          ["Seasons", String(lt.seasons_played)], ["Target badges 🏆", String(lt.seasons_funded)], ["Blown 💀", String(lt.seasons_blown)]].map(([k, v]) => (
+          ["Seasons", String(lt.seasons_played)], ["Funded 🏆", String(lt.seasons_funded)], ["Blown 💀", String(lt.seasons_blown)]].map(([k, v]) => (
           <div key={k} className="meter" style={{ background: "var(--bg)" }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><b>{v}</b></div>
         ))}
       </div>
