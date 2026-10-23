@@ -11,3 +11,7 @@ This is a UI regression check, not a live backend, order execution, microphone o
 The UI check now covers 8 screen sizes (320×568 up to 1440×900), fullscreen chart scroll lock and restore, the season timer, tap-your-pill entry details, the position pill pinning to the chart edge when zoomed, and W/L on the squad board. Without Chrome installed, point `CHROME_PATH` at any Chromium (e.g. Playwright's headless shell).
 
 Backend rule checks: load `supabase_stub, schema, seasons_v2, v3, partials, trading_day, trade_sharing, rules_v4`, then run `backend/tests_rules_v4.sql` (25 checks: 8% MLL from the end-of-day high, intraday breach, trailing hard mode, buy-back restarting qualifying, W/L, rerunnable migration).
+
+`node tests/hold-smoke.cjs` (same setup, about a minute) holds BUY and SELL: single and quick taps still batch, holding sends full orders of 10 while held and the remainder on release, never more than 5 orders in 10 seconds, a server refusal stops the hold with nothing left queued, and the sell side works.
+
+`node tests/hold-smoke.cjs` (same setup, about a minute) holds BUY and SELL: quick taps still batch, holding sends full orders of 10 while held and the rest on release, never more than 5 orders in 10 seconds, and a server refusal stops the hold with nothing left queued.

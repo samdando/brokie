@@ -253,7 +253,9 @@ export class Game {
     const holdsSame = (this.state.me?.positions ?? []).some((p) => p.market === this.state.market && p.side === side);
     return this.state.opposite === "partial" && !holdsSame && this.heldAgainst(side) > 0;
   }
-  tap(side: Side, onDone: (err: string | null, qty: number, pnl?: number) => void) {
+  /** `held`: the button is being held down, so don't start the 300 ms send timer;
+   *  letting go calls armTaps, and a full order goes with sendTapsNow. */
+  tap(side: Side, onDone: (err: string | null, qty: number, pnl?: number) => void, held = false) {
     const cur = this.state.pending;
     if (cur && cur.side !== side) this.flushTaps(onDone);
     const p = this.state.pending;
@@ -261,18 +263,33 @@ export class Game {
     const cap = reduce ? this.heldAgainst(side) : 10;
     const count = Math.min(cap, (p && p.side === side ? p.count : 0) + TAP_SIZE);
     this.set({ pending: { side, count, reduce } });
-    if (this.tapTimer) clearTimeout(this.tapTimer);
-    this.tapTimer = window.setTimeout(() => this.flushTaps(onDone), 300);
+    if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
+    if (!held) this.armTaps(onDone);
   }
+  /** Send the collected taps 300 ms from now, unless another tap comes first. */
+  armTaps(onDone: (err: string | null, qty: number, pnl?: number) => void) {
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = this.state.pending ? window.setTimeout(() => this.flushTaps(onDone), 300) : null;
+  }
+  /** Send the collected taps right away (holding a button filled an order). */
+  sendTapsNow(onDone: (err: string | null, qty: number, pnl?: number) => void) { this.flushTaps(onDone); }
+  /** Forget collected taps without sending them (after the server refused an order mid-hold). */
+  dropTaps() { if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; } if (this.state.pending) this.set({ pending: null }); }
+  /** Tap orders sent but not answered yet. */
+  ordersInFlight = 0;
   private flushTaps(onDone: (err: string | null, qty: number, pnl?: number) => void) {
     if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
     const p = this.state.pending; if (!p) return;
     this.set({ pending: null });
+    this.ordersInFlight++;
     const send = async () => {
-      while (this.submitting) await new Promise((r) => setTimeout(r, 60));
-      if (p.reduce) { const r = await this.reduce(p.side === "long" ? "short" : "long", p.count); onDone(r.error ?? null, r.closed ?? 0, r.pnl); return; }
-      const err = await this.open(p.side, p.count);
-      onDone(err, p.count);
+      try {
+        while (this.submitting) await new Promise((r) => setTimeout(r, 60));
+        if (p.reduce) { const r = await this.reduce(p.side === "long" ? "short" : "long", p.count); this.ordersInFlight--; onDone(r.error ?? null, r.closed ?? 0, r.pnl); return; }
+        const err = await this.open(p.side, p.count);
+        this.ordersInFlight--;
+        onDone(err, p.count);
+      } catch (e) { this.ordersInFlight = Math.max(0, this.ordersInFlight - 1); onDone((e as Error).message, 0); }
     };
     void send();
   }

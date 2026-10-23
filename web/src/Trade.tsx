@@ -155,9 +155,12 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>}
           </>} />
         <div className="chips chart-controls" style={{ marginTop: 10 }}>
-          {(["candles", "line"] as const).map((s) => (
-            <button key={s} className={`chip lime ${style === s ? "on" : ""}`} aria-label={s === "candles" ? "Candlestick chart" : "Line chart"} aria-pressed={style === s} onClick={() => { setStyle(s); localStorage.setItem("brokie.style", s); }}>{s === "candles" ? "▮▮" : "∿"}</button>
-          ))}
+          {/* One switch: tap to flip between candles and line; the lit half is what's showing. */}
+          <button type="button" className="chip style-switch" role="switch" aria-checked={style === "line"} data-testid="style-switch"
+            aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"}
+            onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
+            <span className={style === "candles" ? "on" : ""} aria-hidden="true">▮▮</span><span className={style === "line" ? "on" : ""} aria-hidden="true">∿</span>
+          </button>
           <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 3px" }} />
           {FRAMES.map((f) => <button key={f.s} className={`chip ${st.candleSeconds === f.s ? "on" : ""}`} aria-label={`${f.s / 60} minute candles`} aria-pressed={st.candleSeconds === f.s} onClick={() => game.setCandleSeconds(f.s)}>{f.l}</button>)}
           <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
@@ -395,9 +398,12 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   const pend = st.pending;
   const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
   const [tapHint] = useState(() => hintOn("taps"));
-  function tap(side: Side) {
+  /** One tap: +1 micro to the order being collected. `held` = the button is held down, so the
+   *  order waits for the release (or fills to 10) instead of sending 300 ms after the tap. */
+  function tap(side: Side, held = false) {
     if (disabled) return;
-    const n = pend && pend.side === side ? pend.count : 0;
+    const cur = game.state.pending;
+    const n = cur && cur.side === side ? cur.count : 0;
     const cap = game.tapReduces(side) ? game.heldAgainst(side) : 10;
     if (n >= cap) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
     const lvl = Math.min(2, Math.floor(n / 5));
@@ -414,13 +420,66 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     setPops((p) => [...p.slice(-8), { id, side }]);
     setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 600);
     setSquash(null); requestAnimationFrame(() => setSquash(side));
-    const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
-    game.tap(side, (err, q, pnl) => {
-      if (err) { if (comboRef.current?.id === id) clearCombo(); buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
-      else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`✂️ Took ${q} off ${MARKETS[st.market].title} · ${signedMoney(pnl)}`); }
-      else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${MARKETS[st.market].title}`); }
-    });
+    game.tap(side, done(side), held);
   }
+  /** What happens when an order (a batch of taps) comes back from the server. */
+  function done(side: Side) {
+    const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
+    const id = seq.current;
+    const market = MARKETS[st.market].title;
+    return (err: string | null, q: number, pnl?: number) => {
+      if (err) { stopHold(false); game.dropTaps(); if (comboRef.current?.id === id) clearCombo(); buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
+      else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`✂️ Took ${q} off ${market} · ${signedMoney(pnl)}`); }
+      else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${market}`); }
+    };
+  }
+
+  // Hold to spam: keep a finger on BUY/SELL and after 0.35 s it taps by itself (~11 a second).
+  // Every full order of 10 goes straight to the server and the next one starts, paced to the
+  // server's 5 new orders per 10 s. Letting go sends whatever is collected. It stops on any
+  // refusal (10 open positions, buying power, daily limit) or if the app loses focus.
+  const HOLD_DELAY_MS = 350, HOLD_EVERY_MS = 90, ORDERS_PER_10S = 5;
+  const hold = useRef<{ side: Side; start: ReturnType<typeof setTimeout> | null; every: ReturnType<typeof setInterval> | null } | null>(null);
+  const holdSends = useRef<number[]>([]);
+  const latest = useRef({ holdStep: (_: Side) => {} });
+  function stopHold(send = true) {
+    const h = hold.current; if (!h) return;
+    if (h.start !== null) clearTimeout(h.start);
+    if (h.every !== null) clearInterval(h.every);
+    hold.current = null;
+    if (send) game.armTaps(done(h.side));   // let go: the usual short wait, so quick taps still batch
+  }
+  function holdStep(side: Side) {
+    if (disabled) { stopHold(); return; }
+    const cur = game.state.pending;
+    const n = cur && cur.side === side ? cur.count : 0;
+    const reduce = game.tapReduces(side);
+    const cap = reduce ? game.heldAgainst(side) : 10;
+    if (n < cap) { tap(side, true); return; }
+    if (reduce) { stopHold(); return; }   // closing: nothing more to take off after this order
+    const now = Date.now();
+    holdSends.current = holdSends.current.filter((t) => now - t < 10_000);
+    if (game.ordersInFlight > 0 || holdSends.current.length >= ORDERS_PER_10S) return;   // wait for a free slot
+    holdSends.current.push(now);
+    game.sendTapsNow(done(side));
+  }
+  latest.current.holdStep = holdStep;
+  function startHold(side: Side) {
+    stopHold();
+    tap(side, true);
+    const h: NonNullable<typeof hold.current> = { side, start: null, every: null };
+    h.start = setTimeout(() => { h.start = null; h.every = setInterval(() => latest.current.holdStep(side), HOLD_EVERY_MS); }, HOLD_DELAY_MS);
+    hold.current = h;
+  }
+  useEffect(() => () => stopHold(), []);
+  useEffect(() => { if (disabled) stopHold(false); }, [disabled]);
+  useEffect(() => { stopHold(); }, [st.market]);
+  useEffect(() => {
+    const off = () => stopHold();
+    document.addEventListener("visibilitychange", off);
+    window.addEventListener("blur", off);
+    return () => { document.removeEventListener("visibilitychange", off); window.removeEventListener("blur", off); };
+  }, []);
   const btn = (side: Side) => {
     const n = pend && pend.side === side ? pend.count : 0;
     const label = side === "long" ? "BUY" : "SELL";
@@ -432,13 +491,16 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     return (
       <button type="button" className={`spam-btn ${side} combo-tier-${tier} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
-        onPointerDown={(e) => { e.preventDefault(); tap(side); }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(side); } }}
+        onPointerDown={(e) => { e.preventDefault(); startHold(side); }} onPointerUp={() => stopHold()} onPointerCancel={() => stopHold()} onPointerLeave={() => stopHold()}
+        onContextMenu={(e) => e.preventDefault()}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (e.repeat) holdStep(side); else tap(side); } }}
+        onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
         onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSquash(null); }} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         {chain && <span key={chain.id} className={`combo-badge tier-${tier}`} data-testid="tap-combo" data-count={chain.count} data-side={side} aria-hidden="true">
           <span className="combo-count">{chain.count}</span><span className="combo-copy"><b>{tier === 3 ? "UNREAL" : tier === 2 ? "ON FIRE" : "COMBO"}</b><small>TAP STREAK</small></span><span className="combo-symbol">{tier >= 2 ? "🔥" : "ϟ"}</span><i className="combo-fuse" />
         </span>}
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
-        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `${sign}${TAP_SIZE} per tap` : "\u00a0"}</span>
+        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `tap ${sign}${TAP_SIZE} · hold = spam` : "\u00a0"}</span>
         {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{TAP_SIZE}</span></span>)}
       </button>
     );
