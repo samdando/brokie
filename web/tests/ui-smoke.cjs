@@ -41,7 +41,7 @@ assert(await page.locator('[data-testid="leader-row"]').count()===5);
 await page.getByRole('button',{name:"View @ankits's profile"}).click();await page.getByTestId('player-profile').waitFor();await page.getByText('Max drawdown',{exact:true}).waitFor();await page.getByRole('button',{name:'Done',exact:true}).click();
 assert(await page.getByTestId('invite-code').count()===0);
 await page.getByRole('button',{name:'Invite / manage'}).click();await page.getByTestId('invite-code').waitFor({state:"visible"});await page.getByRole('button',{name:'Done',exact:true}).click();
-await page.locator('.chat-preview').evaluate(el=>el.scrollIntoView({block:'center'})); await page.locator('.chat-preview').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Done',exact:true}).click();
+await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Done',exact:true}).click();
 await page.locator('.activity-group summary').click();assert(await page.locator('.activity-group .panel').count()===5);
 await page.getByTestId('tab-learn').click();await page.getByText('Essentials complete.',{exact:true}).waitFor({state:"visible"});await shot('learn');
 await page.getByRole('button',{name:'Put it into practice'}).click();await page.getByTestId('equity').waitFor({state:"visible"});

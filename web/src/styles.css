@@ -848,3 +848,7 @@ button.tm { pointer-events: auto; }
 .chart-card .chart-controls .chip:last-child { grid-column: auto; }
 .frame-picks { gap: 5px; }
 .frame-picks .chip { min-width: 40px; padding: 0 6px; }
+
+/* Season P&L line doubles as the "how is this calculated" button. */
+.gain-btn { font: inherit; color: inherit; background: none; padding: 0; text-align: left; cursor: pointer; }
+.gain-btn .muted { font-size: .8em; }

@@ -22,7 +22,6 @@ export function SquadScreen({ toast }: { toast: (message: string) => void }) {
   }, [squad?.id, chatOpen]);
   return (
     <div className="stack squad-screen" style={{ gap: 24 }}> 
-      <div className="competition-heading"><span className="eyebrow">THE SQUAD ARENA</span><h1 className="title">{squad ? "Big egos. Real ranks." : "Good friends.\nQuestionable trades."}</h1><div className="muted" style={{ fontSize: 13 }}>Bragging rights are the only payout.</div></div>
       <div className="seg" role="tablist" aria-label="Leaderboard">
         <button role="tab" aria-selected={view === "squad"} className={view === "squad" ? "on" : ""} onClick={() => pick("squad")} data-testid="seg-squad">My squad</button>
         <button role="tab" aria-selected={view === "global"} className={view === "global" ? "on" : ""} onClick={() => pick("global")} data-testid="seg-global">🌍 Global</button>
@@ -35,7 +34,6 @@ export function SquadScreen({ toast }: { toast: (message: string) => void }) {
           </div>
           {squad && <SquadCard />}
           {squad && <Leaderboard />}
-          {squad && <button className="panel row between chat-preview" onClick={() => setChatOpen(true)}><span><b>◉ Squad chat</b><span className="muted">{st.chat[st.chat.length - 1]?.body || "Drop a message to your mates."}</span></span><span className="lime">Open →</span></button>}
           {squad && <VoiceCard />}
           {squad && <Pit full goSquad={() => setChatOpen(true)} toast={toast} />}
         </>
@@ -179,9 +177,6 @@ function Leaderboard() {
       <div className="row between" style={{ marginBottom: 12 }}><h2 className="h2">Season {st.me?.season_number ?? ""}</h2>
         <span className="eyebrow" style={{ fontSize: 8 }}>Ends in {countdown(st.me?.season_ends_at, now + st.clockOffset)}</span></div>
       {st.leaderboard.length === 0 && <div style={{ textAlign: "center", padding: 30 }}><span className="spinner lime" /></div>}
-      {st.leaderboard.length > 0 && <div className="podium" aria-label="Season podium">{st.leaderboard.slice(0, 3).map((r, i) => <div key={r.handle} className={`podium-place place-${i + 1} ${r.status === "blown" ? "rekt" : ""}`}>
-        <span className="podium-medal" aria-hidden="true">{["🥇", "🥈", "🥉"][i]}</span><span className="av">{r.handle[0].toUpperCase()}</span><span className="podium-handle">@{r.handle}</span><b className={r.return_pct < 0 ? "red" : "lime"}>{r.return_pct >= 0 ? "+" : ""}{r.return_pct.toFixed(2)}%</b><small>{r.qualified ? `RANK ${i + 1}` : "PROVISIONAL"}</small>
-      </div>)}</div>}
       {st.leaderboard.map((r, i) => (
         <div key={r.handle}>
           <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="leader-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
@@ -203,7 +198,7 @@ function Leaderboard() {
           {i < st.leaderboard.length - 1 && <div className="sep" />}
         </div>
       ))}
-      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Qualified players rank first; other ranks are provisional until 5 trading days. The +10% target earns a game badge, not funding or cash. See Trade for your current risk limits.</div>
+      <div className="muted" style={{ fontSize: 10, marginTop: 12 }}>Ranks lock in after 5 trading days. Fake money, real bragging rights.</div>
     </div>
   );
 }

@@ -277,9 +277,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
             onSet={onBracket && ((b) => onBracket(p.id, b))} onClear={(k) => onClearBracket?.(p.id, k)} />)}
         </div>}
         {(() => {
-          // pump.fun-style legend: O/H/L/C of the hovered bar (or the live one) and its change.
-          const last = candles[candles.length - 1];
-          const bar = hover ?? (last ? { o: last.open, h: last.high, l: last.low, c: last.close, time: 0, price: null } : null);
+          // O/H/L/C readout: only while you're touching the chart (crosshair), so the chart stays clean.
+          const bar = hover;
           if (!bar) return null;
           const ch = bar.c - bar.o, up = ch >= 0;
           return (

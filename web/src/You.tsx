@@ -17,7 +17,6 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
   useEffect(() => { void game.refreshLifetime(); }, []);
   return (
     <div className="stack you-screen" style={{ gap: 24 }}> 
-      <div className="you-heading"><span className="eyebrow">YOUR SEASON / YOUR STORY</span><h1 className="title">Your trading arc.</h1><div className="muted" style={{ fontSize: 13 }}>Every great trader starts somewhere.</div></div>
       <div className="row you-identity" style={{ gap: 16 }}> 
         <span style={{ width: 60, height: 60, borderRadius: 20, background: "var(--lime)", color: "var(--bg)", display: "grid", placeItems: "center", font: "700 26px var(--round)" }}>{me.handle[0].toUpperCase()}</span>
         <div>
@@ -59,7 +58,6 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <button className="text-action settings-entry" onClick={() => setSettings(true)}>⚙ Account settings <span>Manage →</span></button>
       <button className="text-action settings-entry" onClick={onFeedback} data-testid="feedback-btn">💡 Send feedback <span>Bug or idea →</span></button>
       <InstallTip />
-      <div className="mono muted" style={{ fontSize: 10, textAlign: "center", lineHeight: 1.8 }}>BROKIE / 0.2 WEB<br />All the market. None of the rent money.</div>
       <HandleSheet open={edit} onClose={() => setEdit(false)} toast={toast} />
       <TradeCardSheet key={card?.id ?? "closed"} trade={card} handle={me.handle} onClose={() => setCard(null)} />
     </div>

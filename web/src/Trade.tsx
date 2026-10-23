@@ -96,20 +96,16 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
   return (
     <div className="stack trade-screen">
-      <section className={`account-hero ${rules?.status ?? "active"}`}><span className="season-watermark" aria-hidden="true">S{String(me.season_number ?? 1).padStart(2, "0")}</span>
+      <section className={`account-hero ${rules?.status ?? "active"}`}>
       <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
         <div>
           <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
           <div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div>
           <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
-            {equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}%
+            <button type="button" className="gain-btn" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="Season P&L. How is this calculated?">{equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}% <span className="muted">ⓘ</span></button>
             {rules?.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }} data-testid="funded-chip">🏆 FUNDED</span>
               : rules?.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }} data-testid="target-chip">🎯 TARGET HIT</span>}
           </div>
-          <button className="muted info-link" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="How is this P&L calculated?">Season P&amp;L · equity vs starting balance ⓘ</button>
-        </div>
-        <div className="tagline" style={{ textAlign: "right", fontSize: 10, fontWeight: 500, paddingBottom: 6, lineHeight: 1.7 }}>
-          <div>100% fake money.</div><div className="muted">100% real bragging rights.</div>
         </div>
       </div>
 
@@ -198,7 +194,6 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         {me.positions.length > 0 && cardHint && <div className="muted" style={{ fontSize: 10, textAlign: "center" }}>Swipe a card away to close · drag your position pill on the chart for SL/TP</div>}
       </div>
 
-      <Pit goSquad={goSquad} toast={toast} />
 
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
