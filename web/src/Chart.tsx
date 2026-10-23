@@ -56,6 +56,8 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const fresh = useFreshIds(positions.map((p) => p.id));
   const hedged = mine.some((p) => p.side === "long") && mine.some((p) => p.side === "short");
 
+  const bucketRef = useRef(bucketSeconds);
+  bucketRef.current = bucketSeconds;
   useEffect(() => {
     if (!host.current) return;
     const c = createChart(host.current, {
@@ -65,11 +67,15 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,.045)", style: LineStyle.Solid } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
-        tickMarkFormatter: (t: number) => { const d = new Date(t * 1000); return d.getHours() === 0 && d.getMinutes() === 0 ? d.toLocaleDateString([], { day: "numeric", month: "short" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } },
+        // The chart picks the mark type: year/month/day marks get a date, the rest a time.
+        tickMarkFormatter: (t: number, type: number) => { const d = new Date(t * 1000); return type < 3 || bucketRef.current >= 86400 ? d.toLocaleDateString([], { day: "numeric", month: "short" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } },
       // C5: on touch, a long-press enters crosshair tracking; the next tap exits it.
       crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: true, labelBackgroundColor: "#2C3028" }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2C3028" } },
       // Bar times are UTC seconds; show them in the player's own time zone.
-      localization: { locale: "en-US", timeFormatter: (t: number) => new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
+      // Daily candles show just the date.
+      localization: { locale: "en-US", timeFormatter: (t: number) => bucketRef.current >= 86400
+        ? new Date(t * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })
+        : new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
       // C5: pinch / wheel zoom and horizontal drag to pan. Vertical swipes still scroll the page.
       handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: false, axisDoubleClickReset: false },
       handleScroll: { horzTouchDrag: true, pressedMouseMove: true, mouseWheel: false, vertTouchDrag: false },

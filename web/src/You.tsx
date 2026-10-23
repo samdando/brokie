@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { game, useGame } from "./game";
+import { FRAME_OPTIONS, game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
 import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
@@ -42,7 +42,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </div>
 
       </> : <LifetimeCard />}
-      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><BackupRow /></div></Sheet>
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><FramesSetting /><BackupRow /></div></Sheet>
 
       <div id="receipts" className="stack" style={{ gap: 14 }}>
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
@@ -196,6 +196,24 @@ function LifetimeCard() {
       <div className="season-results"><Eyebrow>Return by season</Eyebrow>
         {lt.seasons.length === 0 && <p className="muted">Your first season will appear here.</p>}
         {lt.seasons.map(x => <div className="season-result" key={x.season}><span>S{x.number}</span><div className="bar"><i style={{ width: `${Math.abs(x.return_pct) / maxAbs * 100}%`, background: x.return_pct >= 0 ? "var(--lime)" : "var(--red)" }} /></div><span className={`mono ${x.return_pct >= 0 ? "lime" : "red"}`}>{x.return_pct >= 0 ? "+" : ""}{x.return_pct.toFixed(2)}%</span></div>)}
+      </div>
+    </div>
+  );
+}
+
+/** Which timeframes the chart's timeframe button cycles through. */
+function FramesSetting() {
+  const st = useGame();
+  return (
+    <div className="stack" style={{ gap: 8 }} data-testid="frames-setting">
+      <div><b style={{ fontSize: 13 }}>Chart timeframes</b>
+        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Tap the timeframe button on the chart to cycle through the ones you pick.</div></div>
+      <div className="frame-picks" role="group" aria-label="Chart timeframes">
+        {FRAME_OPTIONS.map((f) => {
+          const on = st.frames.includes(f.s);
+          return <button key={f.s} type="button" className={`chip lime ${on ? "on" : ""}`} aria-pressed={on} data-testid={`frame-${f.l}`}
+            disabled={on && st.frames.length === 1} onClick={() => game.toggleFrame(f.s)}>{f.l}</button>;
+        })}
       </div>
     </div>
   );
