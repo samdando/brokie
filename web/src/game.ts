@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
 import { isConfigured } from "./config";
+import { marketSessionOpen, sessionMarkets, weekendMode } from "./sessions";
 import type { Bubble, Candle, Position, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Quote, Side, Squad, Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
@@ -108,6 +109,7 @@ export class Game {
   private timer: number | null = null;
   private quoteTimer: number | null = null;
   private beat = 0;
+  private lastWeekend: boolean | null = null;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
   get = () => this.state;
@@ -116,7 +118,7 @@ export class Game {
   get squad(): Squad | null { return this.state.squads.find((s) => s.id === this.state.squadId) ?? this.state.squads[0] ?? null; }
   now() { return Date.now() + this.state.clockOffset; }
   quote(m: Market) { return this.state.me?.quotes.find((q) => q.market === m) ?? null; }
-  isOpen(m: Market) { const q = this.quote(m); return !!q && this.now() - Date.parse(q.quoted_at) < 45_000; }
+  isOpen(m: Market) { const q = this.quote(m); const age = q ? this.now() - Date.parse(q.quoted_at) : Infinity; return marketSessionOpen(m, this.now()) && age >= -5000 && age < 45_000; }
 
   async start() {
     if (!isConfigured || this.state.phase === "ready") return;
@@ -184,6 +186,12 @@ export class Game {
     const me = await this.api.rpc<MyState>("my_state");
     if (this.state.me) me.quotes = newestQuotes(this.state.me.quotes, me.quotes ?? []);
     this.set({ me, clockOffset: Date.parse(me.server_time) - Date.now() });
+    const weekend = weekendMode(this.now());
+    if (weekend !== this.lastWeekend) {
+      this.lastWeekend = weekend;
+      const markets = sessionMarkets(this.now());
+      if (this.state.market !== "prediction" && !markets.includes(this.state.market)) this.setMarket(markets[0]);
+    }
     this.checkSeason(me);
   }
 

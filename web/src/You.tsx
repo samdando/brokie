@@ -1,3 +1,4 @@
+import { DailyRecap, TradeReview } from "./TradeReview";
 import { useEffect, useState } from "react";
 import { FRAME_OPTIONS, game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
@@ -11,7 +12,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
   const [settings, setSettings] = useState(false);
   const [edit, setEdit] = useState(false);
   const [card, setCard] = useState<Trade | null>(null);
-  const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (q ? pnlOf(p, q) : 0); }, 0);
+  const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (p.market === "prediction" ? pnlOf(p, 0) : q ? pnlOf(p, q) : 0); }, 0);
   const wins = me.trades.filter((t) => t.pnl > 0).length;
   const base = me.rules?.start_balance ?? 10000;
   useEffect(() => { void game.refreshLifetime(); }, []);
@@ -43,12 +44,13 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </> : <LifetimeCard />}
       <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><FramesSetting /><BackupRow /></div></Sheet>
 
+      <DailyRecap />
       <div id="receipts" className="stack" style={{ gap: 14 }}>
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>
         {me.trades.length === 0 && <div className="panel muted" style={{ fontSize: 13, padding: 18 }}>Close your first trade and it will land here. Wins, losses, character development.</div>}
         {me.trades.map((t) => (
           <button key={t.id} className="panel row receipt-ticket" style={{ padding: 15, borderRadius: 13, textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[t.market].title} · {t.side === "long" ? "Long" : "Short"} · {t.quantity} micro</div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{t.prediction_question ?? MARKETS[t.market].title} · {t.prediction_outcome?.toUpperCase() ?? (t.side === "long" ? "Long" : "Short")} · {t.quantity} {t.market === "prediction" ? "shares" : "micro"}</div>
               <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div><div className="receipt-meta muted">{new Date(t.closed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{t.reason !== "closed" && <span>Closed: {t.reason.replace(/_/g, " ")}</span>}</div></div>
             <span className={`mono ${t.pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 700 }}>{signedMoney(t.pnl)}</span>
             <span className="muted" style={{ fontSize: 12 }}>↗</span>
@@ -169,7 +171,8 @@ function TradeCardSheet({ trade, handle, onClose }: { trade: Trade | null; handl
     <Sheet open={!!trade} onClose={onClose}>
       <div className="stack" style={{ gap: 20 }}>
         <div className="row between"><Eyebrow>Trade details</Eyebrow><button className="lime" style={{ fontWeight: 700, fontSize: 13 }} onClick={onClose}>Done</button></div>
-        {trade && <div className="stack" style={{ gap: 12 }}><h3 className="h3">{MARKETS[trade.market].title} · {trade.side} · {trade.quantity} micros</h3><div className="detail"><span>Result</span><span className={trade.pnl >= 0 ? "lime" : "red"}>{signedMoney(trade.pnl)}</span></div><div className="detail"><span>Entry → exit</span><span>{px(trade.entry_price)} → {px(trade.exit_price)}</span></div><div className="detail"><span>Closed</span><span>{new Date(trade.closed_at).toLocaleString()}</span></div><div className="detail"><span>Reason</span><span>{trade.reason.replace(/_/g, " ")}</span></div></div>}
+        {trade && <div className="stack" style={{ gap: 12 }}><h3 className="h3">{trade.prediction_question ?? MARKETS[trade.market].title} · {trade.prediction_outcome?.toUpperCase() ?? trade.side} · {trade.quantity} {trade.market === "prediction" ? "shares" : "micros"}</h3><div className="detail"><span>Result</span><span className={trade.pnl >= 0 ? "lime" : "red"}>{signedMoney(trade.pnl)}</span></div><div className="detail"><span>Entry → exit</span><span>{px(trade.entry_price)} → {px(trade.exit_price)}</span></div><div className="detail"><span>Closed</span><span>{new Date(trade.closed_at).toLocaleString()}</span></div><div className="detail"><span>Reason</span><span>{trade.reason.replace(/_/g, " ")}</span></div></div>}
+        {trade && <TradeReview trade={trade} />}
         {url && <img src={url} alt="Trade card" className="card-preview" />}
         {!blob ? <><div className="muted" style={{fontSize:12}}>Sharing makes a public receipt link and an image with a QR code. Anyone with the link can view this trade.</div><Button onClick={prepare} busy={busy} id="prepare-card">Share</Button></> : <><Button onClick={() => share()} id="share-card">Share</Button><Button variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setError("Couldn't copy the link. Use the link below."); } }}>{copied ? "Copied ✓" : "Copy receipt link"}</Button><a className="receipt-link" href={link}>{link}</a></>}
         {error && <div className="err" role="alert">{error}</div>}

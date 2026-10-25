@@ -1,8 +1,10 @@
+import { PredictionMarkets } from "./PredictionMarkets";
 import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { TAP_SIZE, frameLabel, game, stacksOf, useGame } from "./game";
+import { isCrypto, sessionMarkets, weekendMode } from "./sessions";
 
 import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
@@ -55,7 +57,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [markerHint, setMarkerHint] = useState(() => hintOn("markers"));
   const [cardHint, setCardHint] = useState(() => hintOn("cards"));
   const mark = (m: Market) => game.quote(m)?.price ?? null;
-  const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
+  const unrealized = me.positions.reduce((s, p) => s + (p.market === "prediction" ? pnlOf(p, 0) : mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
   const rules = me.rules;
   const base = rules?.start_balance ?? 10000;
@@ -71,7 +73,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   }, [st.market, st.squadId]);
   const market = st.market;
   // A market only shows once the price feed has a quote for it (so a new market appears by itself when its feed goes live).
-  const shown = (Object.keys(MARKETS) as Market[]).filter((m) => m === market || mark(m) !== null || !me.quotes?.length);
+  const weekend = weekendMode(game.now());
+  const shown = sessionMarkets(game.now());
+  const heldElsewhere = [...new Set(me.positions.filter(p => p.market !== "prediction").map(p => p.market))].filter(m => !shown.includes(m));
   const candles = game.liveCandles(market);
   const quote = mark(market);
   const open = game.isOpen(market);
@@ -79,7 +83,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
-  const stacks = stacksOf(me.positions);
+  const stacks = stacksOf(me.positions.filter(p => p.market !== "prediction"));
   async function close(id: string, ids: string[], title: string): Promise<boolean> {
     setClosing(id);
     const r = await game.closeStack(ids);
@@ -113,6 +117,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {rules && <Meters rules={rules} equity={equity} />}
       </section>
 
+      <button className={`text-action predictions-entry ${market === "prediction" ? "lime" : ""}`} onClick={() => game.setMarket(market === "prediction" ? shown[0] : "prediction")} data-testid="prediction-switch">{market === "prediction" ? "← Back to charts" : "Prediction markets →"}</button>
+      <div className="session-caption" data-testid="session-mode"><b>{weekend ? "Weekend crypto" : "Weekday markets"}</b><span>{weekend ? "Paper contracts · closes Sunday 6pm New York" : "Positions close each session at 5pm New York"}</span></div>
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
@@ -122,6 +128,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         ))}
       </div>
 
+      {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
+
+      {market === "prediction" ? <PredictionMarkets toast={toast} /> : <>
       <div className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
           <div>
@@ -169,7 +178,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </button>
         </div>
         <div className="chart-attribution">
-          Real market prices from OANDA, fake money. Not financial advice. {!open && "Market’s closed. New trades open when prices are live again."}
+          Real prices from {isCrypto(market) ? "Coinbase" : "OANDA"}, fake money. Not financial advice. {!open && "Market’s closed. New trades open when prices are live again."}
           {" "}Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
           {" "}(<a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">notice</a>).
         </div>
@@ -195,6 +204,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       </div>
 
 
+      </>}
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
   );

@@ -190,8 +190,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
 /** The tap-a-marker card (like pump.fun's trader popover): who, size, entry, profit, how long. */
 export function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote: number | null; market: Market; now: number; onClose: () => void }) {
   const open = b.state === "open";
-  const pnl = open ? (quote != null ? pnlAt(b, quote, market) : 0) : b.pnl ?? 0;
-  const pct = b.equity ? pnl / b.equity * 100 : null;
+  const pnl = open ? (quote != null ? pnlAt(b, quote, market) : null) : b.pnl;
   return (
     <div className="trade-card" role="dialog" aria-label={`${b.handle}'s trade`} data-testid="trade-card" onPointerDown={(e) => e.stopPropagation()}>
       <div className="row between">
@@ -208,10 +207,10 @@ export function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote
           <div className="muted" style={{ fontSize: 10 }}>{b.quantity} micro{b.quantity === 1 ? "" : "s"}{b.size_pct ? ` · ${b.size_pct.toFixed(1)}% of account` : ""}</div>
         </div>
       </div>
+      <div className={`tc-result ${pnl === null ? "muted" : pnl >= 0 ? "lime" : "red"}`} data-testid="bubble-pnl"><span>P&amp;L</span><strong>{pnl === null ? "—" : signedMoney(pnl)}</strong><small>{open ? "Live · position open" : b.reason === "market_close" ? "Final · market close" : "Final · trade closed"}</small></div>
       <div className="tc-grid">
         <div><span>Entry price</span><b>{px(b.entry_price)}</b></div>
         <div><span>{open ? "Price now" : "Exit price"}</span><b>{open ? (quote != null ? px(quote) : "—") : px(b.exit_price ?? b.entry_price)}</b></div>
-        <div><span>{open ? "Current P&L" : "Realised P&L"}</span><b className={pnl >= 0 ? "lime" : "red"}>{signedMoney(pnl)}{pct !== null && <small> {pct >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</small>}</b></div>
         <div><span>Entry time</span><b>{new Date(b.opened_at).toLocaleString()}</b></div>
         <div><span>Held for</span><b>{held((open ? now : Date.parse(b.at)) - Date.parse(b.opened_at))}</b></div>
       </div>

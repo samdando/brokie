@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Brokie weekend QA</title></head><body><div id="root"></div><script type="module">
+import { game } from '/src/game.ts';
+const now=Date.now(),stamp=new Date(now).toISOString(),start=Math.floor(now/60000)-100;
+for(const n of ['setActive','start','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles'])game[n]=async()=>{};
+game.checkBrackets=async()=>[];
+const prices={btc:81000,eth:2400,sol:160,nas:29019.75,gold:4000,es:6500,us30:46000};
+const candles=Object.fromEntries(Object.entries(prices).map(([m,p])=>[m,Array.from({length:100},(_,i)=>({index:start+i,open:p+Math.sin(i/4)*15,high:p+Math.sin(i/4)*15+10,low:p+Math.sin(i/4)*15-10,close:p+Math.sin((i+1)/4)*15}))]));
+const trade={id:'t1',market:'btc',side:'long',quantity:3,entry_price:80000,exit_price:81000,pnl:30,opened_at:new Date(now-300000).toISOString(),closed_at:stamp,reason:'closed'};
+const rows=[{handle:'bum',is_you:false,pnl:729,trades:2,wins:2,losses:0,breakevens:0},{handle:'sam',is_you:true,pnl:30,trades:1,wins:1,losses:0,breakevens:0},{handle:'friend',is_you:false,pnl:-1500,trades:3,wins:1,losses:2,breakevens:0}];
+let note='';
+const tokenBoard={balance:3,earned_today:true,next_reward_at:new Date(now+86400000).toISOString(),positions:[],trades:[],markets:[{id:'TEST',title:'Will Bitcoin finish the next interval higher?',rules:'Yes if the ending reference price is above the starting reference price.',close_at:new Date(now+3600000).toISOString(),status:'active',yes_bid:.4,yes_ask:.5,no_bid:.4,no_ask:.5,payout_yes:null,quoted_at:stamp}]};
+game.api.rpc=async(n,a)=>{
+if(n==='prediction_board')return structuredClone(tokenBoard);
+if(n==='open_prediction'){
+ if(a.p_stake>tokenBoard.balance)throw new Error('Not enough tokens.');
+ tokenBoard.balance-=a.p_stake;
+ tokenBoard.positions.push({id:'token-'+Date.now(),prediction_id:'TEST',prediction_outcome:a.p_outcome,prediction_question:tokenBoard.markets[0].title,quantity:a.p_stake/.5,entry_price:.5,cost:a.p_stake,mark_price:.4});return {};
+}
+if(n==='close_prediction'){
+ const p=tokenBoard.positions.find(p=>p.id===a.p_id),payout=p.quantity*.4;
+ const t={...p,payout,pnl:payout-p.cost,closed_at:new Date().toISOString(),reason:'closed'};
+ tokenBoard.positions=tokenBoard.positions.filter(p=>p.id!==a.p_id);tokenBoard.trades.unshift(t);tokenBoard.balance+=payout;return t;
+}
+if(n==='daily_leaderboard')return {day:a?.p_day||'2026-10-24',today:'2026-10-24',rows};
+if(n==='daily_receipts')return a.p_handle==='bum'?[{...trade,market:'nas',side:'short',quantity:6,entry_price:29080.5,exit_price:29019.75,pnl:729,reason:'market_close'}]:[trade];
+if(n==='review_trade')return {trade,candles:candles.btc.slice(-15),bucket_seconds:60,note};
+if(n==='save_trade_note'){note=a.p_note;return null;}
+if(n==='chart_bubbles')return [];return {};};
+const rules={status:'active',start_balance:100000,peak_equity:100030,day_start_equity:100000,daily_loss_pct:5,max_dd_pct:8,daily_floor:95000,drawdown_floor:92000,target:110000,funded:false,resets_used:0,trading_days:1,qualify_days:5,equity:100030};
+game.set({phase:'ready',market:'btc',candleSeconds:60,me:{handle:'sam',season:'2026-10-19',season_number:1,season_ends_at:'2026-12-14T00:00:00Z',server_time:stamp,cash:100030,rules,protection_credit:0,liquidations:0,has_backup_code:true,positions:[{id:'p1',market:'btc',side:'long',quantity:1,entry_price:80900,opened_at:new Date(now-240000).toISOString()}],trades:[trade],quotes:Object.entries(prices).map(([market,price])=>({market,price,quoted_at:stamp}))},squads:[{id:'s',name:'Weekend crew',member_count:3,invite_code:'ABCDEF',owner_id:'sam'}],squadId:'s',candles,bubbleScope:'btc:s',bubbles:[{state:'open',id:'b1',handle:'bum',is_you:false,side:'long',quantity:3,entry_price:81010,exit_price:null,pnl:null,reason:null,at:new Date(now-360000).toISOString(),opened_at:new Date(now-360000).toISOString(),size_pct:3,dd_floor:92000,equity:100729}],leaderboard:rows.map(r=>({...r,today_pnl:r.pnl,equity:100000+r.pnl,return_pct:r.pnl/1000,worst_trade:-100,open_positions:0,trading_days:1,qualified:false})),feed:[],chat:[],global:{rows:rows.map((r,i)=>({...r,rank:i+1,today_pnl:r.pnl,equity:100000+r.pnl,return_pct:r.pnl/1000,status:'active',qualified:false,funded:false,trading_days:1})),me:null,players:3,season:'2026-10-19'},lifetime:{handle:'sam',total_trades:1,win_rate:100,max_drawdown:0,seasons_played:1,seasons_funded:0,seasons_blown:0,seasons:[]}});
+await import('/src/main.tsx');
+</script></body></html>

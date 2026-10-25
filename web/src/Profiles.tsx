@@ -64,13 +64,13 @@ function LiveNow({ handle }: { handle: string }) {
   }, [handle]);
   const row = st.leaderboard.find((r) => r.handle.toLowerCase() === handle.toLowerCase());
   // One line per market + side, like your own position cards (spam taps merged).
-  const open = new Map<string, { m: Market; side: Bubble["side"]; qty: number; cost: number }>();
+  const open = new Map<string, { m: Market; side: Bubble["side"]; qty: number; cost: number; b: Bubble; key: string }>();
   for (const { m, b } of legs ?? []) if (b.state === "open") {
-    const k = `${m}|${b.side}`; const cur = open.get(k) ?? { m, side: b.side, qty: 0, cost: 0 };
+    const k = `${m}|${b.side}|${b.prediction_id ?? ""}|${b.prediction_outcome ?? ""}`; const cur = open.get(k) ?? { m, side: b.side, qty: 0, cost: 0, b, key: k };
     cur.qty += b.quantity; cur.cost += b.entry_price * b.quantity; open.set(k, cur);
   }
   const rows = [...open.values()].map((o) => {
-    const entry = o.cost / Math.max(1, o.qty); const q = game.quote(o.m)?.price;
+    const entry = o.cost / Math.max(1, o.qty); const q = o.m === "prediction" ? o.b.mark_price : game.quote(o.m)?.price;
     return { ...o, entry, pnl: q == null ? null : (q - entry) * MARKETS[o.m].pointValue * o.qty * direction(o.side) };
   });
   const openPnl = rows.reduce((s, r) => s + (r.pnl ?? 0), 0);
@@ -87,8 +87,8 @@ function LiveNow({ handle }: { handle: string }) {
       {legs === null ? <span className="spinner lime" aria-label="Loading positions" />
         : rows.length === 0 ? <div className="muted" style={{ fontSize: 12 }}>No open positions.</div>
         : rows.map((r) => (
-          <div className="detail" key={`${r.m}-${r.side}`} data-testid="profile-position">
-            <span><b>{MARKETS[r.m].title}</b> <span className={r.side === "long" ? "lime" : "red"}>{r.side === "long" ? "LONG ↗" : "SHORT ↘"}</span> <span className="muted mono" style={{ fontSize: 11 }}>x{r.qty} · {px(r.entry)}</span></span>
+          <div className="detail" key={r.key} data-testid="profile-position">
+            <span><b>{r.b.prediction_question ?? MARKETS[r.m].title}</b> <span className={r.side === "long" ? "lime" : "red"}>{r.b.prediction_outcome?.toUpperCase() ?? (r.side === "long" ? "LONG ↗" : "SHORT ↘")}</span> <span className="muted mono" style={{ fontSize: 11 }}>{r.qty} {r.m === "prediction" ? "shares" : "micros"} · {px(r.entry)}</span></span>
             <b className={`mono ${(r.pnl ?? 0) < 0 ? "red" : "lime"}`}>{r.pnl == null ? "—" : signedMoney(r.pnl)}</b>
           </div>
         ))}
@@ -96,7 +96,7 @@ function LiveNow({ handle }: { handle: string }) {
         <div className="eyebrow" style={{ marginTop: 4 }}>Recent exits</div>
         {exits.map(({ m, b }) => (
           <div className="detail" key={b.id} data-testid="profile-exit">
-            <span>{b.reason === "blown" ? "💀 Blown out of" : "Closed"} {b.side} {b.quantity} {MARKETS[m].title} <span className="muted mono" style={{ fontSize: 11 }}>@ {px(b.exit_price ?? b.entry_price)} · {ago(b.at)}</span></span>
+            <span>{b.reason === "blown" ? "💀 Blown out of" : "Closed"} {b.prediction_outcome?.toUpperCase() ?? b.side} {b.quantity} {b.prediction_question ?? MARKETS[m].title} <span className="muted mono" style={{ fontSize: 11 }}>@ {px(b.exit_price ?? b.entry_price)} · {ago(b.at)}</span></span>
             <b className={`mono ${(b.pnl ?? 0) < 0 ? "red" : "lime"}`}>{signedMoney(b.pnl ?? 0)}</b>
           </div>
         ))}

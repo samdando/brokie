@@ -5,6 +5,7 @@ import { ROOMS, useVoice, voice } from "./voice";
 import { Button, Eyebrow, Sheet, countdown, money, useNow } from "./ui";
 import { Pit } from "./Trade";
 import { GlobalBoard } from "./Social";
+import { TodayPnl } from "./TodayPnl";
 
 export function SquadScreen({ toast }: { toast: (message: string) => void }) {
   const st = useGame();
@@ -183,7 +184,7 @@ function Leaderboard() {
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : String(i + 1).padStart(2, "0")}</span>
             <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
+              <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> <TodayPnl value={r.today_pnl} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
                 {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
                 {r.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span> : r.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }}>🎯 TARGET HIT</span>}
