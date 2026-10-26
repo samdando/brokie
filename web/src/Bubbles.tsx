@@ -167,7 +167,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   }, [merged, bubbles, toXY, width, hideMine, showHistory]);
 
   // Mates' exits that are off the left edge of this timeframe: offer to zoom out to find them.
-  const earlier = bubbles.filter((b) => b.state === "closed" && !b.is_you && b.exit_price !== null && !markers.some((m) => m.key === `${b.id}-x`)).length;
+  const earlier = bubbles.filter((b) => b.state === "closed" && !b.is_you && b.exit_price !== null && !toXY(Date.parse(b.at) / 1000, b.exit_price)).length;
   const sel = picked ? (merged.find((b) => b.id === picked) ?? bubbles.find((b) => b.id === picked && b.state === "closed")) : undefined;
 
   return (

@@ -25,7 +25,7 @@ const g=window.testGame,c=g.state.candles.nas,stamp=(n)=>new Date(c[c.length-n].
 g.set({bubbleScope:'nas:s',bubbles:[...['ankits','fuko','sam'].map((handle,i)=>({id:'open'+i,handle,is_you:false,state:'open',market:'nas',side:i===1?'short':'long',quantity:10,entry_price:c[c.length-12-i*8].close,opened_at:stamp(12+i*8),at:stamp(12+i*8),exit_price:null})),...Array.from({length:20},(_,i)=>({id:'closed'+i,handle:'jaoushai',is_you:false,state:'closed',market:'nas',side:'long',quantity:1,entry_price:c[c.length-50].close,opened_at:stamp(50),at:stamp(30),exit_price:c[c.length-30].close,pnl:20,reason:'manual'}))]});window.testGame.open=async(side,q)=>{window.orders.push({side,q});return null;};});
 assert.equal(await page.getByTestId('exit-mark').count(),0,'closed history hidden initially');
 await page.getByTestId('history-toggle').click();await page.waitForTimeout(200);
-assert((await page.getByTestId('exit-mark').count())<=1,'dense closed trades thinned');
+assert((await page.getByTestId('exit-mark').count())<=1,'dense closed trades thinned around open positions');assert.equal(await page.getByTestId('earlier-trades').count(),0,'overlapping exits are not labelled offscreen');
 await page.getByTestId('history-toggle').click();
 const cdp=await page.context().newCDPSession(page);
 async function swipeWheel(id,dy){
