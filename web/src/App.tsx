@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Avatar } from "./Avatar";
+import { useEffect, useRef, useState } from "react";
 import { game, useGame } from "./game";
 import { TradeScreen } from "./Trade";
 import { SquadScreen } from "./Squad";
@@ -9,15 +10,34 @@ import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
 import { EventStrip, FlashOverlay } from "./Events";
 import { ChatCard, FeedbackSheet } from "./Social";
-import { avatarColor } from "./Bubbles";
+
 import { useVoice, voice, ROOMS } from "./voice";
 import { Icon, Sheet, useNow, useToast } from "./ui";
 
 type Tab = "trade" | "squad" | "learn" | "you";
+const TAB_ORDER: Tab[] = ["trade", "squad", "learn", "you"];
 
 export function App() {
   const st = useGame();
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has("join") ? "squad" : "trade"));
+  const [previous, setPrevious] = useState<Tab | null>(null);
+  const [slide, setSlide] = useState(1);
+  const current = useRef(tab);
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const navigate = (next: Tab) => {
+    if (next === current.current) return;
+    setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(current.current) ? 1 : -1);
+    setPrevious(current.current); current.current = next; setTab(next);
+  };
+  useEffect(() => { if (!previous) return; const t = setTimeout(() => setPrevious(null), 360); return () => clearTimeout(t); }, [tab, previous]);
+  useEffect(() => {
+    const lock = () => {
+      const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+      void orientation?.lock?.("portrait-primary").catch(() => {});
+    };
+    lock(); document.addEventListener("pointerdown", lock, { once: true });
+    return () => document.removeEventListener("pointerdown", lock);
+  }, []);
   const [toast, setToast] = useToast();
   const [fb, setFb] = useState(false);
   const [reviewHistory, setReviewHistory] = useState(false);
@@ -49,16 +69,33 @@ export function App() {
         <div className="header">
           <div className="wordmark">brokie<i /></div>
           <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
-          <button className="avatar-btn" onClick={() => setTab("you")} aria-label="Your profile">{st.me.handle[0].toUpperCase()}</button>
+          <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
         <EventStrip />
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
-        {tab === "trade" && <TradeScreen toast={setToast} goSquad={() => setTab("squad")} goHistory={() => { setReviewHistory(true); setTab("you"); }} />}
-        {tab === "squad" && <SquadScreen toast={setToast} />}
-        {tab === "learn" && <LearnScreen goTrade={() => setTab("trade")} />}
-        {tab === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
+        <main className="page-stage" style={{ ["--slide" as string]: slide }}
+          onTouchStart={e => {
+            const el = e.target as HTMLElement;
+            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .chart-card, .pos-card, .hscroll, .sheet")) { swipe.current = null; return; }
+            swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }}
+          onTouchEnd={e => {
+            const from = swipe.current; swipe.current = null;
+            if (!from || !e.changedTouches[0]) return;
+            const dx = e.changedTouches[0].clientX - from.x, dy = e.changedTouches[0].clientY - from.y;
+            if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+            const next = TAB_ORDER[TAB_ORDER.indexOf(tab) + (dx < 0 ? 1 : -1)];
+            if (next) { setReviewHistory(false); navigate(next); }
+          }}>
+          {TAB_ORDER.filter(t => t === tab || t === previous).map(t => <div key={t} className={`page-screen ${t === tab ? previous ? "entering" : "" : "leaving"}`} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
+            {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
+            {t === "squad" && <SquadScreen toast={setToast} />}
+            {t === "learn" && <LearnScreen goTrade={() => navigate("trade")} />}
+            {t === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
+          </div>)}
+        </main>
       </div>
-      {tab !== "squad" && <MiniBar onOpen={() => setTab("squad")} />}
+      {tab !== "squad" && <MiniBar onOpen={() => navigate("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
         {(["trade", "chat", "squad", "learn", "you"] as const).map((t) => t === "chat" ? (
           // Chat opens over whatever screen you're on, so the chart stays put underneath.
@@ -67,7 +104,7 @@ export function App() {
             <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat
           </button>
         ) : (
-          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} onClick={() => { game.setChatOpen(false); setReviewHistory(false); setTab(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
+          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
@@ -80,7 +117,7 @@ export function App() {
         </> : <div className="panel stack" style={{ gap: 12 }}>
           <b>No squad yet</b>
           <div className="muted" style={{ fontSize: 13 }}>Chat is for your squad. Start one or join with an invite code.</div>
-          <button className="big-btn lime" onClick={() => { game.setChatOpen(false); setReviewHistory(false); setTab("squad"); }}>Go to Squad</button>
+          <button className="big-btn lime" onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate("squad"); }}>Go to Squad</button>
         </div>}
       </Sheet>
       <FlashOverlay />
@@ -129,7 +166,7 @@ function ChatPop({ onOpen }: { onOpen: () => void }) {
   if (!pop) return null;
   return (
     <button type="button" key={pop.id} className="chat-pop" onClick={onOpen} data-testid="chat-pop" aria-label={`New message from @${pop.handle}: ${pop.body}. Open chat`}>
-      <span className="chat-pop-av" style={{ background: avatarColor(pop.handle) }} aria-hidden="true">{pop.handle[0]?.toUpperCase()}</span>
+      <Avatar className="chat-pop-av" handle={pop.handle} />
       <span className="chat-pop-text"><b>@{pop.handle}</b><span className={pop.kind === "emoji" ? "chat-pop-emoji" : ""}>{pop.body}</span></span>
       <span className="chat-pop-x" role="presentation" onClick={(e) => { e.stopPropagation(); game.dismissChatPop(); }}>✕</span>
     </button>

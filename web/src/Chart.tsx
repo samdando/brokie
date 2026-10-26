@@ -6,7 +6,7 @@ import { TradeCard, TradeMarker, useFreshIds } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
-const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#969D8D";
+const LIME = "#D6FE59", RED = "#FF7D8B", MUTED = "#9AA7BD";
 export const CHART_SMALL = 256;
 const PIN_TOP = 36, PIN_BOTTOM = 40;   // px kept clear for the O/H/L/C legend and the time axis   // chart height in px (includes the time axis)
 // One chart on screen at a time, so its height lives here and the overlay pieces read it.
@@ -20,8 +20,8 @@ export type ToXY = (unixSeconds: number, price: number) => { x: number; y: numbe
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", height = CHART_SMALL }:
-  { height?: number; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", fullscreen = false, height = CHART_SMALL }:
+  { height?: number; fullscreen?: boolean; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   H = height;
@@ -62,22 +62,22 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     if (!host.current) return;
     const c = createChart(host.current, {
       height: H,
-      // TradingView attribution lives in the chart card footer (Trade.tsx), not over the candles.
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: false },
+      // Keep the compact library attribution inside the chart.
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 9, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: true },
       grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,.045)", style: LineStyle.Solid } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } },
       timeScale: { borderVisible: false, visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
         // The chart picks the mark type: year/month/day marks get a date, the rest a time.
         tickMarkFormatter: (t: number, type: number) => { const d = new Date(t * 1000); return type < 3 || bucketRef.current >= 86400 ? d.toLocaleDateString([], { day: "numeric", month: "short" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } },
       // C5: on touch, a long-press enters crosshair tracking; the next tap exits it.
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: true, labelBackgroundColor: "#2C3028" }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2C3028" } },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: true, labelBackgroundColor: "#2A3850" }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2A3850" } },
       // Bar times are UTC seconds; show them in the player's own time zone.
       // Daily candles show just the date.
       localization: { locale: "en-US", timeFormatter: (t: number) => bucketRef.current >= 86400
         ? new Date(t * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })
         : new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
       // C5: pinch / wheel zoom and horizontal drag to pan. Vertical swipes still scroll the page.
-      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: false, axisDoubleClickReset: false },
+      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true } },
       handleScroll: { horzTouchDrag: true, pressedMouseMove: true, mouseWheel: false, vertTouchDrag: false },
       kineticScroll: { touch: true, mouse: false },
     });
@@ -95,7 +95,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         plotRef.current = w;
         setPlotWidth(w);
         const r = c.timeScale().getVisibleLogicalRange();
-        setAway(!!r && countRef.current > 0 && r.to < countRef.current - 1);
+        setAway(userMoved.current || (!!r && countRef.current > 0 && r.to < countRef.current - 1));
         setFrame((f) => f + 1);
       });
     };
@@ -126,11 +126,24 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 
   useEffect(() => { chart.current?.applyOptions({ height }); requestFrame.current(); }, [height]);
 
+  useEffect(() => {
+    chart.current?.applyOptions({ handleScroll: { vertTouchDrag: fullscreen } });
+    requestFrame.current();
+  }, [fullscreen]);
+
+  const detach = () => {
+    userMoved.current = true;
+    // Freeze the visible price range before a drag so ticks cannot pull it back.
+    if (fullscreen) chart.current?.priceScale("right").applyOptions({ autoScale: false });
+    setAway(true);
+  };
+
   /** Snap the view back to the newest bars (double-tap / Live button). */
   const goLive = useCallback(() => {
     const c = chart.current; const n = countRef.current;
     if (!c || !n) return;
     userMoved.current = false;
+    setAway(false);
     // An explicit range (not fitContent) so pinch/wheel zoom still works on short histories.
     c.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VIEW_BARS), to: n - 1 + 6 });
     c.priceScale("right").applyOptions({ autoScale: true });
@@ -194,7 +207,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     prevQuote.current = quote;
     const target = style === "candles" ? s.candle : s.area;
     if (quoteLine.current) { try { s.candle.removePriceLine(quoteLine.current); } catch { /* */ } try { s.area.removePriceLine(quoteLine.current); } catch { /* */ } quoteLine.current = null; }
-    if (quote) quoteLine.current = target.createPriceLine({ price: quote, color: tickColor.current, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, axisLabelTextColor: "#0C0E0B", title: "" });
+    if (quote) quoteLine.current = target.createPriceLine({ price: quote, color: tickColor.current, lineWidth: 1, lineStyle: LineStyle.Dotted, axisLabelVisible: true, axisLabelTextColor: "#0C1220", title: "" });
   }, [quote, style, market]);
 
   // ---- Entry lines for your open positions (both legs when hedged). No axis tags: the right
@@ -244,18 +257,18 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 
   return (
     <div>
-      <div className="chart-host" style={{ position: "relative", width: "100%", height: H, touchAction: "pan-y" }}
+      <div className="chart-host" style={{ position: "relative", width: "100%", height: H, touchAction: fullscreen ? "none" : "pan-y" }}
         onDoubleClick={() => { lastTap.current = null; goLive(); }}
-        onWheel={() => { userMoved.current = true; }}
+        onWheel={detach}
         onPointerDown={(e) => {
-          if (e.pointerType !== "touch") { userMoved.current = true; return; }
+          if (e.pointerType !== "touch") { detach(); return; }
           if (touches.current.size === 0) gestureDirty.current = false;
           touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
-          if (touches.current.size > 1) { gestureDirty.current = true; userMoved.current = true; lastTap.current = null; }
+          if (touches.current.size > 1) { gestureDirty.current = true; detach(); lastTap.current = null; }
         }}
         onPointerMove={(e) => {
           const s = touches.current.get(e.pointerId);
-          if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) { gestureDirty.current = true; userMoved.current = true; }
+          if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) { gestureDirty.current = true; detach(); }
         }}
         onPointerCancel={(e) => { touches.current.delete(e.pointerId); gestureDirty.current = true; }}
         onPointerUp={(e) => {

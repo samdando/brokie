@@ -1,3 +1,4 @@
+import { Avatar } from "./Avatar";
 import { TodayPnl } from "./TodayPnl";
 import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
@@ -48,7 +49,7 @@ function GlobalLine({ r, last }: { r: import("./types").GlobalRow; last: boolean
     <div>
       <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="global-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
         <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{r.rank === 1 && r.return_pct > 0 ? "👑" : r.rank <= 3 && r.qualified ? ["🥇", "🥈", "🥉"][r.rank - 1] : String(r.rank).padStart(2, "0")}</span>
-        <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
+        <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}><PlayerLink handle={r.handle}>{r.is_you ? "You" : `@${r.handle}`}</PlayerLink> <TodayPnl value={r.today_pnl} />
             {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }}>💀 REKT</span>}

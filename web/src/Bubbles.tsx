@@ -1,3 +1,4 @@
+import { Avatar } from "./Avatar";
 // pump.fun-style chart markers: every squad trade is a small avatar sitting right on the candles at
 // its fill. Green = long, red = short; a closed trade's exit is a hollow ring. Tap one for a trade card. Exits still pop (green), deflate (red) or crack and sink (REKT) as they happen.
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -45,7 +46,7 @@ export function TradeMarker({ handle, long, exit, me, fresh, faded, danger, styl
   { handle: string; long: boolean; exit?: boolean; me?: boolean; fresh?: boolean; faded?: boolean; danger?: boolean; style?: CSSProperties;
     onClick?: () => void; label: string; testId?: string }) {
   const cls = `tm ${long ? "long" : "short"} ${exit ? "exit" : ""} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${faded ? "faded" : ""} ${danger ? "danger" : ""}`;
-  const face = <span className="tm-face" aria-hidden="true">{handle[0]?.toUpperCase() ?? "?"}</span>;
+  const face = <Avatar className="tm-face" handle={handle} />;
   return onClick
     ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}</button>
     : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}</span>;
@@ -201,7 +202,7 @@ export function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote
         </span>
       </div>
       <div className="row" style={{ gap: 10, margin: "8px 0 10px" }}>
-        <span className={`tc-av ${b.side}`} aria-hidden="true">{b.handle[0]?.toUpperCase()}</span>
+        <Avatar className={`tc-av ${b.side}`} handle={b.handle} />
         <div style={{ minWidth: 0 }}>
           <b style={{ fontSize: 13 }}>{b.is_you ? "You" : `@${b.handle}`}</b>
           <div className="muted" style={{ fontSize: 10 }}>{b.quantity} micro{b.quantity === 1 ? "" : "s"}{b.size_pct ? ` · ${b.size_pct.toFixed(1)}% of account` : ""}</div>

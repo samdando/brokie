@@ -1,3 +1,5 @@
+import { Avatar } from "./Avatar";
+import { AvatarShop } from "./AvatarShop";
 import { DailyRecap, TradeReview } from "./TradeReview";
 import { useEffect, useState } from "react";
 import { FRAME_OPTIONS, game, useGame } from "./game";
@@ -19,7 +21,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
   return (
     <div className="stack you-screen" style={{ gap: 24 }}> 
       <div className="row you-identity" style={{ gap: 16 }}> 
-        <span style={{ width: 60, height: 60, borderRadius: 20, background: "var(--lime)", color: "var(--bg)", display: "grid", placeItems: "center", font: "700 26px var(--round)" }}>{me.handle[0].toUpperCase()}</span>
+        <Avatar handle={me.handle} style={{ width: 60, height: 60, borderRadius: 20, fontSize: 28 }} />
         <div>
           <button onClick={() => setEdit(true)} style={{ font: "700 23px var(--round)" }} data-testid="edit-handle">@{me.handle} <span className="muted" style={{ fontSize: 14 }}>✎</span></button>
           <div className="eyebrow" style={{ fontSize: 8, marginTop: 5 }}>Founding brokie · resets in {countdown(me.season_ends_at, game.now())}</div>
@@ -42,8 +44,9 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </div>
 
       </> : <LifetimeCard />}
-      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><FramesSetting /><BackupRow /></div></Sheet>
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
 
+      <AvatarShop toast={toast} />
       <DailyRecap />
       <div id="receipts" className="stack" style={{ gap: 14 }}>
         <div className="row between"><h2 className="h2">The receipts</h2><span className="eyebrow">Latest 50 · tap to review</span></div>

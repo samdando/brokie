@@ -15,3 +15,5 @@ Backend rule checks: load `supabase_stub, schema, seasons_v2, v3, partials, trad
 `node tests/hold-smoke.cjs` (same setup, about a minute) holds BUY and SELL: single and quick taps still batch, holding sends full orders of 10 while held and the remainder on release, never more than 5 orders in 10 seconds, a server refusal stops the hold with nothing left queued, and the sell side works.
 
 `node tests/hold-smoke.cjs` (same setup, about a minute) holds BUY and SELL: quick taps still batch, holding sends full orders of 10 while held and the rest on release, never more than 5 orders in 10 seconds, and a server refusal stops the hold with nothing left queued.
+
+`node tests/upgrade-smoke.cjs` checks fullscreen price panning, keeping the manual price range across quote updates, returning Live, expansion animation, directional page slides with a fixed footer, daily squad totals, active-trade ordering, avatar purchase feedback, and phone-width overflow. `timeframes-smoke.cjs` now checks the down/up traversal, including reversals at both ends.

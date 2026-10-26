@@ -11,4 +11,8 @@ await db.exec(readFileSync(root+'tests_weekend.sql','utf8')); console.log('Weeke
 await db.exec(readFileSync(root+'prediction_tokens.sql','utf8'));
 await db.exec(readFileSync(root+'prediction_tokens.sql','utf8')); console.log('Token migration rerun passed');
 await db.exec(readFileSync(root+'tests_prediction_tokens.sql','utf8')); console.log('Prediction token SQL checks passed');
+for (const file of ['avatars.sql', 'squad_dashboard.sql']) {
+ await db.exec(readFileSync(root+file,'utf8')); await db.exec(readFileSync(root+file,'utf8'));
+}
+await db.exec(readFileSync(root+'tests_avatars.sql','utf8')); console.log('Avatar wallet and squad dashboard checks passed');
 await db.close();

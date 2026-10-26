@@ -109,6 +109,7 @@ export class Game {
   private timer: number | null = null;
   private quoteTimer: number | null = null;
   private beat = 0;
+  private frameDirection = -1;
   private lastWeekend: boolean | null = null;
 
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => this.listeners.delete(fn); };
@@ -428,9 +429,18 @@ export class Game {
   async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }
   async refreshLifetime() { try { this.set({ lifetime: await this.api.rpc<Lifetime>("lifetime_stats") }); } catch { /* */ } }
   setCandleSeconds(s: number) { if (s === this.state.candleSeconds) return; write(FRAME_KEY, String(s)); this.set({ candleSeconds: s }); void this.refreshCandles(); }
-  /** The timeframe a tap goes to: one step down (e.g. 1D → 4h → 15m), then back up to the highest. */
-  frameAfter() { const f = this.state.frames; const i = f.indexOf(this.state.candleSeconds); return i <= 0 ? f[f.length - 1] : f[i - 1]; }
-  nextFrame() { this.setCandleSeconds(this.frameAfter()); }
+  /** Walk down and back up the equipped frames, reversing at each end. */
+  frameAfter() {
+    const f = this.state.frames, i = f.indexOf(this.state.candleSeconds);
+    if (f.length < 2) return f[0];
+    const dir = i <= 0 ? 1 : i >= f.length - 1 ? -1 : this.frameDirection;
+    return f[Math.max(0, i) + dir];
+  }
+  nextFrame() {
+    const next = this.frameAfter();
+    this.frameDirection = next > this.state.candleSeconds ? 1 : -1;
+    this.setCandleSeconds(next);
+  }
   /** Turn a timeframe on or off in your list (at least one stays on). */
   toggleFrame(s: number) {
     const cur = this.state.frames;

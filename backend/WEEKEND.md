@@ -6,9 +6,10 @@ Crypto stays alongside predictions. BTC, ETH and SOL replace the weekday ticker 
 
 1. Run `weekend_markets.sql` and commit it separately (new Postgres enum values).
 2. Run `weekend.sql`, then `predictions.sql`, then `prediction_tokens.sql` in that order. Always finish with the token migration; earlier migrations define the legacy paper-dollar functions. The token migration refuses to proceed if any legacy prediction positions or receipts need reconciliation.
-3. Deploy `functions/crypto-quotes/index.ts` as `crypto-quotes` and `functions/prediction-quotes/index.ts` as `prediction-quotes`. These check the existing private cron secret themselves, like the existing ingest function. Service keys remain server-side. The original OANDA function is unchanged.
-4. Apply `weekend_cron.sql`, `crypto_cron.sql`, `prediction_cron.sql` after deploying the functions. These reuse the existing private ingest URL/cron secret. Keep JWT verification enabled on both functions and store the project's existing legacy anon JWT as `brokie_private.edge_anon_jwt`; the jobs send it in the Authorization header. Do not commit credentials.
-5. Verify new quotes, prediction market snapshots, cron responses and `select settle_market_closes();` before publishing the web build.
+3. Run `avatars.sql` and `squad_dashboard.sql` to enable the shared token avatar shop and daily squad dashboard. These migrations are rerunnable and preserve existing wallets and competition balances.
+4. Deploy `functions/crypto-quotes/index.ts` as `crypto-quotes` and `functions/prediction-quotes/index.ts` as `prediction-quotes`. These check the existing private cron secret themselves, like the existing ingest function. Service keys remain server-side. The original OANDA function is unchanged.
+5. Apply `weekend_cron.sql`, `crypto_cron.sql`, `prediction_cron.sql` after deploying the functions. These reuse the existing private ingest URL/cron secret. Keep JWT verification enabled on both functions and store the project's existing legacy anon JWT as `brokie_private.edge_anon_jwt`; the jobs send it in the Authorization header. Do not commit credentials.
+6. Verify new quotes, prediction market snapshots, cron responses and `select settle_market_closes();` before publishing the web build.
 
 Do not run test fixtures against production. `repair_bum_market_close.sql` records the guarded repair already applied; it is not a general migration.
 

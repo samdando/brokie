@@ -1,14 +1,12 @@
 import { PredictionMarkets } from "./PredictionMarkets";
-import { PlayerLink } from "./Profiles";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { TAP_SIZE, frameLabel, game, stacksOf, useGame } from "./game";
-import { isCrypto, sessionMarkets, weekendMode } from "./sessions";
+import { sessionMarkets, weekendMode } from "./sessions";
 
-import { shareInvite } from "./Squad";
 import { BrokieChart, CHART_SMALL } from "./Chart";
-import { Button, Eyebrow, Sheet, TickValue, ago, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
+import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
@@ -32,7 +30,23 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   // Remember where the page was BEFORE the chart leaves the page flow: once it's fixed, the browser
   // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
   const pageScroll = useRef({ x: 0, y: 0 });
-  const toggleBig = () => { if (!big) pageScroll.current = { x: window.scrollX, y: window.scrollY }; setBig(v => !v); };
+  const chartCard = useRef<HTMLDivElement>(null);
+  const chartRect = useRef<DOMRect | null>(null);
+  const toggleBig = () => {
+    if (!big) pageScroll.current = { x: window.scrollX, y: window.scrollY };
+    chartRect.current = chartCard.current?.getBoundingClientRect() ?? null;
+    setBig(v => !v);
+  };
+  useLayoutEffect(() => {
+    const el = chartCard.current, from = chartRect.current;
+    if (!el || !from || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const to = el.getBoundingClientRect();
+    el.animate([
+      { transformOrigin: "top left", transform: `translate(${from.x - to.x}px, ${from.y - to.y}px) scale(${from.width / to.width}, ${from.height / to.height})`, borderRadius: big ? "21px" : "0" },
+      { transformOrigin: "top left", transform: "none", borderRadius: big ? "0" : "21px" }
+    ], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
+    chartRect.current = null;
+  }, [big]);
   useEffect(() => {
     if (!big) return;
     const { x, y } = pageScroll.current;
@@ -131,7 +145,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
       {market === "prediction" ? <PredictionMarkets toast={toast} /> : <>
-      <div className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
+      <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{MARKETS[market].subtitle} <span className="mono muted" style={{ fontSize: 9 }}>{MARKETS[market].symbol}</span></div>
@@ -148,7 +162,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </span>
         </div>
         {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
-        <BrokieChart height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+        <BrokieChart fullscreen={big} height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           // Your own past trades always show; the 👥 toggle only hides friends'.
@@ -166,7 +180,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
             <span aria-hidden="true">{style === "candles" ? "▮▮" : "∿"}</span>
           </button>
-          {/* One timeframe button: shows the current timeframe; tap to step down to the next one in your list (You tab), wrapping back to the highest. */}
+          {/* One timeframe button: shows the current timeframe; tap to step down to the next one in your list (You tab), reversing direction at each end. */}
           <button type="button" className="chip lime on frame-btn" data-testid="frame-btn" onClick={() => game.nextFrame()} disabled={st.frames.length < 2}
             aria-label={`${frameLabel(st.candleSeconds)} candles${st.frames.length > 1 ? `. Tap for ${frameLabel(game.frameAfter())}` : ""}`}>{frameLabel(st.candleSeconds)}</button>
           <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
@@ -177,11 +191,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             <span className="crowd-chip">👥{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span>
           </button>
         </div>
-        <div className="chart-attribution">
-          Real prices from {isCrypto(market) ? "Coinbase" : "OANDA"}, fake money. Not financial advice. {!open && "Market’s closed. New trades open when prices are live again."}
-          {" "}Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
-          {" "}(<a href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">notice</a>).
-        </div>
+        {!open && <div className="chart-attribution">Market closed · new trades resume when prices are live.</div>}
       </div>
 
       <div className="trade-dock"><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
@@ -230,76 +240,6 @@ function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; 
         <Button variant="ghost" onClick={onClose}>Got it</Button>
       </div>
     </Sheet>
-  );
-}
-
-export function Pit({ goSquad, toast, full = false }: { goSquad: () => void; toast: (m: string) => void; full?: boolean }) {
-  const st = useGame();
-  const squad = game.squad;
-  const [busy, setBusy] = useState(false);
-  async function invite() {
-    if (!squad || busy) return;
-    setBusy(true);
-    const r = await shareInvite(squad);
-    setBusy(false);
-    if (r === "copied") toast("Invite copied. Paste it in the group chat.");
-    else if (r === "failed") toast(`Couldn't copy. Your code is ${squad.invite_code}.`);
-  }
-  return (
-    <div className="stack pit-section" style={{ gap: 12 }}>
-      <div className="row between"><h2 className="h2">The pit</h2><span className="eyebrow">{squad?.name ?? "Your squad"}</span></div>
-      {!squad ? (
-        <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
-          <b style={{ fontSize: 13 }}>It's quiet. Trading is better with mates.</b>
-          <div className="muted" style={{ fontSize: 12 }}>Start a squad to get an invite link, then send it to the group chat.</div>
-          <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={goSquad} data-testid="pit-start-squad">Start a squad to invite friends ↗</button>
-        </div>
-      ) : st.feed.length === 0 ? (
-        <div className="panel stack" style={{ padding: 16, gap: 10 }} data-testid="pit-empty">
-          <span className="muted" style={{ fontSize: 12 }}>Quiet in here. Be the first to make a move{squad.member_count === 1 ? ", or bring your mates." : "."}</span>
-          {squad.member_count === 1 && <button className="big-btn lime" style={{ height: 42, fontSize: 13 }} onClick={invite} disabled={busy} data-testid="pit-invite">{busy ? <span className="spinner" /> : "Invite friends ↗"}</button>}
-        </div>
-      ) : <ActivityFeed full={full} />}
-      {squad && !full && <button className="text-action lime" onClick={goSquad}>Open squad activity →</button>}
-    </div>
-  );
-}
-
-function ActivityFeed({ full }: { full: boolean }) {
-  const feed = useGame().feed;
-  const groups: typeof feed[] = [];
-  for (const event of feed) {
-    const prev = groups[groups.length - 1];
-    const first = prev?.[0];
-    if (first && event.kind === "opened" && first.kind === event.kind && first.handle === event.handle && first.market === event.market && first.side === event.side && Math.abs(Date.parse(first.at) - Date.parse(event.at)) < 60_000) prev.push(event);
-    else groups.push([event]);
-  }
-  return <div className="activity-feed">{(full ? groups : groups.slice(0, 2)).map((events) => events.length === 1
-    ? <FeedRow key={`${events[0].kind}-${events[0].id}`} e={events[0]} />
-    : <details key={`${events[0].kind}-${events[0].id}`} className="activity-group"><summary>@{events[0].handle} · {events.length} {MARKETS[events[0].market].title} {events[0].side === "long" ? "buys" : "sells"}<span className="muted">View trades</span></summary>{events.map(e => <FeedRow key={e.id} e={e} />)}</details>)}</div>;
-}
-
-export function FeedRow({ e }: { e: import("./types").FeedEvent }) {
-  const size = `${e.quantity} ${MARKETS[e.market].title}`;
-  return (
-    <div className="panel" style={{ padding: 14, borderRadius: 16, display: "flex", gap: 11 }}>
-      <span className={`av ${e.is_you ? "you" : ""}`} style={{ width: 33, height: 33 }}>{e.handle[0].toUpperCase()}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="row" style={{ gap: 6 }}>
-          <b style={{ fontSize: 12 }}><PlayerLink handle={e.handle}>{e.is_you ? "You" : `@${e.handle}`}</PlayerLink></b>
-          <span className="muted" style={{ fontSize: 9 }}>{ago(e.at)}</span>
-          {(e.kind === "opened" || e.kind === "closed") && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600 }} className={e.side === "long" ? "lime" : "red"}>{MARKETS[e.market].title} {e.side === "long" ? "↑" : "↓"}</span>}
-        </div>
-        <div style={{ fontSize: 13, marginTop: 5, color: "rgba(255,255,255,.85)" }}>
-          {e.kind === "rekt" ? <b style={{ color: "#bbb" }}>💀 Blew the account. REKT.</b>
-          : e.kind === "funded" ? <b style={{ color: "var(--gold)" }}>🏆 Funded: +10% and 5 trading days.</b>
-          : e.kind === "closed" && e.pnl !== null ? (
-            <>{e.reason === "blown" ? `Blown out of ${size} ` : e.reason === "daily_limit" ? `Daily limit closed ${size} ` : `Closed ${e.side} ${size} `}
-              <b className={`mono ${e.pnl >= 0 ? "lime" : "red"}`}>{signedMoney(e.pnl)}</b>{e.reason === "closed" && (e.pnl >= 0 ? " 🔥" : " 💀")}</>
-          ) : <>Went {e.side} {size} at {px(e.price)}</>}
-        </div>
-      </div>
-    </div>
   );
 }
 

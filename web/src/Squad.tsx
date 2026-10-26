@@ -1,20 +1,22 @@
+import { Avatar } from "./Avatar";
 import { PlayerLink } from "./Profiles";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
 import { Button, Eyebrow, Sheet, countdown, money, useNow } from "./ui";
-import { Pit } from "./Trade";
+import { ActiveSquadTrades, SquadDailyStats, useSquadDashboard } from "./SquadDashboard";
 import { GlobalBoard } from "./Social";
 import { TodayPnl } from "./TodayPnl";
 
-export function SquadScreen({ toast }: { toast: (message: string) => void }) {
+export function SquadScreen(_props: { toast: (message: string) => void }) {
   const st = useGame();
   const chatOpen = st.chatOpen;
-  const setChatOpen = (v: boolean) => game.setChatOpen(v);
+
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<"squad" | "global">(() => { try { return localStorage.getItem("brokie.board") === "global" ? "global" : "squad"; } catch { return "squad"; } });
   const pick = (v: "squad" | "global") => { setView(v); try { localStorage.setItem("brokie.board", v); } catch { /* ignore */ } };
   const squad = game.squad;
+  const dashboard = useSquadDashboard(view === "squad" ? squad?.id : undefined);
   useEffect(() => {
     if (!squad || chatOpen) return;
     void game.refreshChat();
@@ -33,10 +35,12 @@ export function SquadScreen({ toast }: { toast: (message: string) => void }) {
             {st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}
             <button className="squad-chip add" onClick={() => setAdding(true)}>+ Squad</button>
           </div>
+          {squad && <ActiveSquadTrades {...dashboard} />}
           {squad && <SquadCard />}
+          {squad && <SquadDailyStats data={dashboard.data} />}
           {squad && <Leaderboard />}
           {squad && <VoiceCard />}
-          {squad && <Pit full goSquad={() => setChatOpen(true)} toast={toast} />}
+
         </>
       )}
       <Sheet open={adding} onClose={() => setAdding(false)}><SquadStarter onDone={() => setAdding(false)} /></Sheet>
@@ -182,7 +186,7 @@ function Leaderboard() {
         <div key={r.handle}>
           <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="leader-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : String(i + 1).padStart(2, "0")}</span>
-            <span className={`av ${r.is_you ? "you" : ""}`}>{r.handle[0].toUpperCase()}</span>
+            <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> <TodayPnl value={r.today_pnl} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}

@@ -11,7 +11,7 @@ await page.evaluate(async()=>{
  const {game}=await import('/src/game.ts'); window.testGame=game;
  for(const name of ['setActive','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles']) game[name]=async()=>{};
  game.checkBrackets=async()=>[];
- game.api.rpc=async(name,args)=>name==='share_trade'?'10000000-0000-0000-0000-000000000001':{...game.state.lifetime,handle:args?.p_handle || 'sam'};
+ game.api.rpc=async(name,args)=>name==='avatar_shop'?{balance:8,items:[],equipped:null}:name==='player_avatars'?{}:name==='squad_dashboard'?{day:'2026-10-26',ends_at:new Date().toISOString(),players:[],open:[]}:name==='share_trade'?'10000000-0000-0000-0000-000000000001':{...game.state.lifetime,handle:args?.p_handle || 'sam'};
  const now=new Date().toISOString(); const start=Math.floor(Date.now()/60000)-100;
  const candles=Array.from({length:100},(_,i)=>({index:start+i,open:29600+i,high:29610+i,low:29590+i,close:29605+i}));
  const rules={status:'active',start_balance:100000,peak_equity:100000,day_start_equity:100000,daily_loss_pct:5,max_dd_pct:10,daily_floor:95000,drawdown_floor:90000,target:110000,funded:false,resets_used:0,trading_days:1,qualify_days:5,equity:99900};
@@ -42,7 +42,7 @@ await page.getByRole('button',{name:"View @ankits's profile"}).click();await pag
 assert(await page.getByTestId('invite-code').count()===0);
 await page.getByRole('button',{name:'Invite / manage'}).click();await page.getByTestId('invite-code').waitFor({state:"visible"});await page.getByRole('button',{name:'Done',exact:true}).click();
 await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Done',exact:true}).click();
-await page.locator('.activity-group summary').click();assert(await page.locator('.activity-group .panel').count()===5);
+await page.getByTestId('squad-active').waitFor(); await page.getByTestId('squad-daily').waitFor(); assert.equal(await page.locator('.activity-group').count(),0);
 await page.getByTestId('tab-learn').click();await page.getByText('Essentials complete.',{exact:true}).waitFor({state:"visible"});await shot('learn');
 await page.getByRole('button',{name:'Put it into practice'}).click();await page.getByTestId('equity').waitFor({state:"visible"});
 await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,status:'locked'},cash:94995}})});
@@ -79,7 +79,7 @@ await page.evaluate(()=>{
 assert.equal(await page.getByTestId('bracket-grip').getAttribute('data-pinned'),null,'entry in view: pill sits on the entry line');
 await page.getByTestId('bracket-grip').click();
 await page.getByTestId('trade-card').getByText('Entry time',{exact:true}).waitFor();
-await page.getByTestId('trade-card').getByText('Current P&L',{exact:true}).waitFor();
+await page.getByTestId('trade-card').getByText('P&L',{exact:true}).waitFor();
 await page.getByRole('button',{name:'Close trade card'}).click();
 // So does your face marker, where the chart draws it (the synthetic test chart doesn't place markers).
 if(await page.getByTestId('my-bubble').count()){await page.getByTestId('my-bubble').click();await page.getByTestId('trade-card').getByText('Entry time',{exact:true}).waitFor();await page.getByRole('button',{name:'Close trade card'}).click();}
@@ -102,5 +102,5 @@ assert.equal(await page.getByText('lowest trade').count(),0);
 await page.getByTestId('tab-trade').click();
 await page.getByTestId('big-chart').click(); await page.keyboard.press('Escape');
 assert.equal(await page.evaluate(()=>document.body.style.position),'');
-assert.deepEqual(errors,[]); console.log('PASS: 8 screen sizes, fullscreen scroll lock/restoration, tap-pill entry details, pinned position pill, squad W/L, navigation, risk disclosure, chart info, squad management/chat, feed grouping, completion, lockout, receipts, lifetime; no runtime errors.');await browser.close();
+assert.deepEqual(errors,[]); console.log('PASS: 8 screen sizes, fullscreen scroll lock/restoration, tap-pill entry details, pinned position pill, squad W/L, navigation, risk disclosure, chart info, squad management/chat, daily squad stats, completion, lockout, receipts, lifetime; no runtime errors.');await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
