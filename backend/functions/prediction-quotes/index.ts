@@ -30,11 +30,10 @@ Deno.serve(async (req: Request) => {
   const watchResponse=await rpc("prediction_watchlist",{});
   if(!watchResponse.ok)return Response.json({error:"Watchlist unavailable"},{status:502});
   const watch:string[]=await watchResponse.json();
-  // Discover actual series: https://docs.kalshi.com/api-reference/market/get-series-list
-  const categories = [/cricket|\bipl\b|\bt20\b|ashes|big bash/i, /soccer|premier league|champions league|a-league|la liga|bundesliga/i, /tennis|atp|wta|australian open/i, /formula|grand prix|motogp|supercars/i];
-  let discovery: { ticker: string; title: string; tags?: string[] }[] = [];
-  try { const data = await get("/series?category=Sports"); discovery = Array.isArray(data.series) ? data.series.filter((s: { ticker?: unknown; title?: unknown }) => typeof s.ticker === "string" && typeof s.title === "string") : []; } catch { /* Watched positions must still settle if discovery fails. */ }
-  const series = [...new Set(["KXBTC15M", ...categories.flatMap(pattern => discovery.filter(s => pattern.test(`${s.title} ${(s.tags ?? []).join(" ")}`)).slice(0, 3).map(s => s.ticker))])];
+  // Verified against the public series API on 27 Oct 2026. Fetch match series
+  // directly: downloading the entire sports catalogue can time out and pick old props.
+  const categories = [/cricket|\bipl\b|\bt20\b|ashes|big bash/i, /soccer|premier league|champions league|a-league|la liga|bundesliga|kxepl|kxucl/i, /tennis|atp|wta/i, /formula|grand prix|motogp|supercars|kxf1/i];
+  const series = ["KXBTC15M", "KXCRICKETT20IMATCH", "KXCRICKETTESTMATCH", "KXODIMATCH", "KXCRICKETWOMENT20IMATCH", "KXEPLGAME", "KXUCLGAME", "KXWTAMATCH", "KXF1"];
   const requests=[...series.map(ticker=>get(`/markets?status=open&limit=100&series_ticker=${encodeURIComponent(ticker)}`)),
     ...Array.from({length:Math.ceil(watch.length/50)},(_,i)=>get(`/markets?limit=100&tickers=${encodeURIComponent(watch.slice(i*50,i*50+50).join(','))}`))];
   const results=await Promise.allSettled(requests);

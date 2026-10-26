@@ -6,12 +6,15 @@ struct BrokieApp: App {
     @StateObject private var game: OnlineGame
     /// Real LiveKit voice when online in a squad; the audio-free preview otherwise.
     @StateObject private var voice: VoiceSession
+    @State private var nativeOpen = false
+    private let uiTesting: Bool
     private let preferences: UserDefaults
 
     init() {
         let arguments = ProcessInfo.processInfo.arguments
         let store: UserDefaults
         let uiTesting = arguments.contains("--uitesting")
+        self.uiTesting = uiTesting
         if uiTesting {
             let suite = "com.brokie.papertrade.uitests"
             let isolated = UserDefaults(suiteName: suite)!
@@ -32,7 +35,19 @@ struct BrokieApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(practice: practice)
+            Group {
+                if uiTesting {
+                    RootView(practice: practice)
+                } else {
+                    LiveFloorView(onNative: { nativeOpen = true })
+                        .fullScreenCover(isPresented: $nativeOpen) {
+                            VStack(spacing: 0) {
+                                HStack { Text("Original native client").font(.caption); Spacer(); Button("Back to live floor") { nativeOpen = false } }.padding()
+                                RootView(practice: practice)
+                            }.background(Ink.background)
+                        }
+                }
+            }
                 .environmentObject(game)
                 .environmentObject(voice)
                 .defaultAppStorage(preferences)

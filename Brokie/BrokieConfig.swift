@@ -4,6 +4,7 @@ import Foundation
 /// grants what the database's permissions allow). Leave them empty to play the
 /// offline practice mode only.
 enum BrokieConfig {
+    static let liveFloorURL = URL(string: "https://samdando.github.io/brokie/")!
     static let supabaseURL = "https://nchvildidonrzoipktjw.supabase.co"
     static let supabaseAnonKey = "sb_publishable_gSY6z7Bi2AzpPOjJSTWYkQ_GVJQD4Kc"
 

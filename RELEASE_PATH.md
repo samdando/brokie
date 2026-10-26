@@ -1,6 +1,6 @@
 # Brokie release path · 27 October 2026
 
-The current redesign is in `web/`. The SwiftUI app is an older, separate client and does not yet contain this web redesign. Submitting the existing Xcode project would not ship these screens.
+The current redesign is live at https://samdando.github.io/brokie/. The Xcode app now opens this same interface in a WebKit client with native haptics, microphone prompting, external-link handling and retry UI. Its Native account button retains the original SwiftUI client and its keychain login. The web floor uses its own saved session; existing native players can use a backup code to restore their account there. Native credentials are never injected into the hosted page. UI tests keep using isolated native practice mode.
 
 ## App Store assessment
 
@@ -22,7 +22,7 @@ On iPhone, open the domain in Safari and follow [Apple's Add to Home Screen inst
 
 The live database has `backend/clean_floor.sql` applied (8 players received the grant, 4 free avatars, current-season loss rules unchanged). For another environment, apply it after the existing token/avatar/weekend migrations. It grants existing and new players five starter tokens exactly once, adds four free avatars and profile colours, permits orders up to 100 micros within existing margin/session/rate checks, and schedules the fixed USD 2,000 daily loss allowance for accounts in seasons after the rollout season. Earned balances and current-season loss rules are preserved. The 8% maximum loss rule can still be reached first.
 
-Deploy `backend/deploy/prediction-quotes.ts` as the existing `prediction-quotes` edge function. It discovers listed cricket, football, tennis and motorsport series from [Kalshi's series API](https://docs.kalshi.com/api-reference/market/get-series-list), reserves room per sport and keeps tracked positions eligible for settlement. Categories can be empty when the source has no fresh qualifying markets; the interface says so.
+The regional discovery update is deployed to the existing `prediction-quotes` edge function; `backend/deploy/prediction-quotes.ts` is its source for future deployment. It fetches verified cricket, football, tennis and motorsport match series from Kalshi, reserves room per sport and keeps tracked positions eligible for settlement. Categories can be empty when the source has no fresh qualifying markets; the interface says so.
 
 Session countdowns use Brokie's current 17:00 New York weekday flat-at-close / Sunday 18:00 crypto rules. Sydney, Tokyo, London and New York opens are reference liquidity sessions, with named time zones and daylight saving; they are not an exchange holiday calendar. Alerts animate while the trading screen is open. They do not run when the web app is backgrounded or closed.
 
@@ -32,5 +32,7 @@ Session countdowns use Brokie's current 17:00 New York weekday flat-at-close / S
 - `node backend/tests/clean-floor.mjs` and `node backend/tests/weekend.mjs`
 - `node backend/tests/feeds.cjs`
 - Local Vite server, then `web/tests/clean-floor.cjs`, `ui-smoke.cjs`, `hold-smoke.cjs`, `upgrade-smoke.cjs` with Playwright/Chrome.
+
+The iPhone Simulator Debug build passed, and the installed client was launched and visually verified on iPhone 16 Pro (iOS 18.3). Signing and App Store submission have not been performed. Both the repository project and the Desktop root project have the new client.
 
 The browser tests use synthetic accounts and intercepted requests, not live order execution. The SQL checks use a disposable PostgreSQL-compatible PGlite database. Bundle size has the existing Vite warning.
