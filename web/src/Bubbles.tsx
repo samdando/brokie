@@ -48,8 +48,8 @@ export function TradeMarker({ handle, long, exit, me, fresh, faded, danger, styl
   const cls = `tm ${long ? "long" : "short"} ${exit ? "exit" : ""} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${faded ? "faded" : ""} ${danger ? "danger" : ""}`;
   const face = <Avatar className="tm-face" handle={handle} />;
   return onClick
-    ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}</button>
-    : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}</span>;
+    ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}<span className="tm-direction" aria-hidden="true">{exit || faded ? "×" : long ? "▲" : "▼"}</span>{!exit && !faded && <span className="tm-live" aria-hidden="true" />}</button>
+    : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}<span className="tm-direction" aria-hidden="true">{exit || faded ? "×" : long ? "▲" : "▼"}</span>{!exit && !faded && <span className="tm-live" aria-hidden="true" />}</span>;
 }
 
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }

@@ -25,5 +25,6 @@ export function Avatar({ handle, className = "", style, symbol, color }: { handl
   useEffect(() => { load(handle); const t = setInterval(() => load(handle), 20000); return () => clearInterval(t); }, [handle, all]);
   const hash = [...handle.toLowerCase()].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7), hue = hash % 360;
   const look = all[handle];
-  return <span className={`av player-avatar ${className}`} aria-label={`${handle}'s avatar`} style={{ background: `linear-gradient(${hash % 180}deg, hsl(${hue} 46% 28%), hsl(${(hue + 55) % 360} 55% 14%))`, color: color ?? look?.color ?? `hsl(${hue} 90% 85%)`, border: `1px solid ${color ?? look?.color ?? `hsl(${hue} 45% 50%)`}`, ...style }}>{symbol ?? look?.symbol ?? handle[0]?.toUpperCase()}</span>;
+  const tint = color ?? look?.color;
+  return <span className={`av player-avatar ${className}`} aria-label={`${handle}'s avatar`} style={{ background: tint ? `linear-gradient(140deg, ${tint}44, ${tint}12)` : `linear-gradient(${hash % 180}deg, hsl(${hue} 46% 28%), hsl(${(hue + 55) % 360} 55% 14%))`, color: color ?? look?.color ?? `hsl(${hue} 90% 85%)`, border: `1px solid ${color ?? look?.color ?? `hsl(${hue} 45% 50%)`}`, ...style }}>{symbol ?? look?.symbol ?? handle[0]?.toUpperCase()}</span>;
 }

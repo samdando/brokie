@@ -1,9 +1,13 @@
+import { SelectionRail } from "./SelectionRail";
+import { SessionClock } from "./SessionClock";
+import { MarketArt } from "./MarketArt";
+import { orderEffect, readEffect } from "./effects";
 import { PredictionMarkets } from "./PredictionMarkets";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
-import { TAP_SIZE, frameLabel, game, stacksOf, useGame } from "./game";
-import { sessionMarkets, weekendMode } from "./sessions";
+import { frameLabel, game, stacksOf, useGame } from "./game";
+import { sessionMarkets } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
 import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
@@ -13,6 +17,17 @@ import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
   const me = st.me!;
+  const lastChart = useRef<Market>(st.market === "prediction" ? "nas" : st.market);
+  const [switching, setSwitching] = useState(false);
+  const switchTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(switchTimer.current), []);
+  function switchPrediction() {
+    if (switching) return;
+    if (st.market !== "prediction") lastChart.current = st.market;
+    setSwitching(true);
+    game.setMarket(st.market === "prediction" ? (shown.includes(lastChart.current) ? lastChart.current : shown[0]) : "prediction");
+    switchTimer.current = setTimeout(() => setSwitching(false), 420);
+  }
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
   const lastEnterToast = useRef(0);
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
@@ -87,7 +102,6 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   }, [st.market, st.squadId]);
   const market = st.market;
   // A market only shows once the price feed has a quote for it (so a new market appears by itself when its feed goes live).
-  const weekend = weekendMode(game.now());
   const shown = sessionMarkets(game.now());
   const heldElsewhere = [...new Set(me.positions.filter(p => p.market !== "prediction").map(p => p.market))].filter(m => !shown.includes(m));
   const candles = game.liveCandles(market);
@@ -114,29 +128,16 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
   return (
     <div className="stack trade-screen">
-      <section className={`account-hero ${rules?.status ?? "active"}`}>
-      <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
-        <div>
-          <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
-          <div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div>
-          <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
-            <button type="button" className="gain-btn" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="Season P&L. How is this calculated?">{equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}% <span className="muted">ⓘ</span></button>
-            {rules?.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }} data-testid="funded-chip">🏆 FUNDED</span>
-              : rules?.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }} data-testid="target-chip">🎯 TARGET HIT</span>}
-          </div>
-        </div>
-      </div>
 
-      {rules && <RuleStatus rules={rules} toast={toast} goHistory={goHistory} />}
-      {rules && <Meters rules={rules} equity={equity} />}
-      </section>
+      <div className="trade-mode-row"><span className="eyebrow">{market === "prediction" ? "THE PREDICTION ROOM" : "THE TRADING FLOOR"}</span>
+      <button className={`predictions-entry ${market === "prediction" ? "active" : ""}`} onClick={switchPrediction} aria-pressed={market === "prediction"} disabled={switching} data-testid="prediction-switch"><span className="prediction-orbit" aria-hidden="true">✦</span><span>{market === "prediction" ? "Back to charts" : "Predictions"}</span><span aria-hidden="true">{market === "prediction" ? "↙" : "↗"}</span></button></div>
+      <div key={market === "prediction" ? "predictions" : "charts"} className={`market-stage ${switching ? market === "prediction" ? "to-predictions" : "to-charts" : ""}`}>
+      {market !== "prediction" && <>
 
-      <button className={`text-action predictions-entry ${market === "prediction" ? "lime" : ""}`} onClick={() => game.setMarket(market === "prediction" ? shown[0] : "prediction")} data-testid="prediction-switch">{market === "prediction" ? "← Back to charts" : "Prediction markets →"}</button>
-      <div className="session-caption" data-testid="session-mode"><b>{weekend ? "Weekend crypto" : "Weekday markets"}</b><span>{weekend ? "Paper contracts · closes Sunday 6pm New York" : "Positions close each session at 5pm New York"}</span></div>
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
-            <div className="row" style={{ gap: 6 }}><span className="dot" /><b>{MARKETS[m].title}</b></div>
+            <MarketArt market={m} /><b>{m === "us30" ? "DOW" : MARKETS[m].title}</b>
             <span className="mono">{mark(m) ? px(mark(m)!, digits(m)) : "—"}</span>
           </button>
         ))}
@@ -144,6 +145,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
+      </>}
       {market === "prediction" ? <PredictionMarkets toast={toast} /> : <>
       <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
@@ -180,9 +182,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
             <span aria-hidden="true">{style === "candles" ? "▮▮" : "∿"}</span>
           </button>
-          {/* One timeframe button: shows the current timeframe; tap to step down to the next one in your list (You tab), reversing direction at each end. */}
-          <button type="button" className="chip lime on frame-btn" data-testid="frame-btn" onClick={() => game.nextFrame()} disabled={st.frames.length < 2}
-            aria-label={`${frameLabel(st.candleSeconds)} candles${st.frames.length > 1 ? `. Tap for ${frameLabel(game.frameAfter())}` : ""}`}>{frameLabel(st.candleSeconds)}</button>
+          <SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f => ({ value: f, label: frameLabel(f) }))} onChange={f => game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe" />
           <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
             aria-label={big ? "Smaller chart" : "Bigger chart"} onClick={toggleBig}>{big ? "⤡" : "⤢"}</button>
           <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
@@ -194,7 +194,25 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         {!open && <div className="chart-attribution">Market closed · new trades resume when prices are live.</div>}
       </div>
 
-      <div className="trade-dock"><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
+      <SessionClock market={market} />
+      <section className={`account-hero ${rules?.status ?? "active"}`}>
+      <div className="row between account-summary" style={{ alignItems: "flex-end" }}>
+        <div>
+          <Eyebrow>Season {me.season_number ?? ""} challenge · USD</Eyebrow>
+          <div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div>
+          <div className={`season-gain ${equity >= base ? "lime" : "red"}`}>
+            <button type="button" className="gain-btn" onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="Season P&L. How is this calculated?">{equity >= base ? "↗" : "↘"} {signedMoney(equity - base)} · {((equity - base) / base * 100).toFixed(2)}% <span className="muted">ⓘ</span></button>
+            {rules?.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }} data-testid="funded-chip">🏆 FUNDED</span>
+              : rules?.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }} data-testid="target-chip">🎯 TARGET HIT</span>}
+          </div>
+        </div>
+      </div>
+
+      {rules && <RuleStatus rules={rules} toast={toast} goHistory={goHistory} />}
+      {rules && <Meters rules={rules} equity={equity} />}
+      </section>
+
+      <div className="trade-dock"><div className="size-picker"><span>MICROS / TAP</span><SelectionRail label="Order size" value={st.qty} options={[1, 10, 100].map(n => ({ value: n, label: `${n}` }))} disabled={!!st.pending || game.ordersInFlight > 0} onChange={n => game.setQty(n)} testId="micro-rail" itemPrefix="size" /></div><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
 
       <div className="stack" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>
@@ -215,6 +233,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
 
       </>}
+      </div>
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
   );
@@ -258,8 +277,8 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
         <div><b style={{ fontSize: 17 }}>REKT.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>You hit the {rules.max_dd_pct}% max loss limit. Account blown for this season.</div></div></div>
       {rules.resets_used === 0 ? (
         <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
-          onClick={async () => { setBusy(true); try { await game.buyBack(); toast("Back in. 4% daily limit, and 5 new trading days to qualify."); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
-          {busy ? <span className="spinner" /> : "Use your one buy-back (4% daily · 8% max loss)"}
+          onClick={async () => { setBusy(true); try { await game.buyBack(); toast(`Back in. ${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily limit, and 5 new trading days to qualify.`); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
+          {busy ? <span className="spinner" /> : `Use your one buy-back (${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily · 8% max loss)`}
         </button>
       ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Buy-back used. See you next season.</div>}
     </div>
@@ -281,7 +300,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       <div className="meter-heading">{label} <span aria-hidden="true">ⓘ</span></div>
       <b style={{ color: tone(frac) }}>{money(remaining, 0)} <small>left</small></b>
       <div className="bar" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: tone(frac) }} /></div>
-      <div className="meter-caption">{cap}% {id === "meter-daily" ? "daily cap" : trailing ? "trailing limit" : "end-of-day limit"}</div>
+      <div className="meter-caption">{id === "meter-daily" && rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : `${cap}%`} {id === "meter-daily" ? "daily cap" : trailing ? "trailing limit" : "end-of-day limit"}</div>
     </button>
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
@@ -350,10 +369,11 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     if (disabled) return;
     const cur = game.state.pending;
     const n = cur && cur.side === side ? cur.count : 0;
-    const cap = game.tapReduces(side) ? game.heldAgainst(side) : 10;
+    const cap = game.tapReduces(side) ? game.heldAgainst(side) : 100;
     if (n >= cap) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
     const lvl = Math.min(2, Math.floor(n / 5));
     buzz([12, 22, 35][lvl]);
+    orderEffect(readEffect());
     const id = ++seq.current;
     const now = performance.now();
     const previous = comboRef.current;
@@ -396,12 +416,13 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     if (send) game.armTaps(done(h.side));   // let go: the usual short wait, so quick taps still batch
   }
   function holdStep(side: Side) {
-    if (disabled) { stopHold(); return; }
+    if (!hold.current || disabled) { stopHold(false); return; }
     const cur = game.state.pending;
     const n = cur && cur.side === side ? cur.count : 0;
     const reduce = game.tapReduces(side);
-    const cap = reduce ? game.heldAgainst(side) : 10;
-    if (n < cap) { tap(side, true); return; }
+    const cap = reduce ? game.heldAgainst(side) : 100;
+    const orderCap = Math.min(cap, Math.max(10, game.state.qty));
+    if (n < orderCap) { tap(side, true); return; }
     if (reduce) { stopHold(); return; }   // closing: nothing more to take off after this order
     const now = Date.now();
     holdSends.current = holdSends.current.filter((t) => now - t < 10_000);
@@ -411,17 +432,17 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   }
   latest.current.holdStep = holdStep;
   function startHold(side: Side) {
-    stopHold();
+    if (hold.current || disabled) return;
     tap(side, true);
-    const h: NonNullable<typeof hold.current> = { side, start: null, every: null };
+    const h: { side: Side; start: ReturnType<typeof setTimeout> | null; every: ReturnType<typeof setInterval> | null } = { side, start: null, every: null };
     h.start = setTimeout(() => { h.start = null; h.every = setInterval(() => latest.current.holdStep(side), HOLD_EVERY_MS); }, HOLD_DELAY_MS);
     hold.current = h;
   }
-  useEffect(() => () => stopHold(), []);
-  useEffect(() => { if (disabled) stopHold(false); }, [disabled]);
-  useEffect(() => { stopHold(); }, [st.market]);
+  useEffect(() => () => { stopHold(false); game.dropTaps(); }, []);
+  useEffect(() => { if (disabled) { stopHold(false); game.dropTaps(); } }, [disabled]);
+  useEffect(() => { stopHold(false); game.dropTaps(); }, [st.market, st.qty]);
   useEffect(() => {
-    const off = () => stopHold();
+    const off = () => { stopHold(false); game.dropTaps(); };
     document.addEventListener("visibilitychange", off);
     window.addEventListener("blur", off);
     return () => { document.removeEventListener("visibilitychange", off); window.removeEventListener("blur", off); };
@@ -435,19 +456,19 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const tier = chain ? chain.count >= 10 ? 3 : chain.count >= 6 ? 2 : 1 : 0;
     const sign = side === "long" ? "+" : "−";   // BUY adds, SELL subtracts
     return (
-      <button type="button" className={`spam-btn ${side} combo-tier-${tier} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
+      <button type="button" className={`spam-btn effect-${readEffect()} ${side} combo-tier-${tier} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
         style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
-        onPointerDown={(e) => { e.preventDefault(); startHold(side); }} onPointerUp={() => stopHold()} onPointerCancel={() => stopHold()} onPointerLeave={() => stopHold()}
+        onPointerDown={(e) => { if (!e.isPrimary || e.button !== 0) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); startHold(side); }} onPointerUp={() => stopHold()} onPointerCancel={() => { stopHold(false); game.dropTaps(); }} onLostPointerCapture={() => stopHold()}
         onContextMenu={(e) => e.preventDefault()}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (e.repeat) holdStep(side); else tap(side); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!e.repeat) tap(side); } }}
         onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
         onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSquash(null); }} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         {chain && <span key={chain.id} className={`combo-badge tier-${tier}`} data-testid="tap-combo" data-count={chain.count} data-side={side} aria-hidden="true">
           <span className="combo-count">{chain.count}</span><span className="combo-copy"><b>{tier === 3 ? "UNREAL" : tier === 2 ? "ON FIRE" : "COMBO"}</b><small>TAP STREAK</small></span><span className="combo-symbol">{tier >= 2 ? "🔥" : "ϟ"}</span><i className="combo-fuse" />
         </span>}
         <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
-        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${TAP_SIZE}` : hedge ? "tap = hedge" : tapHint ? `tap ${sign}${TAP_SIZE} · hold = spam` : "\u00a0"}</span>
-        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{TAP_SIZE}</span></span>)}
+        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${st.qty}` : hedge ? "tap = hedge" : tapHint ? `tap ${sign}${st.qty} · hold = spam` : "\u00a0"}</span>
+        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{st.qty}</span></span>)}
       </button>
     );
   };

@@ -24,22 +24,14 @@ await page.getByTestId('equity').waitFor();
 async function shot(name){await page.waitForTimeout(350);await page.screenshot({path:'/tmp/brokie-'+name+'.png',fullPage:false});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow '+name);}
 await shot('trade');
 await page.evaluate(()=>{ const g=window.testGame; g.refreshCandles=async()=>{}; });
-const fb=page.getByTestId('frame-btn'); const label=()=>fb.textContent();
-const taps=async(n)=>{const seen=[await label()]; for(let i=0;i<n;i++){await fb.click(); seen.push(await label());} return seen.join(' → ');};
-assert.equal(await label(),'15m','starts on the highest default timeframe');
-assert.equal(await taps(4),'15m → 5m → 1m → 5m → 15m','steps down and back up');
-await page.getByTestId('tab-you').click(); await page.getByRole('button',{name:/Account settings/}).click(); await page.getByTestId('frames-setting').waitFor();
-for (const f of ['4h','1D','5m']) await page.getByTestId('frame-'+f).click();
+const rail=page.getByTestId('timeframe-rail');
+assert.equal(await rail.getByRole('button',{pressed:true}).textContent(),'15m','highest default frame');
+await page.getByTestId('timeframe-60').click();assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),60);
+await page.getByTestId('timeframe-60').press('ArrowRight');assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),300);
+await page.getByTestId('tab-you').click();await page.getByRole('button',{name:/Account settings/}).click();
+for(const f of ['4h','1D','5m'])await page.getByTestId('frame-'+f).click();
 assert.deepEqual(await page.evaluate(()=>window.testGame.state.frames),[60,900,14400,86400]);
-await page.getByRole('button',{name:'Done',exact:true}).click(); await page.getByTestId('tab-trade').click();
-const cyc=await taps(6); console.log('cycle:', cyc); assert.equal(cyc,'15m → 4h → 1D → 4h → 15m → 1m → 15m');
-assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.frame')),'900');
-await page.evaluate(()=>window.testGame.toggleFrame(900)); assert.equal(await label(),'1D','removing the current one jumps to the highest');
-for (const w of [320,393,430]) { await page.setViewportSize({width:w,height:800}); await page.waitForTimeout(250);
-  await page.locator('.chart-controls').evaluate(e=>e.scrollIntoView({block:'center'})); await page.waitForTimeout(150);
-  const row=await page.locator('.chart-controls').boundingBox(); const btns=await page.locator('.chart-controls > button').evaluateAll(bs=>bs.map(b=>{const r=b.getBoundingClientRect();return {x:r.x,w:r.width,y:r.y};}));
-  const sameRow=btns.every(b=>Math.abs(b.y-btns[0].y)<2), right=btns[btns.length-1].x+btns[btns.length-1].w;
-  console.log(w+'px:', btns.length,'buttons, one row:',sameRow,', right gap:',Math.round(row.x+row.width-right)+'px');
-  assert(sameRow,'one row at '+w); assert(row.x+row.width-right<2,'buttons reach the right edge at '+w);
-  if (process.env.SHOTDIR) await page.screenshot({path:process.env.SHOTDIR+'/row-'+w+'.png',clip:{x:0,y:row.y-6,width:w,height:row.height+12}}); }
-assert.deepEqual(errors,[]); console.log('PASS timeframes'); await browser.close();})();
+await page.getByRole('button',{name:'Done',exact:true}).click();await page.getByTestId('tab-trade').click();
+await page.getByTestId('timeframe-86400').click();assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.frame')),'86400');
+for(const width of [320,393,430]){await page.setViewportSize({width,height:800});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+assert.deepEqual(errors,[]);console.log('PASS timeframe rail selection, keyboard, settings, persistence and phone widths');await browser.close();})();

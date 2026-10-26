@@ -1,0 +1,36 @@
+# Brokie release path · 27 October 2026
+
+The current redesign is in `web/`. The SwiftUI app is an older, separate client and does not yet contain this web redesign. Submitting the existing Xcode project would not ship these screens.
+
+## App Store assessment
+
+A paper-trading game with nonredeemable tokens is a plausible submission candidate; approval is Apple's decision. Keep tokens earned/free, nontransferable and without cash or prize redemption. Declare simulated gambling accurately in the age questionnaire. Apple's [age-rating definitions](https://developer.apple.com/help/app-store-connect/reference/app-information/age-ratings-values-and-definitions/) distinguish simulated gambling from wagers with redeemable currency.
+
+[Apple's review rules](https://developer.apple.com/app-store/review/guidelines/) cover contests (5.3), digital purchases (3.1.1), account deletion (5.1.1), user content moderation (1.2) and minimum app functionality (4.2). Real-money gambling requires licensing and geographical restrictions; do not introduce cash-out or purchasable betting credit as a cosmetic extension. A thin website wrapper can face minimum-functionality rejection.
+
+[Enroll with Apple](https://developer.apple.com/programs/enroll/): use your own Apple Account with two-factor authentication. Choose individual or organisation based on the entity publishing the product; organisations need verification. [Membership](https://developer.apple.com/help/account/membership/program-enrollment) is USD 99/year, with local pricing shown at checkout. Enrollment, legal acceptance and payment have not been performed.
+
+Before submission, bring the chosen iOS client up to parity, verify physical-device audio/gestures/background behavior, supply a privacy policy/support URL and data disclosures, implement account deletion and squad chat reporting/blocking/moderation, and prepare screenshots and review access. These release features were not added in the trading-screen redesign.
+
+## Fastest release: your own domain and installed web app
+
+The web app already has a manifest, icons, portrait mode and service worker. Build `web/` with the existing public Supabase environment variables, upload `dist/` to HTTPS static hosting, then point a domain you own to that host. Domain purchase and DNS changes have not been made.
+
+On iPhone, open the domain in Safari and follow [Apple's Add to Home Screen instructions](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios). Friends can use the same domain on Android or desktop. This ships the web design directly and does not require an App Store submission.
+
+## Server release
+
+The live database has `backend/clean_floor.sql` applied (8 players received the grant, 4 free avatars, current-season loss rules unchanged). For another environment, apply it after the existing token/avatar/weekend migrations. It grants existing and new players five starter tokens exactly once, adds four free avatars and profile colours, permits orders up to 100 micros within existing margin/session/rate checks, and schedules the fixed USD 2,000 daily loss allowance for accounts in seasons after the rollout season. Earned balances and current-season loss rules are preserved. The 8% maximum loss rule can still be reached first.
+
+Deploy `backend/deploy/prediction-quotes.ts` as the existing `prediction-quotes` edge function. It discovers listed cricket, football, tennis and motorsport series from [Kalshi's series API](https://docs.kalshi.com/api-reference/market/get-series-list), reserves room per sport and keeps tracked positions eligible for settlement. Categories can be empty when the source has no fresh qualifying markets; the interface says so.
+
+Session countdowns use Brokie's current 17:00 New York weekday flat-at-close / Sunday 18:00 crypto rules. Sydney, Tokyo, London and New York opens are reference liquidity sessions, with named time zones and daylight saving; they are not an exchange holiday calendar. Alerts animate while the trading screen is open. They do not run when the web app is backgrounded or closed.
+
+## Verification
+
+- `cd web && npm run build`
+- `node backend/tests/clean-floor.mjs` and `node backend/tests/weekend.mjs`
+- `node backend/tests/feeds.cjs`
+- Local Vite server, then `web/tests/clean-floor.cjs`, `ui-smoke.cjs`, `hold-smoke.cjs`, `upgrade-smoke.cjs` with Playwright/Chrome.
+
+The browser tests use synthetic accounts and intercepted requests, not live order execution. The SQL checks use a disposable PostgreSQL-compatible PGlite database. Bundle size has the existing Vite warning.

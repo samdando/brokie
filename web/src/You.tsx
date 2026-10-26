@@ -1,3 +1,4 @@
+import { EFFECTS, orderEffect, readEffect, saveEffect, type Effect } from "./effects";
 import { Avatar } from "./Avatar";
 import { AvatarShop } from "./AvatarShop";
 import { DailyRecap, TradeReview } from "./TradeReview";
@@ -44,7 +45,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </div>
 
       </> : <LifetimeCard />}
-      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><OrderEffectsSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
 
       <AvatarShop toast={toast} />
       <DailyRecap />
@@ -211,7 +212,7 @@ function FramesSetting() {
   return (
     <div className="stack" style={{ gap: 8 }} data-testid="frames-setting">
       <div><b style={{ fontSize: 13 }}>Chart timeframes</b>
-        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Tap the timeframe button on the chart to cycle through the ones you pick.</div></div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Swipe the timeframe rail on the chart. Choose which intervals appear here.</div></div>
       <div className="frame-picks" role="group" aria-label="Chart timeframes">
         {FRAME_OPTIONS.map((f) => {
           const on = st.frames.includes(f.s);
@@ -241,3 +242,9 @@ function OppositeSetting() {
 }
 
 const canShareFile = (b: Blob) => { try { return !!navigator.canShare?.({ files: [new File([b], "brokie-trade.png", { type: "image/png" })] }); } catch { return false; } };
+
+function OrderEffectsSetting() {
+  const [effect, setEffect] = useState<Effect>(readEffect);
+  const [sound, setSound] = useState(() => { try { return localStorage.getItem("brokie.sound") === "on"; } catch { return false; } });
+  return <section className="stack" style={{ gap: 10 }}><b>Order impact</b><small className="muted">Pick the feel of BUY and SELL. Reduced motion follows your device setting.</small><div className="effect-picker" role="group" aria-label="Order effect">{EFFECTS.map(e => <button key={e.id} aria-pressed={effect === e.id} className={effect === e.id ? "selected" : ""} onClick={() => { setEffect(e.id); saveEffect(e.id); orderEffect(e.id, sound); }}><span aria-hidden="true">{e.symbol}</span>{e.label}</button>)}</div><label className="sound-setting"><span>Play order sounds</span><input type="checkbox" checked={sound} onChange={e => { const on = e.target.checked; setSound(on); try { localStorage.setItem("brokie.sound", on ? "on" : "off"); } catch { /* */ } if (on) orderEffect(effect, true); }} /></label></section>;
+}

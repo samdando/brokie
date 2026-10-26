@@ -30,13 +30,21 @@ Deno.serve(async (req: Request) => {
   const watchResponse=await rpc("prediction_watchlist",{});
   if(!watchResponse.ok)return Response.json({error:"Watchlist unavailable"},{status:502});
   const watch:string[]=await watchResponse.json();
-  const requests=[...['KXBTC15M','KXNBAGAME'].map(series=>get(`/markets?status=open&limit=100&series_ticker=${series}`)),
+  // Discover actual series: https://docs.kalshi.com/api-reference/market/get-series-list
+  const categories = [/cricket|\bipl\b|\bt20\b|ashes|big bash/i, /soccer|premier league|champions league|a-league|la liga|bundesliga/i, /tennis|atp|wta|australian open/i, /formula|grand prix|motogp|supercars/i];
+  let discovery: { ticker: string; title: string; tags?: string[] }[] = [];
+  try { const data = await get("/series?category=Sports"); discovery = Array.isArray(data.series) ? data.series.filter((s: { ticker?: unknown; title?: unknown }) => typeof s.ticker === "string" && typeof s.title === "string") : []; } catch { /* Watched positions must still settle if discovery fails. */ }
+  const series = [...new Set(["KXBTC15M", ...categories.flatMap(pattern => discovery.filter(s => pattern.test(`${s.title} ${(s.tags ?? []).join(" ")}`)).slice(0, 3).map(s => s.ticker))])];
+  const requests=[...series.map(ticker=>get(`/markets?status=open&limit=100&series_ticker=${encodeURIComponent(ticker)}`)),
     ...Array.from({length:Math.ceil(watch.length/50)},(_,i)=>get(`/markets?limit=100&tickers=${encodeURIComponent(watch.slice(i*50,i*50+50).join(','))}`))];
   const results=await Promise.allSettled(requests);
   const all=results.flatMap(r=>r.status==='fulfilled' && Array.isArray(r.value.markets)?r.value.markets:[]);
   const parsed=all.map(m=>parseMarket(m)).filter((m):m is NonNullable<ReturnType<typeof parseMarket>>=>m!==null);
   const tracked=parsed.filter(m=>watch.includes(m.id));
-  const candidates=parsed.filter(m=>m.status==='active' && m.volume>0 && m.yes_ask-m.yes_bid<=0.2 && m.no_ask-m.no_bid<=0.2 && m.yes_ask>0 && m.yes_ask<1 && m.no_ask>0 && m.no_ask<1 && Date.parse(String(m.close_at))>Date.now()).sort((a,b)=>b.volume-a.volume).slice(0,12);
+  const eligible=parsed.filter(m=>m.status==='active' && m.volume>0 && m.yes_ask-m.yes_bid<=0.2 && m.no_ask-m.no_bid<=0.2 && m.yes_ask>0 && m.yes_ask<1 && m.no_ask>0 && m.no_ask<1 && Date.parse(String(m.close_at))>Date.now()).sort((a,b)=>b.volume-a.volume);
+  // Reserve room per sport before filling by volume so crypto cannot crowd them out.
+  const preferred=categories.flatMap(pattern=>eligible.filter(m=>pattern.test(`${m.id} ${m.title}`)).slice(0,4));
+  const candidates=[...new Map([...preferred,...eligible].map(m=>[m.id,m])).values()].slice(0,24);
   const rows=[...new Map([...candidates,...tracked].map(m=>[m.id,m])).values()];
   if(!rows.length)return Response.json({error:"No fresh prediction markets"},{status:502});
   const out=await rpc("ingest_predictions",{p_rows:rows});

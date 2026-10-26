@@ -1,5 +1,5 @@
 import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams } from "lightweight-charts";
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams, Logical } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
 import { TradeCard, TradeMarker, useFreshIds } from "./Bubbles";
@@ -100,6 +100,11 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       });
     };
     requestFrame.current = refreshOverlay;
+    let gestureFrame = 0, settlingUntil = 0;
+    const gesture = () => { settlingUntil = performance.now() + 300; if (!gestureFrame) gestureFrame = requestAnimationFrame(function loop() { refreshOverlay(); if (performance.now() < settlingUntil) gestureFrame = requestAnimationFrame(loop); else gestureFrame = 0; }); };
+    host.current.addEventListener("pointermove", gesture);
+    host.current.addEventListener("wheel", gesture, { passive: true });
+    host.current.addEventListener("pointerup", gesture);
     const onCross = (p: MouseEventParams) => {
       const s = series.current;
       if (!s || !p.time || !p.point) { setHover(null); return; }
@@ -114,6 +119,10 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     c.timeScale().subscribeVisibleLogicalRangeChange(refreshOverlay);
     refreshOverlay();
     return () => {
+      host.current?.removeEventListener("pointermove", gesture);
+      host.current?.removeEventListener("wheel", gesture);
+      host.current?.removeEventListener("pointerup", gesture);
+      cancelAnimationFrame(gestureFrame);
       ro.disconnect();
       c.unsubscribeCrosshairMove(onCross);
       c.timeScale().unsubscribeVisibleLogicalRangeChange(refreshOverlay);
@@ -134,7 +143,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const detach = () => {
     userMoved.current = true;
     // Freeze the visible price range before a drag so ticks cannot pull it back.
-    if (fullscreen) chart.current?.priceScale("right").applyOptions({ autoScale: false });
+    chart.current?.priceScale("right").applyOptions({ autoScale: false });
     setAway(true);
   };
 
@@ -177,6 +186,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         const bar = { time: to.time, open: to.open, high: k >= 1 ? to.high : Math.min(to.high, hi), low: k >= 1 ? to.low : Math.max(to.low, lo), close };
         s.candle.update(bar);
         s.area.update({ time: to.time, value: close });
+        requestFrame.current();
         if (k < 1) anim.current = requestAnimationFrame(step);
 
       };
@@ -239,14 +249,9 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     // Never move an old trade onto the first visible candle or bridge missing
     // history. Its position card remains available outside this chart window.
     if (index < 0) return null;
-    const fraction = (secs - bucket * bucketSeconds) / bucketSeconds;
-    // logicalToCoordinate() returns 0 while the time axis is hidden (same reason the plot width is
-    // measured by hand), which pinned every bubble to the left edge. Map the visible logical range
-    // onto the measured plot width instead.
-    const r = c.timeScale().getVisibleLogicalRange();
-    if (!r || r.to <= r.from) return null;
-    const barW = plotRef.current / (r.to - r.from);
-    const x = (index + fraction - r.from) * barW - barW / 2;
+    // Use the chart's native bar coordinate. Estimating it from plot width drifts when
+    // the library rounds bar spacing or the price-axis width changes during a gesture.
+    const x = c.timeScale().logicalToCoordinate(index as Logical);
     if (x === null || x < 0 || x > plotRef.current) return null;
     return { x, y, clamped: false };
   };
@@ -396,7 +401,7 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
         <button type="button" className={`pos-pill ${p.side} ${pnl >= 0 ? "up" : "down"} ${pinned ? "pinned" : ""}`} style={{ top: pillY, left: 4, touchAction: "none" }}
           onPointerDown={(e) => start(e)} data-testid="bracket-grip" data-pinned={pinned ?? undefined}
           aria-label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}, ${signedMoney(pnl)}${pinned ? `. Entry is ${pinned} the visible chart` : ""}. Tap for details, or drag up or down to set ${p.side === "long" ? "take profit (up) or stop loss (down)" : "stop loss (up) or take profit (down)"}`}>
-          <span className="pos-side">{p.side === "long" ? "L" : "S"}{p.quantity}</span>
+          <span className="pos-side">{p.side === "long" ? "▲ LONG" : "▼ SHORT"} ×{p.quantity}</span>
           {!drag && quote != null && <b data-testid="pnl-tag">{signedMoney(pnl)}</b>}
           {hedged && <span className="pos-h">H</span>}
           <span aria-hidden="true" className="pos-grip">{pinned === "above" ? "↑" : pinned === "below" ? "↓" : "⇕"}</span>

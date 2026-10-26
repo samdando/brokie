@@ -87,7 +87,7 @@ const SEEN_KEY = "brokie.seen";
 const SEASON_KEY = "brokie.lastSeason";
 export const QTY_CHOICES = [1, 5, 10];
 export const EMOJIS = ["🔥", "💀", "🚀", "📈", "📉", "😂", "🫡", "💎", "🤡", "🙏", "👀", "🐂", "🐻"];
-export const clampQty = (n: unknown) => { const v = Math.round(Number(n)); return Number.isFinite(v) ? Math.min(10, Math.max(1, v)) : 1; };
+export const clampQty = (n: unknown) => { const v = Math.round(Number(n)); return Number.isFinite(v) ? ([1, 10, 100].includes(v) ? v : 1) : 1; };
 const read = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const write = (k: string, v: string | null) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* ignore */ } };
 
@@ -289,8 +289,8 @@ export class Game {
     if (cur && cur.side !== side) this.flushTaps(onDone);
     const p = this.state.pending;
     const reduce = this.tapReduces(side);
-    const cap = reduce ? this.heldAgainst(side) : 10;
-    const count = Math.min(cap, (p && p.side === side ? p.count : 0) + TAP_SIZE);
+    const cap = reduce ? this.heldAgainst(side) : 100;
+    const count = Math.min(cap, (p && p.side === side ? p.count : 0) + this.state.qty);
     this.set({ pending: { side, count, reduce } });
     if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
     if (!held) this.armTaps(onDone);
@@ -326,7 +326,7 @@ export class Game {
   async open(side: Side, quantity: number): Promise<string | null> {
     if (this.submitting) return "One order at a time.";
     const q = Math.round(quantity);
-    if (!Number.isInteger(q) || q < 1 || q > 10) return "Pick 1 to 10 micros.";
+    if (!Number.isInteger(q) || q < 1 || q > 100) return "Pick 1 to 100 micros.";
     this.submitting = true;
     try {
       await this.api.rpc("open_position", { p_market: this.state.market, p_side: side, p_quantity: q });

@@ -61,7 +61,7 @@ const assert = require('node:assert/strict');
     assert((await combo.textContent()).includes('UNREAL'));
     assert.equal(await combo.evaluate(el => el.getAnimations().length), 0, 'reduced-motion combo is static');
     const beforeCap = await page.evaluate(() => window.tapCalls.length);
-    await page.evaluate(() => window.testGame.set({pending:{side:'long',count:10}}));
+    await page.evaluate(() => window.testGame.set({pending:{side:'long',count:100}}));
     await taps(buy, 1);
     assert.equal(await page.evaluate(() => window.tapCalls.length), beforeCap, 'capped taps do not submit');
     assert.equal(await combo.getAttribute('data-count'), '10', 'capped taps do not increase the combo');

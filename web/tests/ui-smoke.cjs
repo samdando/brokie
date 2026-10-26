@@ -87,7 +87,7 @@ if(await page.getByTestId('my-bubble').count()){await page.getByTestId('my-bubbl
 await page.evaluate(()=>{const g=window.testGame; g.set({me:{...g.state.me,positions:[{...g.state.me.positions[0],quantity:7,entry_price:29000}]}});});
 await page.getByTestId('bracket-grip').waitFor();
 assert.equal(await page.getByTestId('bracket-grip').getAttribute('data-pinned'),'below','pill pins to the bottom edge');
-assert.match(await page.getByTestId('bracket-grip').innerText(),/L7/);
+assert.match(await page.getByTestId('bracket-grip').innerText(),/LONG ×7/);
 const host=await page.locator('.chart-host').boundingBox(), pill=await page.getByTestId('bracket-grip').boundingBox();
 assert(pill.y>=host.y && pill.y+pill.height<=host.y+host.height-20,'pinned pill inside the plot, above the time axis');
 await page.getByTestId('big-chart').click();
