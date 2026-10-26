@@ -1002,14 +1002,135 @@ body { background:radial-gradient(ellipse at 50% -10%,#20302F 0,#0B1018 62%); }
 .profile-colours button[aria-pressed="true"] { box-shadow:0 0 0 2px white; }
 @media (max-width:360px) { .trade-mode-row > .eyebrow { font-size:7px; letter-spacing:.4px; } .predictions-entry { gap:5px; padding:0 9px; font-size:10px; } .chart-card .chart-controls > .chip { flex-basis:32px; min-width:32px; } .timeframe { flex-basis:40px; } .session-clock b { font-size:17px; } }
 @media (prefers-reduced-motion:reduce) { .market-stage,.session-urgent,.session-alert,.session-alert > i { animation:none; } .prediction-orbit { transition:none !important; } }
-/* The same scrolling tape and moving selection on intervals and micro size. */
-.selection-rail { position:relative; display:flex; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; overscroll-behavior-x:contain; scroll-snap-type:x proximity; touch-action:pan-x; border-radius:9px; background:#080F17; isolation:isolate; }
-.selection-rail::-webkit-scrollbar { display:none; }
-.selection-rail .rail-option { position:relative; flex:0 0 46px; min-height:44px; padding:0 6px; color:var(--muted); font:700 11px var(--mono); scroll-snap-align:center; user-select:none; }
-.selection-rail .rail-option.selected { color:var(--lime); background:none; }
-.rail-indicator { position:absolute; left:0; top:0; height:100%; background:#d6fe590c; border-radius:8px; box-shadow:inset 0 -2px var(--lime); pointer-events:none; transition:transform .22s cubic-bezier(.2,.8,.2,1),width .22s; }
-.size-picker .selection-rail { flex:0 1 168px; }
-.size-picker .selection-rail .rail-option { flex:1 0 50px; min-height:36px; font-size:12px; }
-.size-picker .selection-rail button:disabled { opacity:.55; }
-.rail-option:focus-visible { outline:2px solid white; outline-offset:-3px; border-radius:8px; }
-@media (prefers-reduced-motion:reduce) { .rail-indicator { transition:none; } }
+/* Vertical wheel: centre value selected, neighbouring values fade away. */
+.selection-wheel { position:relative; flex:0 1 92px; min-width:64px; height:64px; isolation:isolate; }
+.wheel-scroll { height:64px; overflow-y:auto; padding:16px 0; box-sizing:border-box; scrollbar-width:none; scroll-snap-type:y mandatory; overscroll-behavior:contain; touch-action:pan-y; cursor:ns-resize; -webkit-mask-image:linear-gradient(transparent,#000 25%,#000 75%,transparent); mask-image:linear-gradient(transparent,#000 25%,#000 75%,transparent); }
+.wheel-scroll::-webkit-scrollbar { display:none; }
+.wheel-value { height:32px; display:flex; align-items:center; justify-content:center; scroll-snap-align:center; font:600 20px var(--mono); color:#fff; user-select:none; pointer-events:none; }
+.wheel-guides { position:absolute; top:16px; left:10px; right:10px; height:32px; border-top:1px solid #ffffff12; border-bottom:1px solid #ffffff12; pointer-events:none; z-index:-1; }
+.wheel-scroll:focus-visible { outline:2px solid var(--lime); outline-offset:-2px; border-radius:8px; }
+.selection-wheel.disabled { opacity:.4; }
+.selection-wheel.disabled .wheel-scroll { overflow:hidden; pointer-events:none; }
+.size-picker .selection-wheel { flex-basis:80px; }
+.size-picker .wheel-value { font-size:21px; }
+.chart-controls:has(.selection-wheel) { align-items:center; }
+.market-art svg { overflow:visible; }
+/* Quieter floor: compact controls keep the chart above the order dock. */
+.header { padding-bottom:10px; margin-bottom:8px; }
+.header .wordmark { font-size:29px; }
+.compact-events { margin:0 0 8px; gap:4px; }
+.compact-events .event { padding:6px 10px; border:0; border-radius:8px; background:#ffffff04; }
+.compact-events .event b { font-size:11px; }
+.compact-events .event .sub { display:none; }
+.compact-events .event .pulse { width:5px; height:5px; }
+.trade-mode-row > .eyebrow { font-size:7px; color:#718196; }
+.predictions-entry { min-height:36px; font-size:10px; border-color:#b5a0fe30; box-shadow:none; }
+.prediction-orbit { font-size:16px; }
+.market-stage { gap:10px; }
+.markets .market,.markets.four .market { padding:5px 3px; border:1px solid transparent; box-shadow:none; background:none; }
+.markets .market.on { background:#ffffff05; border-color:#ffffff18; }
+.markets .market.on::after { display:none; }
+.market-art { width:44px; height:29px; filter:none; margin-bottom:4px; }
+.markets .market b { font-size:9px; letter-spacing:.2px; }
+.markets .market .mono { font-size:9px; color:#8192A8; }
+.chart-card { background:#101923; border:1px solid #ffffff0b; border-radius:15px; }
+.chart-card .quote { font-size:25px; letter-spacing:-.6px; }
+.chart-card .market-heading { align-items:center !important; }
+.chart-card .badge { background:none; padding:2px 0; font-size:8px; }
+.chart-card .chart-info-btn { min-width:28px; font-size:13px; }
+.chart-card .chart-controls { padding:0; border-top:1px solid #ffffff08; }
+.chart-card .chart-controls > .chip { height:44px; min-height:44px; background:none; border:0; box-shadow:none; color:#92A2B7; border-radius:8px; }
+.chart-card .chart-controls > .chip[aria-pressed="true"],.chart-card .chart-controls > .chip[aria-checked="true"] { color:var(--lime); background:#d6fe5908; }
+.chart-fullscreen .chart-controls { margin-top:auto !important; }
+.chart-card.chart-fullscreen { display:flex; flex-direction:column; border:0; }
+.trade-dock { display:grid; grid-template-columns:68px minmax(0,1fr); align-items:center; gap:10px; padding:8px 12px 10px; border-radius:20px 20px 0 0; border-color:#ffffff14; background:#101720f5; }
+.size-picker { flex-direction:column; justify-content:center; gap:0; margin:0; position:relative; }
+.size-picker > span { margin:0; font-size:7px; letter-spacing:1px; position:absolute; top:-1px; z-index:1; }
+.size-picker .selection-wheel { flex-basis:auto; width:64px; }
+.trade-dock .spam-pad { gap:9px; }
+.trade-dock .spam-btn { height:52px; min-height:52px; border-radius:12px; box-shadow:inset 0 1px #ffffff60,0 2px 0 color-mix(in srgb,var(--c) 38%,#000); }
+.trade-dock .spam-label { font-size:20px; letter-spacing:.2px; }
+.trade-dock .spam-btn:active { transform:translateY(1px); box-shadow:inset 0 1px 4px #0004; }
+.app:has(.trade-dock) + .minibar { bottom:calc(158px + var(--safe-b)); }
+.trade-screen { padding-bottom:70px; }
+.session-clock { background:transparent; border-color:#ffffff0b; padding:10px 12px; }
+.session-clock b { font-size:16px; }
+.session-clock small { font-size:8px; margin-bottom:4px; }
+.session-clock summary { font-size:9px; padding-top:8px; }
+.account-hero { border-color:#ffffff0d; background:#ffffff03; padding:12px 13px 0; }
+.account-summary .equity { font-size:28px; margin:4px 0; }
+.account-summary .eyebrow { font-size:8px; letter-spacing:1px; }
+.account-summary .season-gain { font-size:12px; flex-wrap:wrap; gap:6px; }
+.account-summary .gain-btn { font-size:12px; }
+.risk-strips { gap:8px; padding:4px 0 8px; }
+.risk-strips span { font-size:7px; }
+.risk-strips i { height:3px; }
+.tm:not(.fresh):not(.danger) { box-shadow:0 1px 4px #0008; }
+.tm.exit { opacity:.55; transform:translate(-50%,-50%) scale(.8); }
+/* Chat: grouped messages, a stable reading position and a single composer. */
+.sheet:has(.chat-room) { padding:14px 16px calc(12px + var(--safe-b)); height:88dvh; overflow:hidden; border-radius:24px 24px 0 0; background:#0D141E; }
+.chat-close { position:absolute; top:28px; right:14px; width:44px; height:44px; color:#A3B0C2; border-radius:50%; z-index:2; }
+.sheet .chat-room { display:flex; flex-direction:column; gap:0; flex:1; min-height:0; padding:0; position:relative; }
+.chat-heading { display:flex; gap:10px; align-items:center; padding:0 40px 15px 0; border-bottom:1px solid #ffffff0a; flex:none; }
+.chat-room-icon { display:grid; place-items:center; height:38px; width:38px; border-radius:13px; background:#b5a0fe12; color:#CCB9FF; font:500 25px var(--mono); }
+.chat-heading h2 { font-size:16px; margin:0 0 4px; }
+.chat-heading small { font-size:10px; color:#8292A9; }
+.chat-log { padding:12px 0; gap:0; scrollbar-width:thin; scrollbar-color:#293646 transparent; }
+.chat-entry { flex:none; min-width:0; }
+.chat-day { display:flex; justify-content:center; padding:12px 0 16px; }
+.chat-day span { font-size:9px; color:#7F8FA4; letter-spacing:.5px; }
+.message-row { display:flex; align-items:flex-start; gap:8px; margin-top:12px; }
+.message-row.grouped { margin-top:3px; }
+.message-row.mine { justify-content:flex-end; }
+.message-avatar { width:26px; flex:none; }
+.message-avatar .av { width:26px; height:26px; font-size:12px; margin-top:2px; }
+.message-content { display:flex; flex-direction:column; align-items:flex-start; min-width:0; max-width:82%; }
+.mine .message-content { align-items:flex-end; }
+.chat-room .player-link { min-width:0; min-height:0; padding:0 2px 5px; line-height:1.3; font-size:10px; color:#A5B3C8; border:0; }
+.chat-room .msg { max-width:100%; padding:9px 12px; gap:0; font-size:14px; line-height:1.45; border-radius:4px 15px 15px 15px; background:#1B2636; color:#E9EFF8; }
+.chat-room .msg.you { border-radius:15px 4px 15px 15px; background:#26362D; color:#E5F0D8; }
+.chat-room .grouped .msg { border-radius:15px; }
+.chat-room .msg.emoji { background:none; padding:4px 2px; }
+.chat-room .msg.emoji .big { font-size:38px; line-height:1.35; overflow:visible; }
+.message-time { font-size:8px; color:#697B93; padding:4px 3px 1px; }
+.chat-composer { flex:none; padding-top:10px; border-top:1px solid #ffffff0a; }
+.chat-composer form { display:flex; align-items:center; gap:6px; padding:4px; background:#172230; border:1px solid #ffffff0c; border-radius:26px; }
+.chat-composer .field { width:0; min-width:0; flex:1; height:44px; border:0; background:transparent; font-size:16px; padding:0 4px; box-shadow:none; }
+.chat-react { width:36px; height:44px; flex:none; font-size:25px; color:#A2B1C7; }
+.chat-send { display:grid; place-items:center; flex:none; width:42px; height:42px; border-radius:50%; background:var(--lime); color:#101720; }
+.chat-send svg { width:23px; height:23px; }
+.chat-send:disabled { opacity:.3; }
+.chat-composer .emoji-bar { padding:0 0 9px; }
+.chat-composer .emoji-bar button { width:44px; height:44px; background:none; font-size:24px; }
+.chat-empty { display:flex; flex-direction:column; align-items:center; gap:12px; margin:auto; text-align:center; padding:35px 10px; }
+.chat-empty > span { font-size:34px; color:#B5A0FE; }
+.chat-empty b { font-size:16px; }
+.chat-empty small { font-size:12px; color:#8292A9; }
+.chat-new { align-self:center; position:absolute; bottom:78px; padding:9px 14px; border-radius:20px; background:#D5C7FF; color:#151126; font-size:11px; box-shadow:0 3px 16px #0008; }
+
+.chart-card.chart-fullscreen { touch-action:auto; }
+.chart-fullscreen > * { flex-shrink:0; }
+.chart-fullscreen .trade-dock { position:static; transform:none; width:100%; margin-top:4px; border:0; border-radius:12px; background:#ffffff03; padding:5px 8px; z-index:auto; }
+.chart-fullscreen .chart-controls { margin-top:3px !important; }
+.size-picker .wheel-value.selected { color:#fff; background:none; box-shadow:none; }
+.chart-card .chart-controls .chip.on { background:none; box-shadow:none; }
+.chart-card .chart-controls .chip { font-size:16px; }
+.chart-controls .crowd-chip { font-size:14px; }
+.trade-dock .spam-sub { display:none; }
+.chat-room .msg.emoji { min-width:54px; overflow:visible; }
+.chat-room .msg.emoji .big { min-width:50px; white-space:nowrap; }
+/* Avatar trade stamps: direction ring + small arrow, with subdued closed history. */
+.tm { width:26px; height:26px; --c:#40F6A0; border:2px solid var(--c); background:#101923; }
+.tm.short { --c:#FF4D73; }
+.tm:not(.fresh):not(.danger),.tm.me { box-shadow:0 0 0 2px #0b1018,0 0 9px color-mix(in srgb,var(--c) 65%,transparent); }
+.tm .tm-face.player-avatar { width:100%; height:100%; font-size:17px; border:0 !important; box-shadow:none; }
+.tm-direction { right:-5px; bottom:-7px; padding:0; width:12px; height:12px; line-height:12px; font-size:9px; border-radius:50%; background:#101923; color:var(--c); box-shadow:0 0 0 1px var(--c); }
+.tm-live { width:5px; height:5px; top:-3px; right:-3px; }
+.tm.exit { opacity:.42; border-width:1px; }
+.tm.exit:not(.fresh):not(.danger) { box-shadow:0 0 0 1px #0b1018; }
+body { overflow-x:clip; }
+.page-stage { overflow-x:clip; }
+.chart-card { margin-left:0; margin-right:0; }
+.page-stage:has(.chart-fullscreen) { overflow:visible; }
+.chart-controls .crowd-chip { display:flex; align-items:center; gap:2px; font-size:10px; }
+.chart-controls .crowd-chip svg { width:15px; height:15px; flex:none; }

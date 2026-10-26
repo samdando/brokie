@@ -16,7 +16,9 @@ export function parseMarket(m: Record<string, unknown>, at = new Date().toISOStr
     else if (m.result === "no") payout = 0;
   }
   const rules = [m.rules_primary,m.rules_secondary].filter(v => typeof v === "string" && v).join("\n\n");
-  return { id:m.ticker,title:m.title,rules,close_at:m.close_time,status:rules ? m.status : "paused",yes_bid,yes_ask,no_bid,no_ask,payout_yes:payout,quoted_at:at,volume:Number(m.volume_24h_fp)||0 };
+  const subtitle = typeof m.yes_sub_title === "string" ? m.yes_sub_title.trim() : "";
+  const title = subtitle && !m.title.includes(subtitle) ? `${m.title} · ${subtitle}` : m.title;
+  return { id:m.ticker,title,rules,close_at:m.close_time,status:rules ? m.status : "paused",yes_bid,yes_ask,no_bid,no_ask,payout_yes:payout,quoted_at:at,volume:Number(m.volume_24h_fp)||0 };
 }
 Deno.serve(async (req: Request) => {
   const key = Deno.env.get("BROKIE_SERVICE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"), base = Deno.env.get("SUPABASE_URL");
@@ -30,18 +32,18 @@ Deno.serve(async (req: Request) => {
   const watchResponse=await rpc("prediction_watchlist",{});
   if(!watchResponse.ok)return Response.json({error:"Watchlist unavailable"},{status:502});
   const watch:string[]=await watchResponse.json();
-  // Verified against the public series API on 27 Oct 2026. Fetch match series
-  // directly: downloading the entire sports catalogue can time out and pick old props.
-  const categories = [/cricket|\bipl\b|\bt20\b|ashes|big bash/i, /soccer|premier league|champions league|a-league|la liga|bundesliga|kxepl|kxucl/i, /tennis|atp|wta/i, /formula|grand prix|motogp|supercars|kxf1/i];
-  const series = ["KXBTC15M", "KXCRICKETT20IMATCH", "KXCRICKETTESTMATCH", "KXODIMATCH", "KXCRICKETWOMENT20IMATCH", "KXEPLGAME", "KXUCLGAME", "KXWTAMATCH", "KXF1"];
-  const requests=[...series.map(ticker=>get(`/markets?status=open&limit=100&series_ticker=${encodeURIComponent(ticker)}`)),
+  // Finance-only discovery; held legacy markets are still fetched below for exits/settlement.
+  // Series verified with the provider's public catalogue on 27 Oct 2026.
+  const categories = [/^KXINX/i, /^KXNASDAQ/i, /^KXDJIA/i, /^KXGOLD/i, /^KX(?:BTC|ETH)/i, /^KXTNOTE/i];
+  const series = ["KXINXU", "KXNASDAQ100U", "KXDJIA", "KXGOLD", "KXGOLDPRICE", "KXTNOTE", "KXBTC15M", "KXETH15M"];
+  const requests=[...series.map(ticker=>get(`/markets?status=open&limit=1000&series_ticker=${encodeURIComponent(ticker)}`)),
     ...Array.from({length:Math.ceil(watch.length/50)},(_,i)=>get(`/markets?limit=100&tickers=${encodeURIComponent(watch.slice(i*50,i*50+50).join(','))}`))];
   const results=await Promise.allSettled(requests);
   const all=results.flatMap(r=>r.status==='fulfilled' && Array.isArray(r.value.markets)?r.value.markets:[]);
   const parsed=all.map(m=>parseMarket(m)).filter((m):m is NonNullable<ReturnType<typeof parseMarket>>=>m!==null);
   const tracked=parsed.filter(m=>watch.includes(m.id));
-  const eligible=parsed.filter(m=>m.status==='active' && m.volume>0 && m.yes_ask-m.yes_bid<=0.2 && m.no_ask-m.no_bid<=0.2 && m.yes_ask>0 && m.yes_ask<1 && m.no_ask>0 && m.no_ask<1 && Date.parse(String(m.close_at))>Date.now()).sort((a,b)=>b.volume-a.volume);
-  // Reserve room per sport before filling by volume so crypto cannot crowd them out.
+  const eligible=parsed.filter(m=>series.some(s=>m.id.startsWith(s+'-')) && m.status==='active' && m.volume>0 && m.yes_ask-m.yes_bid<=0.2 && m.no_ask-m.no_bid<=0.2 && m.yes_ask>0 && m.yes_ask<1 && m.no_ask>0 && m.no_ask<1 && Date.parse(String(m.close_at))>Date.now()).sort((a,b)=>b.volume-a.volume);
+  // Reserve room per financial underlying so crypto cannot crowd out index contracts.
   const preferred=categories.flatMap(pattern=>eligible.filter(m=>pattern.test(`${m.id} ${m.title}`)).slice(0,4));
   const candidates=[...new Map([...preferred,...eligible].map(m=>[m.id,m])).values()].slice(0,24);
   const rows=[...new Map([...candidates,...tracked].map(m=>[m.id,m])).values()];

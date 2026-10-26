@@ -81,8 +81,8 @@ export function held(ms: number): string {
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut }:
-  { onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
+export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut, showHistory = false }:
+  { showHistory?: boolean; onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
   const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
   const [fresh, setFresh] = useState(new Set<string>());
@@ -142,8 +142,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   // Reset when switching markets.
   useEffect(() => { setExits([]); setPicked(null); }, [market]);
 
-  // Every trade in view becomes a marker: open trades at their fill, closed trades at their entry
-  // (faded) and their exit. Overlaps are fine, like pump.fun; the newest sits on top.
+  // Open positions lead. Optional closed exits are thinned by screen space.
   type M = { key: string; b: Bubble; x: number; y: number; exit: boolean; faded: boolean; danger: boolean; t: number };
   const markers = useMemo(() => {
     const out: M[] = [];
@@ -157,13 +156,15 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.08) : 1;
       add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, false, room < 0.2);
     }
-    for (const b of bubbles) {
+    for (const b of showHistory ? [...bubbles].sort((a,b) => Date.parse(b.at) - Date.parse(a.at)) : []) {
       if (b.state !== "closed" || b.exit_price === null) continue;
-      add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, true);
+      const at = toXY(Date.parse(b.at) / 1000, b.exit_price);
+      // Keep the newest exit in each small screen area; history stays readable at any zoom.
+      if (!at || out.some(m => Math.abs(m.x - at.x) < 26 && Math.abs(m.y - at.y) < 26)) continue;
       add(b, Date.parse(b.at) / 1000, b.exit_price, true, false);
     }
     return out.sort((a, b) => a.t - b.t);
-  }, [merged, bubbles, toXY, width, hideMine]);
+  }, [merged, bubbles, toXY, width, hideMine, showHistory]);
 
   // Mates' exits that are off the left edge of this timeframe: offer to zoom out to find them.
   const earlier = bubbles.filter((b) => b.state === "closed" && !b.is_you && b.exit_price !== null && !markers.some((m) => m.key === `${b.id}-x`)).length;
@@ -175,13 +176,13 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
         <TradeMarker key={m.key} handle={m.b.handle} long={m.b.side === "long"} exit={m.exit} me={m.b.is_you} fresh={!m.exit && fresh.has(m.b.id)} faded={m.faded} danger={m.danger}
           style={{ left: m.x, top: m.y }} testId={m.exit ? "exit-mark" : "bubble"}
           onClick={() => { setPicked(picked === m.b.id ? null : m.b.id); onSelect(m.b); }}
-          label={`${m.b.is_you ? "You" : `@${m.b.handle}`} ${m.exit ? "closed" : "opened"} ${m.b.side} ${m.b.quantity} micros at ${px(m.exit ? m.b.exit_price! : m.b.entry_price)}`} />
+          label={`${m.b.is_you ? "You" : `@${m.b.handle}`} ${m.exit ? "closed" : "is holding"} ${m.b.side} ${m.b.quantity} micros at ${px(m.exit ? m.b.exit_price! : m.b.entry_price)}`} />
       ))}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
         return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: Math.max(24, at.y - 30) }} />;
       })}
-      {earlier > 0 && onZoomOut && <button type="button" className="earlier-pill" onClick={onZoomOut} data-testid="earlier-trades">
+      {showHistory && earlier > 0 && onZoomOut && <button type="button" className="earlier-pill" onClick={onZoomOut} data-testid="earlier-trades">
         ◂ {earlier} earlier exit{earlier === 1 ? "" : "s"} · zoom out</button>}
       {sel && <TradeCard b={sel} quote={quote} market={market} now={now} onClose={() => setPicked(null)} />}
     </>

@@ -5,14 +5,13 @@ interface Prediction { id: string; title: string; rules: string; close_at: strin
 interface TokenPosition { id: string; prediction_id: string; prediction_outcome: "yes" | "no"; prediction_question: string; quantity: number; entry_price: number; cost: number; mark_price: number }
 interface TokenTrade extends TokenPosition { payout: number; pnl: number; closed_at: string; reason: string }
 interface Board { markets: Prediction[]; positions: TokenPosition[]; trades: TokenTrade[]; balance: number; earned_today: boolean; next_reward_at: string }
-const CATEGORIES = [{ id: "all", label: "For you", icon: "✦" }, { id: "cricket", label: "Cricket", icon: "🏏" }, { id: "football", label: "Football", icon: "⚽" }, { id: "tennis", label: "Tennis", icon: "🎾" }, { id: "racing", label: "Motorsport", icon: "🏎" }, { id: "markets", label: "Markets", icon: "↗" }];
+const CATEGORIES = [{ id: "all", label: "All finance", icon: "↗" }, { id: "indices", label: "Indices", icon: "▥" }, { id: "metals", label: "Gold", icon: "◆" }, { id: "crypto", label: "Crypto", icon: "₿" }, { id: "economy", label: "Rates & economy", icon: "%" }];
 export function predictionCategory(m: { id: string; title: string }) {
   const text = `${m.id} ${m.title}`;
-  if (/cricket|ipl|t20|bbl|ashes/i.test(text)) return "cricket";
-  if (/soccer|premier league|champions league|a.league|laliga|bundesliga|epl|fifa/i.test(text)) return "football";
-  if (/tennis|atp|wta|wimbledon|australian open/i.test(text)) return "tennis";
-  if (/formula|f1|grand prix|motogp|supercars/i.test(text)) return "racing";
-  if (/btc|bitcoin|eth|crypto|gold|nasdaq|s&p|fed|inflation|rate cut/i.test(text)) return "markets";
+  if (/^KX(?:INX|NASDAQ|NDQ|DJIA)|nasdaq|s&p|dow jones/i.test(text)) return "indices";
+  if (/^KXGOLD|gold|silver/i.test(text)) return "metals";
+  if (/^KX(?:BTC|ETH)|bitcoin|ethereum|crypto/i.test(text)) return "crypto";
+  if (/^KX(?:TNOTE|FED|CPI|10YR)|treasury|inflation|interest rate|fed funds/i.test(text)) return "economy";
   return "other";
 }
 const tokens = (n: number) => `${n.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${n === 1 ? "token" : "tokens"}`;
@@ -36,9 +35,9 @@ export function PredictionMarkets({ toast }: { toast: (s: string) => void }) {
   }, []);
   useEffect(() => { void load(); const timer = setInterval(() => { if (!document.hidden) void load(); }, 10000); return () => clearInterval(timer); }, [load]);
   const markets = board?.markets ?? [];
-  const displayed = markets.filter(m => category === "all" || predictionCategory(m) === category).sort((a,b) => {
-    const priority = (m: Prediction) => { const c = predictionCategory(m); return c === "cricket" ? 0 : c === "football" ? 1 : c === "tennis" ? 2 : c === "racing" ? 3 : c === "markets" ? 4 : 5; };
-    return priority(a) - priority(b);
+  const displayed = markets.filter(m => predictionCategory(m) !== "other" && (category === "all" || predictionCategory(m) === category)).sort((a,b) => {
+    const priority = (m: Prediction) => ["indices", "metals", "crypto", "economy"].indexOf(predictionCategory(m));
+    return priority(a) - priority(b) || Date.parse(a.close_at) - Date.parse(b.close_at);
   });
   const balance = board?.balance ?? 0;
   const fresh = (m: Prediction) => m.status === "active" && Date.parse(m.close_at) > game.now() && game.now() - Date.parse(m.quoted_at) < 90000 && Date.parse(m.quoted_at) <= game.now() + 5000 && m.payout_yes === null;
@@ -47,13 +46,13 @@ export function PredictionMarkets({ toast }: { toast: (s: string) => void }) {
   const validStake = Number.isInteger(stake) && stake >= 1 && stake <= 1000 && stake <= balance;
   const shares = ask > 0 && validStake ? Math.floor(stake / ask * 1e6) / 1e6 : 0;
   return <section className="stack predictions" data-testid="predictions">
-    <div className="row between"><h2 className="h2">Prediction markets</h2><span className="eyebrow">Tokens only</span></div>
+    <div className="row between"><h2 className="h2">Finance predictions</h2><span className="eyebrow">Tokens only</span></div>
     <div className="panel prediction-card" data-testid="prediction-wallet">
       <div className="row between"><span className="muted">Your balance</span><b className="lime">{board ? tokens(balance) : "—"}</b></div>
       <p className="muted" style={{ fontSize: 12, margin: 0 }}>Everyone gets 5 starter tokens. Earn 1 more on your first trade each trading day. Pick Yes or No with tokens. Prediction results never affect your competition balance or rank.</p>
       {board && <small className="muted">{board.earned_today ? "Today’s token earned ✓" : "Open or manually close a trade to earn today’s token."} New trading day at {new Date(board.next_reward_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (5pm New York).</small>}
     </div>
-    <p className="muted" style={{ fontSize: 12, margin: 0 }}>A winning share pays 1 token; a losing share pays 0. Prices from Kalshi. Tokens have no cash value.</p>
+    <p className="muted" style={{ fontSize: 12, margin: 0 }}>Predict price levels at expiry with Yes or No. A winning share pays 1 token; a losing share pays 0. Prices and settlement rules from Kalshi. Tokens have no cash value.</p>
     {!!board?.positions.length && <div className="stack"><h3 className="h3">Your predictions</h3>{board.positions.map(p => {
       const m = markets.find(m => m.id === p.prediction_id);
       const pnl = Math.trunc(p.mark_price * p.quantity * 1e6) / 1e6 - p.cost;
@@ -65,9 +64,9 @@ export function PredictionMarkets({ toast }: { toast: (s: string) => void }) {
     })}</div>}
     {error && <div className="err" role="alert">{error} <button className="text-action" onClick={() => void load()}>Retry</button></div>}
     {!board && !error && <div role="status">Loading token predictions…</div>}
-    {board && !markets.length && !error && <div className="panel muted" style={{ padding: 18 }}>No fresh prediction markets right now. Check back shortly.</div>}
+    {board && !markets.length && !error && <div className="panel muted" style={{ padding: 18 }}>No fresh finance predictions right now. Check back shortly.</div>}
     <div className="prediction-categories hscroll" role="group" aria-label="Prediction category">{CATEGORIES.map(c => <button key={c.id} aria-pressed={category === c.id} className={category === c.id ? "selected" : ""} onClick={() => { setCategory(c.id); setShowAll(false); }}><span aria-hidden="true">{c.icon}</span>{c.label}</button>)}</div>
-    {board && markets.length > 0 && displayed.length === 0 && <div className="panel muted">No live {CATEGORIES.find(c => c.id === category)?.label.toLowerCase()} predictions from the feed right now. Try another category.</div>}
+    {board && markets.length > 0 && displayed.length === 0 && <div className="panel muted">No live {category === "all" ? "finance" : CATEGORIES.find(c => c.id === category)?.label.toLowerCase()} predictions from the feed right now. Try another category.</div>}
     {displayed.slice(0, showAll ? 60 : 6).map(m => <article className="panel prediction-card" key={m.id}>
       <h3 className="h3">{m.title}</h3><small className="muted">Trading ends {new Date(m.close_at).toLocaleString()}</small>
       <div className="prediction-outcomes">{(["yes", "no"] as const).map(side => { const value = side === "yes" ? m.yes_ask : m.no_ask; return <button key={side} className={side} disabled={busy || !!error || !fresh(m) || value <= 0 || value >= 1 || balance < 1} onClick={() => { setSelected({ id: m.id, outcome: side }); setStake(1); }}><span>{side.toUpperCase()}</span><b>{value > 0 && value < 1 ? tokens(value) : "—"}</b></button>; })}</div>

@@ -71,12 +71,12 @@ export function App() {
           <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
           <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
-        <EventStrip />
+        <EventStrip compact={tab === "trade"} />
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
         <main className="page-stage" style={{ ["--slide" as string]: slide }}
           onTouchStart={e => {
             const el = e.target as HTMLElement;
-            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .chart-card, .pos-card, .hscroll, .sheet")) { swipe.current = null; return; }
+            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .chart-card, .pos-card, .hscroll, .selection-wheel, .sheet")) { swipe.current = null; return; }
             swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           }}
           onTouchEnd={e => {
@@ -110,7 +110,7 @@ export function App() {
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
       <ChatPop onOpen={() => game.setChatOpen(true)} />
       <Sheet open={st.chatOpen} onClose={() => game.setChatOpen(false)}>
-        <button className="text-action lime" onClick={() => game.setChatOpen(false)}>Done</button>
+        <button className="chat-close" aria-label="Close squad chat" onClick={() => game.setChatOpen(false)}>✕</button>
         {game.squad ? <>
           {st.squads.length > 1 && <div className="hscroll">{st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}
           <ChatCard key={game.squad.id} />

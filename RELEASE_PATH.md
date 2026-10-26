@@ -22,7 +22,9 @@ On iPhone, open the domain in Safari and follow [Apple's Add to Home Screen inst
 
 The live database has `backend/clean_floor.sql` applied (8 players received the grant, 4 free avatars, current-season loss rules unchanged). For another environment, apply it after the existing token/avatar/weekend migrations. It grants existing and new players five starter tokens exactly once, adds four free avatars and profile colours, permits orders up to 100 micros within existing margin/session/rate checks, and schedules the fixed USD 2,000 daily loss allowance for accounts in seasons after the rollout season. Earned balances and current-season loss rules are preserved. The 8% maximum loss rule can still be reached first.
 
-The regional discovery update is deployed to the existing `prediction-quotes` edge function; `backend/deploy/prediction-quotes.ts` is its source for future deployment. It fetches verified cricket, football, tennis and motorsport match series from Kalshi, reserves room per sport and keeps tracked positions eligible for settlement. Categories can be empty when the source has no fresh qualifying markets; the interface says so.
+The finance discovery update is deployed to the existing `prediction-quotes` edge function; `backend/deploy/prediction-quotes.ts` is its source. It fetches S&P 500, Nasdaq, Dow, gold, Treasury and BTC/ETH series from Kalshi and reserves room per underlying. S&P 500 and Nasdaq qualifying contracts were verified against the public feed; gold, Dow and Treasury can be empty when there are no liquid contracts. Existing held sports positions continue to refresh and settle. New discovery and the browse UI focus on finance. Provider subtitles preserve exact strike/target information. These are token-based Yes/No event contracts, not brokerage options.
+
+The mobile interface uses vertical snap wheels for timeframe and 1/10/100 micros, including native finger scrolling in fullscreen. Fullscreen includes the same order controls and fits chart height to the available space. US flag badges identify 100/500/30, with a gold bar for gold. Glowing avatar rings show open long/short positions; closed exits are opt-in and thinned at dense overlaps. Chat groups consecutive messages, shows avatars/time dividers, preserves the reading position on new messages and keeps the composer separate from the scrolling log.
 
 Session countdowns use Brokie's current 17:00 New York weekday flat-at-close / Sunday 18:00 crypto rules. Sydney, Tokyo, London and New York opens are reference liquidity sessions, with named time zones and daylight saving; they are not an exchange holiday calendar. Alerts animate while the trading screen is open. They do not run when the web app is backgrounded or closed.
 
@@ -31,7 +33,7 @@ Session countdowns use Brokie's current 17:00 New York weekday flat-at-close / S
 - `cd web && npm run build`
 - `node backend/tests/clean-floor.mjs` and `node backend/tests/weekend.mjs`
 - `node backend/tests/feeds.cjs`
-- Local Vite server, then `web/tests/clean-floor.cjs`, `ui-smoke.cjs`, `hold-smoke.cjs`, `upgrade-smoke.cjs` with Playwright/Chrome.
+- Local Vite server, then `web/tests/mobile-polish.cjs`, `timeframes-smoke.cjs`, `clean-floor.cjs`, `ui-smoke.cjs`, `hold-smoke.cjs`, `upgrade-smoke.cjs` with Playwright/Chrome.
 
 The iPhone Simulator Debug build passed, and the installed client was launched and visually verified on iPhone 16 Pro (iOS 18.3). Signing and App Store submission have not been performed. Both the repository project and the Desktop root project have the new client.
 

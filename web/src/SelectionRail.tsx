@@ -1,28 +1,47 @@
-import { useLayoutEffect, useRef, useState } from "react";
-/** Shared TradingView-style tape: swipe to browse, tap or use arrows to select. */
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+/** Vertical snap wheel shared by intervals and micro size. */
 export function SelectionRail({ label, value, options, onChange, disabled = false, testId, itemPrefix }: {
   label: string; value: number; options: { value: number; label: string }[]; onChange: (value: number) => void; disabled?: boolean; testId: string; itemPrefix: string;
 }) {
-  const rail = useRef<HTMLDivElement>(null), buttons = useRef(new Map<number, HTMLButtonElement>());
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
-  const drag = useRef<{ x: number; scroll: number; moved: boolean } | null>(null);
+  const rail = useRef<HTMLDivElement>(null);
+  const latest = useRef({ value, options, onChange, disabled });
+  latest.current = { value, options, onChange, disabled };
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const drag = useRef<{ y: number; scroll: number } | null>(null);
+  const [position, setPosition] = useState(Math.max(0, options.findIndex(o => o.value === value)));
   const values = options.map(o => o.value).join(",");
+  const settle = () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      if (!rail.current || drag.current) return;
+      const s = latest.current;
+      const i = Math.max(0, Math.min(s.options.length - 1, Math.round(rail.current.scrollTop / 32)));
+      if (!s.disabled && s.options[i] && s.options[i].value !== s.value) s.onChange(s.options[i].value);
+    }, 160);
+  };
   useLayoutEffect(() => {
-    const el = rail.current, selected = buttons.current.get(value);
-    if (!el || !selected) return;
-    const update = () => { setIndicator({ left: selected.offsetLeft, width: selected.offsetWidth }); };
-    update();
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollTo({ left: selected.offsetLeft - (el.clientWidth - selected.offsetWidth) / 2, behavior: reduce ? "auto" : "smooth" });
-    const ro = new ResizeObserver(update); ro.observe(el); return () => ro.disconnect();
-  }, [value, values]);
-  return <div ref={rail} className="selection-rail hscroll" role="group" aria-label={label} data-testid={testId}
-    onPointerDown={e => { if (e.pointerType === "mouse" && e.button === 0) drag.current = { x: e.clientX, scroll: e.currentTarget.scrollLeft, moved: false }; }}
-    onPointerMove={e => { const d = drag.current; if (!d || e.pointerType !== "mouse" || e.buttons !== 1) return; const dx = e.clientX - d.x; if (Math.abs(dx) > 5) { d.moved = true; e.currentTarget.scrollLeft = d.scroll - dx; } }}
-    onPointerLeave={() => { drag.current = null; }}
-    onClickCapture={e => { if (drag.current?.moved) { e.preventDefault(); e.stopPropagation(); } drag.current = null; }}>
-    <span className="rail-indicator" aria-hidden="true" style={{ width: indicator.width, transform: `translateX(${indicator.left}px)` }} />
-    {options.map((o, index) => <button ref={el => { if (el) buttons.current.set(o.value, el); else buttons.current.delete(o.value); }} key={o.value} type="button" className={`rail-option ${value === o.value ? "selected" : ""}`} disabled={disabled} aria-pressed={value === o.value} data-testid={`${itemPrefix}-${o.value}`} onClick={() => onChange(o.value)}
-      onKeyDown={e => { if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return; e.preventDefault(); const i = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : Math.max(0, Math.min(options.length - 1, index + (e.key === "ArrowRight" ? 1 : -1))); onChange(options[i].value); buttons.current.get(options[i].value)?.focus({ preventScroll: true }); }}>{o.label}</button>)}
+    clearTimeout(timer.current);
+    const i = Math.max(0, options.findIndex(o => o.value === value));
+    if (rail.current) rail.current.scrollTop = i * 32;
+    setPosition(i);
+  }, [value, values, disabled]);
+  useEffect(() => () => { clearTimeout(timer.current); }, []);
+  return <div className={`selection-wheel ${disabled ? "disabled" : ""}`}>
+    <div ref={rail} className="wheel-scroll" role="spinbutton" tabIndex={disabled ? -1 : 0} aria-label={label} aria-valuemin={options[0]?.value} aria-valuemax={options[options.length - 1]?.value} aria-valuenow={value} aria-valuetext={options.find(o => o.value === value)?.label} aria-disabled={disabled} data-testid={testId}
+      onScroll={e => { setPosition(e.currentTarget.scrollTop / 32); settle(); }}
+      onPointerDown={e => { e.stopPropagation(); if (!disabled && e.pointerType === "mouse" && e.button === 0) { drag.current = { y: e.clientY, scroll: e.currentTarget.scrollTop }; e.currentTarget.setPointerCapture(e.pointerId); e.currentTarget.focus({ preventScroll: true }); } }}
+      onPointerMove={e => { const d = drag.current; if (!d || disabled) return; e.currentTarget.scrollTop = d.scroll - (e.clientY - d.y); }}
+      onPointerUp={() => { drag.current = null; settle(); }}
+      onPointerCancel={() => { drag.current = null; settle(); }}
+      onKeyDown={e => {
+        if (disabled || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault(); e.stopPropagation();
+        const index = options.findIndex(o => o.value === value);
+        const i = e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : Math.max(0, Math.min(options.length - 1, index + (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1)));
+        onChange(options[i].value);
+      }}>
+      {options.map((o, i) => <div key={o.value} className={`wheel-value ${value === o.value ? "selected" : ""}`} aria-hidden="true" data-testid={`${itemPrefix}-${o.value}`} style={{ opacity: Math.max(.12, 1 - Math.abs(position - i) * .65), transform: `scale(${Math.max(.8, 1 - Math.abs(position - i) * .13)})` }}>{o.label}</div>)}
+    </div>
+    <span className="wheel-guides" aria-hidden="true" />
   </div>;
 }

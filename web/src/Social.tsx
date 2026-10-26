@@ -4,7 +4,7 @@ import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
 import { EMOJIS, game, useGame } from "./game";
 import type { FeedbackKind } from "./types";
-import { Button, Eyebrow, Sheet, ago, money } from "./ui";
+import { Button, Eyebrow, Sheet, money } from "./ui";
 
 // ---------- Global leaderboard ----------
 export function GlobalBoard() {
@@ -87,39 +87,70 @@ export function ChatCard() {
   const [text, setText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [unread, setUnread] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const atBottom = useRef(true);
+  const lastSent = useRef(false);
+  const jump = () => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; atBottom.current = true; setUnread(false); };
   useEffect(() => {
     void game.refreshChat();
     const t = setInterval(() => { if (!document.hidden) void game.refreshChat(); }, 3000);
     return () => clearInterval(t);
   }, [st.squadId]);
-  useEffect(() => { const el = box.current; if (el) el.scrollTop = el.scrollHeight; }, [st.chat.length]);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => { if (atBottom.current) jump(); });
+    ro.observe(el); return () => ro.disconnect();
+  }, []);
+  const latestId = st.chat[st.chat.length - 1]?.id;
+  useEffect(() => {
+    if (atBottom.current || lastSent.current) { jump(); lastSent.current = false; }
+    else setUnread(true);
+  }, [latestId]);
   async function send() {
     const body = text.trim();
     if (!body || busy) return;
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); lastSent.current = true;
     const e = await game.sendMessage(body, "text");
     setBusy(false);
-    if (e) setErr(e); else setText("");
+    if (e) { setErr(e); lastSent.current = false; } else { setText(""); jump(); }
   }
   return (
-    <div className="panel stack" style={{ gap: 12 }} data-testid="chat">
-      <Eyebrow>Squad chat</Eyebrow>
-      <div className="chat-log" ref={box} aria-live="polite">
-        {st.chat.length === 0 && <div className="muted" style={{ fontSize: 12, margin: "auto" }}>No chat yet. Drop an emoji, break the silence.</div>}
-        {st.chat.map((m) => m.kind === "emoji" ? (
-          <div key={m.id} className={`msg emoji ${m.is_you ? "you" : ""}`} data-testid="chat-msg"><span className="who"><PlayerLink handle={m.handle}>{m.is_you ? "You" : `@${m.handle}`}</PlayerLink></span><span className="big">{m.body}</span></div>
-        ) : (
-          <div key={m.id} className={`msg ${m.is_you ? "you" : ""}`} data-testid="chat-msg"><span className="who"><PlayerLink handle={m.handle}>{m.is_you ? "You" : `@${m.handle}`}</PlayerLink> · {ago(m.at)}</span><span>{m.body}</span></div>
-        ))}
+    <div className="chat-room" data-testid="chat">
+      <header className="chat-heading"><span className="chat-room-icon" aria-hidden="true">#</span><div><h2>{game.squad?.name ?? "Squad chat"}</h2><small>{game.squad?.member_count ?? 0} members · Squad chat</small></div></header>
+      <div className="chat-log" ref={box} role="log" aria-label="Squad messages" aria-live="polite" onScroll={() => { const el = box.current; if (el) { atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (atBottom.current) setUnread(false); } }}>
+        {st.chat.length === 0 && <div className="chat-empty"><span aria-hidden="true">✦</span><b>The squad’s here.</b><small>First trade, hot take, terrible joke. Go on.</small></div>}
+        {st.chat.map((m, i) => {
+          const prev = st.chat[i - 1], next = st.chat[i + 1];
+          const day = new Date(m.at).toLocaleDateString();
+          const newDay = !prev || new Date(prev.at).toLocaleDateString() !== day;
+          const grouped = !newDay && prev.handle === m.handle && Date.parse(m.at) - Date.parse(prev.at) < 300000;
+          const end = !next || next.handle !== m.handle || Date.parse(next.at) - Date.parse(m.at) >= 300000 || new Date(next.at).toLocaleDateString() !== day;
+          return <div key={m.id} className="chat-entry">
+            {newDay && <div className="chat-day"><span>{day === new Date().toLocaleDateString() ? "Today" : new Date(m.at).toLocaleDateString([], { day: "numeric", month: "short" })}</span></div>}
+            <div className={`message-row ${m.is_you ? "mine" : ""} ${grouped ? "grouped" : ""}`}>
+              {!m.is_you && <div className="message-avatar">{!grouped && <Avatar handle={m.handle} />}</div>}
+              <div className="message-content">
+                {!grouped && !m.is_you && <PlayerLink handle={m.handle}>@{m.handle}</PlayerLink>}
+                <div className={`msg ${m.kind === "emoji" ? "emoji" : ""} ${m.is_you ? "you" : ""}`} data-testid="chat-msg"><span className={m.kind === "emoji" ? "big" : "message-body"}>{m.body}</span></div>
+                {end && <time className="message-time" dateTime={m.at}>{new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>}
+              </div>
+            </div>
+          </div>;
+        })}
       </div>
-      <EmojiBar onSent={(e) => setErr(e)} />
-      <form className="row" style={{ gap: 8 }} onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <input className="field" style={{ flex: 1, height: 44 }} placeholder="Say something…" maxLength={140} value={text} data-testid="chat-input" aria-label="Message your squad"
-          onChange={(e) => setText(e.target.value)} />
-        <button className="big-btn lime" type="submit" style={{ width: 64, height: 44 }} disabled={busy || !text.trim()} data-testid="chat-send">{busy ? <span className="spinner" /> : "Send"}</button>
-      </form>
-      {err && <div className="err" data-testid="chat-error">{err}</div>}
+      {unread && <button className="chat-new" onClick={jump}>New messages ↓</button>}
+      <div className="chat-composer">
+        {emojiOpen && <EmojiBar onSent={e => { setErr(e); if (!e) jump(); }} />}
+        <form onSubmit={e => { e.preventDefault(); void send(); }}>
+          <button className="chat-react" type="button" aria-label="Emoji reactions" aria-expanded={emojiOpen} onClick={() => setEmojiOpen(!emojiOpen)}>☺</button>
+          <input className="field" placeholder="Message the squad…" maxLength={140} value={text} data-testid="chat-input" aria-label="Message your squad" onChange={e => setText(e.target.value)} />
+          <button className="chat-send" type="submit" disabled={busy || !text.trim()} data-testid="chat-send" aria-label="Send message">{busy ? <span className="spinner" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>}</button>
+        </form>
+        {err && <div className="err" role="alert" data-testid="chat-error">{err}</div>}
+      </div>
     </div>
   );
 }

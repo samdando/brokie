@@ -10,7 +10,7 @@ import { frameLabel, game, stacksOf, useGame } from "./game";
 import { sessionMarkets } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
-import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
+import { Button, Eyebrow, Icon, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
@@ -29,6 +29,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     switchTimer.current = setTimeout(() => setSwitching(false), 420);
   }
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
+  const [showHistory, setShowHistory] = useState(false);
   const lastEnterToast = useRef(0);
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     window.addEventListener("resize", resize); window.visualViewport?.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("resize", resize); };
   }, []);
-  const bigH = Math.max(120, viewportH - (window.innerWidth <= 360 ? 290 : 240));
+  const [bigH, setBigH] = useState(Math.max(120, viewportH - 300));
   // Remember where the page was BEFORE the chart leaves the page flow: once it's fixed, the browser
   // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
   const pageScroll = useRef({ x: 0, y: 0 });
@@ -67,8 +68,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     const { x, y } = pageScroll.current;
     const body = document.body, root = document.documentElement;
     const bodyStyle = body.style.cssText, rootStyle = root.style.cssText;
-    Object.assign(body.style, { position: "fixed", top: `-${y}px`, left: `-${x}px`, width: "100%", overflow: "hidden", touchAction: "none", overscrollBehavior: "none" });
-    Object.assign(root.style, { overflow: "hidden", touchAction: "none", overscrollBehavior: "none" });
+    Object.assign(body.style, { position: "fixed", top: `-${y}px`, left: `-${x}px`, width: "100%", overflow: "hidden", touchAction: "auto", overscrollBehavior: "none" });
+    Object.assign(root.style, { overflow: "hidden", touchAction: "auto", overscrollBehavior: "none" });
     const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setBig(false); };
     window.addEventListener("keydown", escape);
     return () => {
@@ -107,6 +108,23 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const candles = game.liveCandles(market);
   const quote = mark(market);
   const open = game.isOpen(market);
+  useLayoutEffect(() => {
+    const card = chartCard.current;
+    if (!big || !card) return;
+    const fit = () => {
+      const css = getComputedStyle(card);
+      const used = Array.from(card.children).reduce((sum, child) => {
+        if (child.querySelector(".chart-host")) return sum;
+        const style = getComputedStyle(child);
+        return sum + child.getBoundingClientRect().height + parseFloat(style.marginTop || "0") + parseFloat(style.marginBottom || "0");
+      }, 0);
+      setBigH(Math.max(80, Math.floor(card.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - used - 2)));
+    };
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(card);
+    for (const child of Array.from(card.children)) if (!child.querySelector(".chart-host")) ro.observe(child);
+    return () => ro.disconnect();
+  }, [big, viewportH, chartInfo, open]);
   const change = quote && candles[0] ? quote - candles[0].open : 0;
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
@@ -126,6 +144,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     return () => { alive = false; };
   }, [st.me]);
 
+  const orderDock = <div className="trade-dock"><div className="size-picker"><span>MICROS</span><SelectionRail label="Order size" value={st.qty} options={[1, 10, 100].map(n => ({ value: n, label: `${n}` }))} disabled={!!st.pending || game.ordersInFlight > 0} onChange={n => game.setQty(n)} testId="micro-rail" itemPrefix="size" /></div><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>;
+
   return (
     <div className="stack trade-screen">
 
@@ -137,7 +157,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
-            <MarketArt market={m} /><b>{m === "us30" ? "DOW" : MARKETS[m].title}</b>
+            <MarketArt market={m} /><b>{m === "nas" ? "US 100" : m === "es" ? "US 500" : m === "us30" ? "US 30" : MARKETS[m].title}</b>
             <span className="mono">{mark(m) ? px(mark(m)!, digits(m)) : "—"}</span>
           </button>
         ))}
@@ -167,9 +187,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         <BrokieChart fullscreen={big} height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          // Your own past trades always show; the 👥 toggle only hides friends'.
+          // History is opt-in; the squad toggle controls friends' markers.
           overlay={(toXY, width) => st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
-            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} now={game.now()} hideMine bubbles={crowd ? st.bubbles : st.bubbles.filter((b) => b.is_you)} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
+            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} showHistory={showHistory} now={game.now()} hideMine bubbles={crowd ? st.bubbles : st.bubbles.filter((b) => b.is_you)} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
             {crowd && (activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
@@ -188,10 +208,12 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
             aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
             onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>
-            <span className="crowd-chip">👥{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span>
+            <span className="crowd-chip">{Icon.squad}{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span>
           </button>
+          <button className="chip history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => setShowHistory(!showHistory)} data-testid="history-toggle">↶</button>
         </div>
         {!open && <div className="chart-attribution">Market closed · new trades resume when prices are live.</div>}
+        {big && orderDock}
       </div>
 
       <SessionClock market={market} />
@@ -212,7 +234,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {rules && <Meters rules={rules} equity={equity} />}
       </section>
 
-      <div className="trade-dock"><div className="size-picker"><span>MICROS / TAP</span><SelectionRail label="Order size" value={st.qty} options={[1, 10, 100].map(n => ({ value: n, label: `${n}` }))} disabled={!!st.pending || game.ordersInFlight > 0} onChange={n => game.setQty(n)} testId="micro-rail" itemPrefix="size" /></div><SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} /></div>
+      {!big && orderDock}
 
       <div className="stack" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your positions</h2><span className="eyebrow">{stacks.length} open</span></div>

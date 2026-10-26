@@ -25,13 +25,13 @@ async function shot(name){await page.waitForTimeout(350);await page.screenshot({
 await shot('trade');
 await page.evaluate(()=>{ const g=window.testGame; g.refreshCandles=async()=>{}; });
 const rail=page.getByTestId('timeframe-rail');
-assert.equal(await rail.getByRole('button',{pressed:true}).textContent(),'15m','highest default frame');
-await page.getByTestId('timeframe-60').click();assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),60);
-await page.getByTestId('timeframe-60').press('ArrowRight');assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),300);
+assert.equal(await rail.getAttribute('aria-valuetext'),'15m','highest default frame');
+await rail.press('Home');assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),60);
+await rail.press('ArrowDown');assert.equal(await page.evaluate(()=>window.testGame.state.candleSeconds),300);
 await page.getByTestId('tab-you').click();await page.getByRole('button',{name:/Account settings/}).click();
 for(const f of ['4h','1D','5m'])await page.getByTestId('frame-'+f).click();
 assert.deepEqual(await page.evaluate(()=>window.testGame.state.frames),[60,900,14400,86400]);
 await page.getByRole('button',{name:'Done',exact:true}).click();await page.getByTestId('tab-trade').click();
-await page.getByTestId('timeframe-86400').click();assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.frame')),'86400');
+await rail.press('End');assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.frame')),'86400');
 for(const width of [320,393,430]){await page.setViewportSize({width,height:800});await page.waitForTimeout(200);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
-assert.deepEqual(errors,[]);console.log('PASS timeframe rail selection, keyboard, settings, persistence and phone widths');await browser.close();})();
+assert.deepEqual(errors,[]);console.log('PASS timeframe wheel selection, keyboard, settings, persistence and phone widths');await browser.close();})();

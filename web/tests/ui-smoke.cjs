@@ -25,7 +25,7 @@ await shot('trade');
 // Chat is one tap away from any screen: header button with an unread badge.
 await page.evaluate(()=>window.testGame.set({chatUnread:3}));assert.equal(await page.getByTestId('chat-badge').textContent(),'3');
 await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat-header');
-assert.equal(await page.getByTestId('chat-badge').count(),0,'opening chat clears the badge');await page.getByRole('button',{name:'Done',exact:true}).click();
+assert.equal(await page.getByTestId('chat-badge').count(),0,'opening chat clears the badge');await page.getByRole('button',{name:'Close squad chat',exact:true}).click();
 assert(await page.getByTestId('go-long').isVisible(),'closing chat stays on the trade screen');
 // Target alone is 🎯 TARGET HIT; funded needs the 5 trading days too.
 await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,rules:{...g.state.me.rules,target_hit:true,funded:false}}})});
@@ -41,7 +41,7 @@ assert(await page.locator('[data-testid="leader-row"]').count()===5);
 await page.getByRole('button',{name:"View @ankits's profile"}).click();await page.getByTestId('player-profile').waitFor();await page.getByText('Max drawdown',{exact:true}).waitFor();await page.getByRole('button',{name:'Done',exact:true}).click();
 assert(await page.getByTestId('invite-code').count()===0);
 await page.getByRole('button',{name:'Invite / manage'}).click();await page.getByTestId('invite-code').waitFor({state:"visible"});await page.getByRole('button',{name:'Done',exact:true}).click();
-await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Done',exact:true}).click();
+await page.getByTestId('chat-btn').click();await page.getByTestId('chat-input').waitFor({state:"visible"});await shot('chat');await page.getByRole('button',{name:'Close squad chat',exact:true}).click();
 await page.getByTestId('squad-active').waitFor(); await page.getByTestId('squad-daily').waitFor(); assert.equal(await page.locator('.activity-group').count(),0);
 await page.getByTestId('tab-learn').click();await page.getByText('Essentials complete.',{exact:true}).waitFor({state:"visible"});await shot('learn');
 await page.getByRole('button',{name:'Put it into practice'}).click();await page.getByTestId('equity').waitFor({state:"visible"});

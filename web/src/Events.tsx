@@ -13,13 +13,13 @@ function until(iso: string, now: number) {
 }
 
 /** Live + countdown events (CPI, FOMC, session opens). Sits under the header. */
-export function EventStrip() {
+export function EventStrip({ compact = false }: { compact?: boolean }) {
   const st = useGame();
   const now = useNow(1000) + st.clockOffset;
   const items = st.events?.active ?? [];
   if (items.length === 0) return null;
   return (
-    <div className="event-strip" data-testid="event-strip">
+    <div className={`event-strip ${compact ? "compact-events" : ""}`} data-testid="event-strip">
       {items.map((e) => {
         const live = (e.phase ?? "live") === "live" || Date.parse(e.at) <= now;
         return (

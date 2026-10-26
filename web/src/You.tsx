@@ -212,7 +212,7 @@ function FramesSetting() {
   return (
     <div className="stack" style={{ gap: 8 }} data-testid="frames-setting">
       <div><b style={{ fontSize: 13 }}>Chart timeframes</b>
-        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Swipe the timeframe rail on the chart. Choose which intervals appear here.</div></div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>Scroll the timeframe wheel up or down on the chart. Choose which intervals appear here.</div></div>
       <div className="frame-picks" role="group" aria-label="Chart timeframes">
         {FRAME_OPTIONS.map((f) => {
           const on = st.frames.includes(f.s);
