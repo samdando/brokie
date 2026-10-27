@@ -1120,13 +1120,14 @@ body { background:radial-gradient(ellipse at 50% -10%,#20302F 0,#0B1018 62%); }
 .chat-room .msg.emoji { min-width:54px; overflow:visible; }
 .chat-room .msg.emoji .big { min-width:50px; white-space:nowrap; }
 /* Avatar trade stamps: direction ring + small arrow, with subdued closed history. */
-.tm { width:26px; height:26px; --c:#40F6A0; border:2px solid var(--c); background:#101923; }
+.tm { width:26px; height:26px; opacity:.55; --c:#40F6A0; border:2px solid var(--c); background:#101923; }
 .tm.short { --c:#FF4D73; }
 .tm:not(.fresh):not(.danger),.tm.me { box-shadow:0 0 0 2px #0b1018,0 0 9px color-mix(in srgb,var(--c) 65%,transparent); }
 .tm .tm-face.player-avatar { width:100%; height:100%; font-size:17px; border:0 !important; box-shadow:none; }
 .tm-direction { right:-5px; bottom:-7px; padding:0; width:12px; height:12px; line-height:12px; font-size:9px; border-radius:50%; background:#101923; color:var(--c); box-shadow:0 0 0 1px var(--c); }
 .tm-live { width:5px; height:5px; top:-3px; right:-3px; }
-.tm.exit { opacity:.42; border-width:1px; }
+.tm.exit,.tm.faded { opacity:.3; }
+.tm.exit { border-width:1px; }
 .tm.exit:not(.fresh):not(.danger) { box-shadow:0 0 0 1px #0b1018; }
 body { overflow-x:clip; }
 .page-stage { overflow-x:clip; }
