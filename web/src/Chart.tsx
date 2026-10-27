@@ -76,10 +76,10 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       localization: { locale: "en-US", timeFormatter: (t: number) => bucketRef.current >= 86400
         ? new Date(t * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })
         : new Date(t * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
-      // C5: pinch / wheel zoom and horizontal drag to pan. Vertical swipes still scroll the page.
-      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true } },
-      handleScroll: { horzTouchDrag: true, pressedMouseMove: true, mouseWheel: false, vertTouchDrag: false },
-      kineticScroll: { touch: true, mouse: false },
+      // The embedded chart is a locked preview; fullscreen enables chart navigation.
+      handleScale: false,
+      handleScroll: false,
+      kineticScroll: { touch: false, mouse: false },
     });
     const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
     const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
@@ -135,12 +135,9 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 
   useEffect(() => { chart.current?.applyOptions({ height }); requestFrame.current(); }, [height]);
 
-  useEffect(() => {
-    chart.current?.applyOptions({ handleScroll: { vertTouchDrag: fullscreen } });
-    requestFrame.current();
-  }, [fullscreen]);
 
   const detach = () => {
+    if (!fullscreen) return;
     userMoved.current = true;
     // Freeze the visible price range before a drag so ticks cannot pull it back.
     chart.current?.priceScale("right").applyOptions({ autoScale: false });
@@ -157,6 +154,18 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     c.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - VIEW_BARS), to: n - 1 + 6 });
     c.priceScale("right").applyOptions({ autoScale: true });
   }, []);
+
+  useEffect(() => {
+    chart.current?.applyOptions({
+      handleScale: { pinch: fullscreen, mouseWheel: fullscreen, axisPressedMouseMove: { time: fullscreen, price: fullscreen }, axisDoubleClickReset: { time: fullscreen, price: fullscreen } },
+      handleScroll: { horzTouchDrag: fullscreen, vertTouchDrag: fullscreen, pressedMouseMove: fullscreen, mouseWheel: false },
+      kineticScroll: { touch: fullscreen, mouse: false },
+    });
+    touches.current.clear(); lastTap.current = null;
+    if (!fullscreen) goLive();
+    requestFrame.current();
+  }, [fullscreen, goLive]);
+
 
   // ---- Candles: full redraw on structural change, tweened forming candle otherwise (C4) ----
   useEffect(() => {
@@ -263,9 +272,10 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   return (
     <div>
       <div className="chart-host" style={{ position: "relative", width: "100%", height: H, touchAction: fullscreen ? "none" : "pan-y" }}
-        onDoubleClick={() => { lastTap.current = null; goLive(); }}
+        onDoubleClick={() => { if (fullscreen) { lastTap.current = null; goLive(); } }}
         onWheel={detach}
         onPointerDown={(e) => {
+          if (!fullscreen) return;
           if (e.pointerType !== "touch") { detach(); return; }
           if (touches.current.size === 0) gestureDirty.current = false;
           touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() });
@@ -277,6 +287,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         }}
         onPointerCancel={(e) => { touches.current.delete(e.pointerId); gestureDirty.current = true; }}
         onPointerUp={(e) => {
+          if (!fullscreen) return;
           if (e.pointerType !== "touch") return;
           const s = touches.current.get(e.pointerId);
           touches.current.delete(e.pointerId);

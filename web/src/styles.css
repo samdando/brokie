@@ -1134,3 +1134,7 @@ body { overflow-x:clip; }
 .page-stage:has(.chart-fullscreen) { overflow:visible; }
 .chart-controls .crowd-chip { display:flex; align-items:center; gap:2px; font-size:10px; }
 .chart-controls .crowd-chip svg { width:15px; height:15px; flex:none; }
+.chart-card .chart-controls .fullscreen-toggle { flex:0 0 64px; min-width:64px; display:flex; align-items:center; justify-content:center; gap:5px; color:#E3EAF5; background:#ffffff09; border:1px solid #ffffff20; font:600 11px var(--sans,system-ui); }
+.chart-card .chart-controls .fullscreen-toggle svg { width:18px; height:18px; flex:none; }
+.chart-card .chart-controls .style-switch,.chart-card .chart-controls .history-switch { flex-basis:32px; min-width:32px; }
+@media(max-width:360px) { .chart-controls .selection-wheel { flex-basis:64px; } .chart-card .chart-controls { gap:3px; } .chart-controls .crowd-chip { font-size:9px; } }

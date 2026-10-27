@@ -183,7 +183,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </span>
           </span>
         </div>
-        {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}Pinch to zoom, drag to pan, double-tap to return live.</div>}
+        {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Tap Full to pan, zoom and trade fullscreen."}</div>}
         <BrokieChart fullscreen={big} height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
@@ -203,8 +203,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
             <span aria-hidden="true">{style === "candles" ? "▮▮" : "∿"}</span>
           </button>
           <SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f => ({ value: f, label: frameLabel(f) }))} onChange={f => game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe" />
-          <button className={`chip lime ${big ? "on" : ""}`} style={{ marginLeft: "auto" }} aria-pressed={big} data-testid="big-chart"
-            aria-label={big ? "Smaller chart" : "Bigger chart"} onClick={toggleBig}>{big ? "⤡" : "⤢"}</button>
+          <button className={`chip fullscreen-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
+            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg><span>{big ? "Exit" : "Full"}</span></button>
           <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
             aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
             onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>

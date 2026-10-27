@@ -28,6 +28,23 @@ await page.getByTestId('history-toggle').click();await page.waitForTimeout(200);
 assert((await page.getByTestId('exit-mark').count())<=1,'dense closed trades thinned around open positions');assert.equal(await page.getByTestId('earlier-trades').count(),0,'overlapping exits are not labelled offscreen');
 await page.getByTestId('history-toggle').click();
 const cdp=await page.context().newCDPSession(page);
+await page.waitForTimeout(250);
+assert.equal(await page.locator('.session-clock time').count(),0,'session display uses countdowns only');
+const marker=page.getByTestId('bubble').first();
+const originalMarker=await marker.evaluate(e=>({left:e.style.left,top:e.style.top}));
+const chartBox=await page.locator('.chart-host').boundingBox();
+const cx=chartBox.x+chartBox.width/2,cy=chartBox.y+chartBox.height/2;
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:cx,y:cy}]});
+for(let i=1;i<=8;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:cx+i*8,y:cy}]});await page.waitForTimeout(30);}
+await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:cx-30,y:cy},{x:cx+30,y:cy}]});
+for(let i=1;i<=5;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:cx-30-i*6,y:cy},{x:cx+30+i*6,y:cy}]});await page.waitForTimeout(30);}
+await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(300);
+assert.deepEqual(await marker.evaluate(e=>({left:e.style.left,top:e.style.top})),originalMarker,'preview ignores finger drag and pinch');
+await page.mouse.move(cx,cy);await page.mouse.down();await page.mouse.move(cx-70,cy,{steps:6});await page.mouse.up();await page.mouse.wheel(0,-80);await page.waitForTimeout(250);
+assert.deepEqual(await marker.evaluate(e=>({left:e.style.left,top:e.style.top})),originalMarker,'preview ignores mouse pan and wheel zoom');
+assert.equal(await page.getByTestId('big-chart').textContent(),'Full','fullscreen entry has a visible label');
+
 async function swipeWheel(id,dy){
  const r=await page.getByTestId(id).boundingBox(),x=r.x+r.width/2,y=r.y+r.height/2;
  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
