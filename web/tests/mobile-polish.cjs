@@ -43,7 +43,7 @@ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});awai
 assert.deepEqual(await marker.evaluate(e=>({left:e.style.left,top:e.style.top})),originalMarker,'preview ignores finger drag and pinch');
 await page.mouse.move(cx,cy);await page.mouse.down();await page.mouse.move(cx-70,cy,{steps:6});await page.mouse.up();await page.mouse.wheel(0,-80);await page.waitForTimeout(250);
 assert.deepEqual(await marker.evaluate(e=>({left:e.style.left,top:e.style.top})),originalMarker,'preview ignores mouse pan and wheel zoom');
-assert.equal(await page.getByTestId('big-chart').textContent(),'Full','fullscreen entry has a visible label');
+assert.equal(await page.getByTestId('big-chart').getAttribute('aria-label'),'Open fullscreen chart');const corner=await page.getByTestId('big-chart').boundingBox(),card=await page.locator('.chart-card').boundingBox();assert(corner.x+corner.width>card.x+card.width-24 && corner.y<card.y+24,'fullscreen sits in top-right corner');
 
 async function swipeWheel(id,dy){
  const r=await page.getByTestId(id).boundingBox(),x=r.x+r.width/2,y=r.y+r.height/2;
