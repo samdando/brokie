@@ -23,10 +23,15 @@ await page.getByTestId('equity').waitFor();
 await page.evaluate(()=>{window.testGame.setCandleSeconds(60);window.testGame.setQty(1);window.testGame.isOpen=()=>true;window.orders=[];
 const g=window.testGame,c=g.state.candles.nas,stamp=(n)=>new Date(c[c.length-n].index*60000).toISOString();
 g.set({bubbleScope:'nas:s',bubbles:[...['ankits','fuko','sam'].map((handle,i)=>({id:'open'+i,handle,is_you:false,state:'open',market:'nas',side:i===1?'short':'long',quantity:10,entry_price:c[c.length-12-i*8].close,opened_at:stamp(12+i*8),at:stamp(12+i*8),exit_price:null})),...Array.from({length:20},(_,i)=>({id:'closed'+i,handle:'jaoushai',is_you:false,state:'closed',market:'nas',side:'long',quantity:1,entry_price:c[c.length-50].close,opened_at:stamp(50),at:stamp(30),exit_price:c[c.length-30].close,pnl:20,reason:'manual'}))]});window.testGame.open=async(side,q)=>{window.orders.push({side,q});return null;};});
-assert.equal(await page.getByTestId('exit-mark').count(),0,'closed history hidden initially');
-await page.getByTestId('history-toggle').click();await page.waitForTimeout(200);
+assert.equal(await page.getByTestId('history-toggle').getAttribute('aria-pressed'),'true','closed history visible by default');
 assert((await page.getByTestId('exit-mark').count())<=1,'dense closed trades thinned around open positions');assert.equal(await page.getByTestId('earlier-trades').count(),0,'overlapping exits are not labelled offscreen');
-await page.getByTestId('history-toggle').click();
+// A mate closes a visible trade: its final marker survives the closing animation.
+await page.evaluate(()=>{const g=window.testGame,c=g.state.candles.nas,last=c[c.length-3];g.set({bubbles:[...g.state.bubbles,{id:'recent-close',handle:'fuko',is_you:false,state:'closed',market:'nas',side:'short',quantity:2,entry_price:last.close+10,opened_at:new Date((last.index-2)*60000).toISOString(),at:new Date(last.index*60000).toISOString(),exit_price:last.close,pnl:40,reason:'manual'}]});});
+const closed=page.getByRole('button',{name:/@fuko closed short 2 micros/});await closed.waitFor();await page.waitForTimeout(2100);assert(await closed.isVisible(),'closed marker remains after animation');
+await closed.click();await page.getByTestId('trade-card').getByText('Final · trade closed',{exact:true}).waitFor();assert.match(await page.getByTestId('bubble-pnl').innerText(),/40/);await page.getByRole('button',{name:'Close trade card'}).click();
+await page.getByTestId('history-toggle').click();assert.equal(await page.getByTestId('exit-mark').count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.chartHistory')),'off');
+await page.getByTestId('tab-learn').click();await page.getByTestId('tab-trade').click();assert.equal(await page.getByTestId('history-toggle').getAttribute('aria-pressed'),'false','history preference survives navigation');
+await page.getByTestId('history-toggle').click();await closed.waitFor();assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.chartHistory')),'on');
 const cdp=await page.context().newCDPSession(page);
 await page.waitForTimeout(250);
 assert.equal(await page.locator('.session-clock time').count(),0,'session display uses countdowns only');

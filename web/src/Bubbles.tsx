@@ -81,7 +81,7 @@ export function held(ms: number): string {
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut, showHistory = false }:
+export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut, showHistory = true }:
   { showHistory?: boolean; onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
   const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
