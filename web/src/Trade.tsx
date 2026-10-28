@@ -168,7 +168,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   return (
     <div className="stack trade-screen">
 
-      <div className="trade-mode-row"><span className="eyebrow">{market === "prediction" ? "THE PREDICTION ROOM" : "THE TRADING FLOOR"}</span>
+      <div className="trade-mode-row"><span className="eyebrow">{market === "prediction" ? "Predictions" : "Markets"}</span>
       <button className={`predictions-entry ${market === "prediction" ? "active" : ""}`} onClick={switchPrediction} aria-pressed={market === "prediction"} disabled={switching} data-testid="prediction-switch"><span className="prediction-orbit" aria-hidden="true">✦</span><span>{market === "prediction" ? "Back to charts" : "Predictions"}</span><span aria-hidden="true">{market === "prediction" ? "↙" : "↗"}</span></button></div>
       <div key={market === "prediction" ? "predictions" : "charts"} className={`market-stage ${switching ? market === "prediction" ? "to-predictions" : "to-charts" : ""}`}>
       {market !== "prediction" && <>
@@ -176,7 +176,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
-            <MarketArt market={m} /><b>{m === "nas" ? "US 100" : m === "es" ? "US 500" : m === "us30" ? "US 30" : MARKETS[m].title}</b>
+            <span className="market-identity"><MarketArt market={m} /><b>{m === "nas" ? "US 100" : m === "es" ? "US 500" : m === "us30" ? "US 30" : MARKETS[m].title}</b></span>
             <span className="mono">{mark(m) ? px(mark(m)!, digits(m)) : "—"}</span>
           </button>
         ))}
@@ -546,7 +546,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
         {chain && <span key={chain.id} className={`combo-badge tier-${tier}`} data-testid="tap-combo" data-count={chain.count} data-side={side} aria-hidden="true">
           <span className="combo-count">{chain.count}</span><span className="combo-copy"><b>{tier === 3 ? "UNREAL" : tier === 2 ? "ON FIRE" : "COMBO"}</b><small>TAP STREAK</small></span><span className="combo-symbol">{tier >= 2 ? "🔥" : "ϟ"}</span><i className="combo-fuse" />
         </span>}
-        <span className="spam-label">{side === "long" ? "↗" : "↘"} {label}</span>
+        <span className="spam-label">{label}</span>
         <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${st.qty}` : hedge ? "tap = hedge" : tapHint ? `tap ${sign}${st.qty} · hold = spam` : "\u00a0"}</span>
         {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{st.qty}</span></span>)}
       </button>
