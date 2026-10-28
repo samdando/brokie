@@ -1,8 +1,8 @@
 # Brokie release path · 28 October 2026
 
-## Pending: server stops and trading polish (0.3.3)
+## Server stops and trading polish (0.3.3)
 
-Prepared locally; not deployed. Apply `backend/server_brackets.sql` before publishing this web build. The migration makes SL/TP server-owned and processes accepted quotes before risk checks, records stop settings/fills, and schedules daily unlocks for flat locked accounts. The client shows only confirmed protection, migrates valid device-only levels, and provides explicit SL/TP editing on each position. Stops fill at the observed crossing quote, not a guaranteed trigger price. Invalid old levels are flagged for review. See `backend/STOP_LOSS_RELEASE.md` for deployment and account verification.
+The production server migration is applied; the web release is ready for publishing. Apply `backend/server_brackets.sql` before publishing this web build. The migration makes SL/TP server-owned and processes accepted quotes before risk checks, records stop settings/fills, and schedules daily unlocks for flat locked accounts. The client shows only confirmed protection, migrates valid device-only levels, and provides explicit SL/TP editing on each position. Stops fill at the observed crossing quote, not a guaranteed trigger price. Invalid old levels are flagged for review. See `backend/STOP_LOSS_RELEASE.md` for deployment and account verification.
 
 The interface reduces glow and spacing, adds protection status to position cards and shows a daily-reset countdown. Build, isolated SQL checks and browser regression tests cover the new flow.
 

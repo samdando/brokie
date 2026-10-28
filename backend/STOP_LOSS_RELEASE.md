@@ -1,6 +1,6 @@
 # Server stop-loss release · 28 October 2026
 
-Status: prepared and tested locally; production migration and web deployment pending.
+Status: production migration applied successfully on 28 October 2026. SQL returned refresh_daily_locks = 0. The public API confirms set_position_bracket exists and denies anonymous execution; NAS quotes continue updating. Web release prepared for publishing.
 
 ## Diagnosis
 
@@ -17,15 +17,15 @@ At inspection, `fukotrades` and `jaoushai` were daily-locked with trading_day 20
 - fukotrades: cash 95735.00, max-loss floor 92000.00.
 - jaoushai: cash 127989.75, max-loss floor 123961.49.
 
-A guarded SELECT calling `enforce_rules` for expired flat daily locks was submitted through Supabase. The Mac locked before its result could be verified. Do not claim the unlock succeeded until the live rows are checked. No reset or cash credit was submitted.
+A guarded SELECT calling `enforce_rules` for expired flat daily locks succeeded. The SQL Editor results confirmed both accounts active with unchanged balances of 95735.00 and 127989.75 respectively. No reset or cash credit was submitted.
 
 The new cron task refreshes expired daily locks every minute, including accounts with no open positions. Same-day daily locks and season failures remain enforced.
 
-The user was asked for Fuko's missed-stop market, trigger price and approximate time. No answer yet. Those details or a device record are necessary for a defensible historical correction.
+The user explicitly deprioritized historical balance corrections: this season is for testing. The release focuses on saving and executing future SL/TP levels reliably.
 
 ## Deployment order
 
-1. Unlock the Mac and use the already signed-in Supabase SQL Editor for project `nchvildidonrzoipktjw`.
+1. Applied through the signed-in Supabase SQL Editor for project `nchvildidonrzoipktjw`.
 2. Verify account statuses and inspect current `ingest_quotes` / `my_state` before migration. The migration has guarded source patches and runs transactionally.
 3. Apply `backend/server_brackets.sql` in full. Verify its functions, position columns, private audit table, cron job, and fresh quotes. Do not create test trades in production.
 4. Verify `fukotrades` / `jaoushai` are active and their balances match the recorded balances, allowing only legitimate intervening trades.
