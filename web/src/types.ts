@@ -15,14 +15,14 @@ export const MARKETS: Record<Market, { title: string; subtitle: string; symbol: 
 export const digits = (m: Market) => (MARKETS[m].tick >= 1 ? 0 : 2);
 
 export interface PredictionFields { prediction_id?: string; prediction_outcome?: "yes" | "no"; prediction_question?: string; mark_price?: number }
-export interface Position extends PredictionFields { id: string; market: Market; side: Side; quantity: number; entry_price: number; opened_at: string }
+export interface Position extends PredictionFields { stop_loss?: number | null; take_profit?: number | null; id: string; market: Market; side: Side; quantity: number; entry_price: number; opened_at: string }
 export interface Trade extends PredictionFields {
   id: string; market: Market; side: Side; quantity: number; entry_price: number; exit_price: number;
-  pnl: number; opened_at?: string; closed_at: string; reason: string;
+  trigger_price?: number | null; pnl: number; opened_at?: string; closed_at: string; reason: string;
 }
 export interface Quote { market: Market; price: number; quoted_at: string }
 export interface Rules {
-  status: "active" | "locked" | "blown"; start_balance: number; peak_equity: number; day_start_equity: number;
+  unlock_at?: string | null; status: "active" | "locked" | "blown"; start_balance: number; peak_equity: number; day_start_equity: number;
   daily_loss_amount?: number | null; daily_loss_pct: number; max_dd_pct: number; daily_floor: number; drawdown_floor: number; target: number;
   /** "eod": the max loss floor sits under your best end-of-day balance (dd_base). "trailing": under the intraday peak. */
   dd_mode?: "eod" | "trailing"; dd_base?: number;

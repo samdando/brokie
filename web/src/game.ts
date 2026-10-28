@@ -37,14 +37,18 @@ export interface GameState {
   events: EventsFeed | null;
   flash: Flash | null;
   qty: number;
-  /** Client-side SL/TP brackets per position id (ticket 14). */
+  /** Server-confirmed SL/TP; never display an unsaved level as protection. */
   brackets: Record<string, Bracket>;
+  bracketSaving: string | null;
   /** Spam taps waiting to be sent (ticket 15). */
   pending: { side: Side; count: number; reduce?: boolean } | null;
   /** What tapping the opposite button does while you hold a position: open a hedge or take a partial. */
   opposite: "hedge" | "partial";
 }
 export interface Bracket { sl?: number; tp?: number }
+export function bracketsOf(positions: Position[]): Record<string, Bracket> {
+  return Object.fromEntries(positions.filter(p => p.stop_loss != null || p.take_profit != null).map(p => [p.id, { ...(p.stop_loss != null ? { sl: p.stop_loss } : {}), ...(p.take_profit != null ? { tp: p.take_profit } : {}) }]));
+}
 /** Same market + same side = one stack: size-weighted avg entry, total size, id = oldest leg's id.
  *  A hedge (other side) is its own stack. Brackets and closes apply to the whole stack. */
 export interface Stack { merged: Position; ids: string[] }
@@ -98,7 +102,7 @@ export class Game {
     leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: (read(MARKET_KEY) as Market) || "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
-    brackets: ((): Record<string, Bracket> => { try { return JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { return {}; } })(), pending: null,
+    brackets: {}, bracketSaving: null, pending: null,
     opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
@@ -184,9 +188,17 @@ export class Game {
   }
 
   async refreshState() {
+    const bracketRevision = this.bracketRevision;
+    const previous = this.state.me;
     const me = await this.api.rpc<MyState>("my_state");
     if (this.state.me) me.quotes = newestQuotes(this.state.me.quotes, me.quotes ?? []);
-    this.set({ me, clockOffset: Date.parse(me.server_time) - Date.now() });
+    this.set({ me, ...(bracketRevision === this.bracketRevision && !this.state.bracketSaving ? { brackets: bracketsOf(me.positions) } : {}), clockOffset: Date.parse(me.server_time) - Date.now() });
+    if (previous) {
+      const known = new Set(previous.trades.map(t => t.id));
+      const fills = me.trades.filter(t => !known.has(t.id) && (t.reason === "stop_loss" || t.reason === "take_profit"));
+      if (fills.length) this.raise({ key: `bracket:${fills.map(t => t.id).join(":")}`, tone: fills.reduce((n,t) => n+t.pnl,0) >= 0 ? "lime" : "red", title: fills.some(t => t.reason === "stop_loss") ? "Stop loss filled" : "Take profit filled", sub: `${fills.length} fill${fills.length === 1 ? "" : "s"} · check your trade receipts` });
+    }
+    void this.migrateDeviceBrackets();
     const weekend = weekendMode(this.now());
     if (weekend !== this.lastWeekend) {
       this.lastWeekend = weekend;
@@ -229,43 +241,54 @@ export class Game {
 
   setQty(n: number) { const q = clampQty(n); write(QTY_KEY, String(q)); this.set({ qty: q }); }
 
-  // ---- Ticket 14: SL/TP dragged off the entry line. Kept on this device and enforced while the
-  // app is open (the server has no bracket orders yet). ----
-  setBracket(id: string, b: Bracket) {
-    // Safety net: never store a level the live price is already past (it would fire on the next check).
-    const p = (this.state.me?.positions ?? []).find((x) => x.id === id); const q = p && this.quote(p.market)?.price;
-    if (p && q != null) {
-      const long = p.side === "long";
-      if (b.sl != null && (long ? q <= b.sl : q >= b.sl)) return;
-      if (b.tp != null && (long ? q >= b.tp : q <= b.tp)) return;
-    }
-    const brackets = { ...this.state.brackets, [id]: { ...this.state.brackets[id], ...b } };
-    write(BRACKET_KEY, JSON.stringify(brackets)); this.set({ brackets });
+  private bracketRevision = 0;
+  private legacyBracketsChecked = false;
+  async setBracket(id: string, b: Bracket) {
+    for (const kind of ["sl", "tp"] as const) if (b[kind] != null) await this.saveBracket(id, kind, b[kind]!);
   }
-  clearBracket(id: string, key: keyof Bracket) {
-    const cur = { ...this.state.brackets[id] }; delete cur[key];
-    const brackets = { ...this.state.brackets, [id]: cur }; write(BRACKET_KEY, JSON.stringify(brackets)); this.set({ brackets });
+  async clearBracket(id: string, key: keyof Bracket) { await this.saveBracket(id, key, null); }
+  private async saveBracket(id: string, kind: keyof Bracket, price: number | null) {
+    if (this.state.bracketSaving) throw new BackendError("Wait for your current SL/TP change to save.");
+    this.bracketRevision++;
+    this.set({ bracketSaving: id });
+    try {
+      const result = await this.api.rpc<{ positions: Pick<Position, "id" | "stop_loss" | "take_profit">[] }>("set_position_bracket", { p_position: id, p_kind: kind, p_price: price });
+      if (!Array.isArray(result?.positions)) throw new BackendError("Stop was not confirmed. Try again.");
+      this.removeDeviceBracket(id, kind);
+      const me = this.state.me;
+      if (me) {
+        const positions = me.positions.map(p => ({ ...p, ...result.positions.find(saved => saved.id === p.id) }));
+        this.set({ me: { ...me, positions }, brackets: bracketsOf(positions) });
+      }
+    } finally { this.bracketRevision++; this.set({ bracketSaving: null }); }
   }
-  private bracketBusy = new Set<string>();
-  /** Closes any position whose SL or TP has been touched. Returns what fired. */
-  async checkBrackets(): Promise<{ id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[]> {
-    const out: { id: string; hit: "sl" | "tp"; pnl?: number; error?: string }[] = [];
-    const stacks = stacksOf(this.state.me?.positions ?? []);
-    for (const { merged: p, ids } of stacks) {
-      const b = this.state.brackets[p.id]; const q = this.quote(p.market)?.price;
-      if (!b || q == null || this.bracketBusy.has(p.id) || !this.isOpen(p.market)) continue;
-      const up = p.side === "long";
-      const hit = b.tp != null && (up ? q >= b.tp : q <= b.tp) ? "tp" : b.sl != null && (up ? q <= b.sl : q >= b.sl) ? "sl" : null;
-      if (!hit) continue;
-      this.bracketBusy.add(p.id);
-      const r = await this.closeStack(ids);
-      this.bracketBusy.delete(p.id);
-      out.push({ id: p.id, hit, ...r });
+  private removeDeviceBracket(id: string, kind?: keyof Bracket) {
+    try {
+      const legacy = JSON.parse(read(BRACKET_KEY) ?? "{}");
+      if (!legacy || typeof legacy !== "object" || Array.isArray(legacy)) { write(BRACKET_KEY, null); return; }
+      if (kind && legacy[id] && typeof legacy[id] === "object") {
+        delete legacy[id][kind]; if (!Object.keys(legacy[id]).length) delete legacy[id];
+      } else delete legacy[id];
+      write(BRACKET_KEY, Object.keys(legacy).length ? JSON.stringify(legacy) : null);
+    } catch { write(BRACKET_KEY, null); }
+  }
+  /** Upgrade device-only levels once; crossed or rejected levels are never shown as saved. */
+  private async migrateDeviceBrackets() {
+    if (this.legacyBracketsChecked || !this.state.me) return;
+    this.legacyBracketsChecked = true;
+    let legacy: Record<string, Bracket>;
+    try { legacy = JSON.parse(read(BRACKET_KEY) ?? "{}"); } catch { write(BRACKET_KEY, null); return; }
+    if (!legacy || typeof legacy !== "object" || Array.isArray(legacy)) { write(BRACKET_KEY, null); return; }
+    let failed = false;
+    for (const [id, b] of Object.entries(legacy)) {
+      const p = this.state.me.positions.find(p => p.id === id);
+      if (!p) { this.removeDeviceBracket(id); continue; }
+      try {
+        for (const kind of ["sl", "tp"] as const) if (Number.isFinite(b?.[kind]) && (kind === "sl" ? p.stop_loss : p.take_profit) == null) await this.saveBracket(id, kind, b[kind]!);
+        this.removeDeviceBracket(id);
+      } catch { failed = true; }
     }
-    const live = new Set(stacksOf(this.state.me?.positions ?? []).map((s) => s.merged.id));
-    const kept = Object.fromEntries(Object.entries(this.state.brackets).filter(([k]) => live.has(k)));
-    if (Object.keys(kept).length !== Object.keys(this.state.brackets).length) { write(BRACKET_KEY, JSON.stringify(kept)); this.set({ brackets: kept }); }
-    return out;
+    if (failed) this.raise({ key: "bracket-migration", tone: "red", title: "Review your SL/TP", sub: "An old device-only level could not be saved. Set it again; only confirmed lines are active." });
   }
 
   // ---- Ticket 15: spam BUY / SELL. Each tap counts instantly; taps are batched ~300ms after the

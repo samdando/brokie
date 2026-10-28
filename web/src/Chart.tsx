@@ -361,6 +361,7 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
     if (!layer) return;
     const top = layer.getBoundingClientRect().top;
     const y0 = e.clientY; let moved = false;
+    let latestDrag: { price: number; key: keyof Bracket } | null = null;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientY - y0) < 4) return;
@@ -368,7 +369,8 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
       const raw = priceOf(Math.max(0, Math.min(H, ev.clientY - top)));
       if (raw == null) return;
       const key = fixed ?? keyFor(snap(raw));
-      setDrag({ price: clampFor(key, snap(raw)), key });   // a set line stops one tick short of the price
+      latestDrag = { price: clampFor(key, snap(raw)), key };
+      setDrag(latestDrag);   // a set line stops one tick short of the price
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
@@ -378,10 +380,9 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
         else setDetails(true);   // a tap (not a drag) on your pill shows the trade
         return;
       }
-      setDrag((dr) => {
-        if (dr && ev.type === "pointerup") { onSet({ [dr.key]: clampFor(dr.key, dr.price) }); buzz(10); setOpen(null); }
-        return null;
-      });
+      // Submit once from the pointer event, never from a React state updater.
+      if (latestDrag && ev.type === "pointerup") { onSet({ [latestDrag.key]: clampFor(latestDrag.key, latestDrag.price) }); buzz(10); setOpen(null); }
+      setDrag(null);
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
   };

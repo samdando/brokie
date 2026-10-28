@@ -1,4 +1,12 @@
-# Brokie release path · 27 October 2026
+# Brokie release path · 28 October 2026
+
+## Pending: server stops and trading polish (0.3.3)
+
+Prepared locally; not deployed. Apply `backend/server_brackets.sql` before publishing this web build. The migration makes SL/TP server-owned and processes accepted quotes before risk checks, records stop settings/fills, and schedules daily unlocks for flat locked accounts. The client shows only confirmed protection, migrates valid device-only levels, and provides explicit SL/TP editing on each position. Stops fill at the observed crossing quote, not a guaranteed trigger price. Invalid old levels are flagged for review. See `backend/STOP_LOSS_RELEASE.md` for deployment and account verification.
+
+The interface reduces glow and spacing, adds protection status to position cards and shows a daily-reset countdown. Build, isolated SQL checks and browser regression tests cover the new flow.
+
+## Current live release
 
 The current redesign is live at https://samdando.github.io/brokie/. The Xcode app now opens this same interface in a WebKit client with native haptics, microphone prompting, external-link handling and retry UI. Its Native account button retains the original SwiftUI client and its keychain login. The web floor uses its own saved session; existing native players can use a backup code to restore their account there. Native credentials are never injected into the hosted page. UI tests keep using isolated native practice mode.
 

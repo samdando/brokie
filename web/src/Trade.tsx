@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { frameLabel, game, stacksOf, useGame } from "./game";
-import { sessionMarkets } from "./sessions";
+import { sessionCountdown, sessionMarkets } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
 import { Button, Eyebrow, Icon, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
@@ -36,6 +36,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
   const [positionsOpen, setPositionsOpen] = useState(false);
+  const [protectionId, setProtectionId] = useState<string | null>(null);
   const [chartInfo, setChartInfo] = useState(false);
   const [big, setBig] = useState(false);
   const [viewportH, setViewportH] = useState(window.visualViewport?.height ?? window.innerHeight);
@@ -140,18 +141,20 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
     return !r.error;
   }
-  // Ticket 14: enforce dragged SL/TP while the app is open.
-  useEffect(() => {
-    let alive = true;
-    void game.checkBrackets().then((hits) => { if (alive) for (const h of hits) toast(h.error ?? `${h.hit === "tp" ? "🎯 TP hit" : "🛑 SL hit"} · ${signedMoney(h.pnl ?? 0)}`); });
-    return () => { alive = false; };
-  }, [st.me]);
+  async function saveProtection(id: string, b: { sl?: number; tp?: number }) {
+    try { await game.setBracket(id, b); toast("SL/TP saved · stays active when you leave the app"); if (cardHint) { hintDone("cards"); setCardHint(false); } }
+    catch (e) { toast((e as Error).message || "Stop was not saved. Try again."); }
+  }
+  async function clearProtection(id: string, key: "sl" | "tp") {
+    try { await game.clearBracket(id, key); toast(`${key.toUpperCase()} removed`); }
+    catch (e) { toast((e as Error).message || "Could not remove the stop. It is still active."); }
+  }
 
   const positionCards = <div className="stack position-list" style={{ gap: 10 }}>
     {stacks.map(({ merged: p, ids }) => {
       const price = mark(p.market);
       return <SwipeCard key={p.id} p={p} pnl={price !== null && Number.isFinite(price) && price > 0 ? pnlOf(p, price) : null} busy={closing === p.id} disabled={!!closing}
-        hedged={me.positions.some(q => q.market === p.market && q.side !== p.side)}
+        hedged={me.positions.some(q => q.market === p.market && q.side !== p.side)} protection={st.brackets[p.id]} onProtection={() => { setPositionsOpen(false); setProtectionId(p.id); }}
         onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
     })}
   </div>;
@@ -198,7 +201,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         </div>
         {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Use the top-right expand button to pan, zoom and trade fullscreen."}</div>}
         <BrokieChart fullscreen={big} height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
-          brackets={st.brackets} onBracket={(id, b) => { game.setBracket(id, b); if (cardHint) { hintDone("cards"); setCardHint(false); } }} onClearBracket={(id, k) => game.clearBracket(id, k)}
+          brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           // Closed history stays visible by default; the squad toggle controls friends' markers.
           overlay={(toXY, width) => st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
@@ -262,6 +265,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <small className="muted">Unrealised P&amp;L covers all open trades in USD. Prediction tokens are separate.</small>
         </div>
       </Sheet>
+      <Sheet open={protectionId !== null} onClose={() => setProtectionId(null)}>
+        {protectionId && <ProtectionEditor key={protectionId} id={protectionId} toast={toast} onClose={() => setProtectionId(null)} />}
+      </Sheet>
       <PnlSheet open={pnlInfo} onClose={() => setPnlInfo(false)} equity={equity} unrealized={unrealized} base={base} />
     </div>
   );
@@ -274,8 +280,40 @@ function TradingStatus({ market, onOpen }: { market: Market; onOpen?: () => void
   const tone = summary.flat || summary.pnl === null ? "muted" : summary.pnl >= 0 ? "lime" : "red";
   const exposure = [summary.long ? `LONG ${summary.long}` : "", summary.short ? `SHORT ${summary.short}` : ""].filter(Boolean).join(" · ") || "FLAT";
   const content = <><span className="dock-pnl"><small>Unrealised <span>· all trades</span></small><b className={tone} data-testid="live-unrealised">{value}</b>{summary.stale && <em>{summary.pnl === null ? "Waiting for prices" : "Last quoted prices"}</em>}</span>
-    <span className="dock-exposure"><small>{MARKETS[market].title} · {exposure}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
+    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small>{MARKETS[market].title} · {exposure}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
   return onOpen ? <button className="dock-status" onClick={onOpen} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
+}
+
+function ProtectionEditor({ id, toast, onClose }: { id: string; toast: (message: string) => void; onClose: () => void }) {
+  const st = useGame();
+  const stack = stacksOf(st.me?.positions ?? []).find(stack => stack.ids.includes(id));
+  const p = stack?.merged, saved = st.brackets[p?.id ?? id] ?? {};
+  const [levels, setLevels] = useState({ sl: saved.sl?.toString() ?? "", tp: saved.tp?.toString() ?? "" });
+  const busy = !!st.bracketSaving;
+  async function submit(kind: "sl" | "tp", remove = false) {
+    if (!p) return;
+    try {
+      if (remove) await game.clearBracket(p.id, kind);
+      else {
+        const value = Number(levels[kind]);
+        if (!Number.isFinite(value) || value <= 0) { toast("Enter a valid price."); return; }
+        await game.setBracket(p.id, { [kind]: value });
+      }
+      if (remove) setLevels(prev => ({ ...prev, [kind]: "" }));
+      toast(remove ? `${kind.toUpperCase()} removed` : `${kind.toUpperCase()} saved on server`);
+    } catch (e) { toast((e as Error).message || "Change was not confirmed. Try again."); }
+  }
+  return <div className="stack protection-editor" data-testid="protection-editor">
+    <div className="row between"><div><Eyebrow>Position protection</Eyebrow><h2 className="h2">{p ? `${MARKETS[p.market].title} · ${p.side.toUpperCase()} ×${p.quantity}` : "Position closed"}</h2></div><button className="text-action" onClick={onClose}>Done</button></div>
+    {p ? <>
+      <p className="muted">Saved orders stay active when you close the app. A triggered stop fills at the next available feed price, which can differ from your level.</p>
+      {(["sl", "tp"] as const).map(kind => <form key={kind} onSubmit={e => { e.preventDefault(); void submit(kind); }} className="protection-row">
+        <label htmlFor={`protect-${kind}`}>{kind === "sl" ? "Stop loss" : "Take profit"}<small className={saved[kind] != null ? "lime" : "muted"}>{saved[kind] != null ? `Active · ${px(saved[kind]!, digits(p.market))}` : "Not set"}</small></label>
+        <div className="row"><input id={`protect-${kind}`} aria-label={kind === "sl" ? "Stop loss price" : "Take profit price"} inputMode="decimal" placeholder="Enter price" value={levels[kind]} disabled={busy} onChange={e => setLevels(prev => ({ ...prev, [kind]: e.target.value }))}/><button className="protection-save" disabled={busy} type="submit">Save</button>{saved[kind] != null && <button type="button" className="protection-remove" disabled={busy} aria-label={`Cancel ${kind.toUpperCase()}`} onClick={() => void submit(kind,true)}>✕</button>}</div>
+      </form>)}
+      {busy && <span className="muted" role="status">Saving… your previous confirmed levels remain active.</span>}
+    </> : <p className="muted">This position has closed. Its final result is in your trade history.</p>}
+  </div>;
 }
 
 function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; onClose: () => void; equity: number; unrealized: number; base: number }) {
@@ -303,11 +341,13 @@ function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; 
 
 function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: string) => void; goHistory: () => void }) {
   const [busy, setBusy] = useState(false);
+  const now = useNow(1000) + game.state.clockOffset;
+  const until = rules.unlock_at ? Date.parse(rules.unlock_at) - now : null;
   if (rules.status === "active") return null;
   if (rules.status === "locked") return (
     <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
       <span style={{ fontSize: 26 }}>🔒</span>
-      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. Unlocks when the next session opens at {sessionOpenLabel()} your time (5pm New York).</div><button className="text-action lime" onClick={goHistory}>Review your trades →</button></div>
+      <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. {until !== null ? until > 0 ? `Daily allowance resets in ${sessionCountdown(until)}.` : "Daily reset reached. Refresh your account." : "Trading resumes at the next daily reset."}</div><div className="row" style={{ gap: 16, marginTop: 8 }}><button className="text-action lime" onClick={goHistory}>Review your trades →</button><button className="text-action" disabled={busy} onClick={async () => { setBusy(true); try { await game.refreshState(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Refreshing…" : "Refresh status"}</button></div></div>
     </div>
   );
   return (
@@ -517,8 +557,8 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
 
 /** Ticket 16: a position as a clean card. Drag it sideways; past 40% it tints (lime win / red
  *  loss) and buzzes; let go past that and it flies off and closes (confetti or crack). */
-function SwipeCard({ p, pnl, busy, disabled, hedged, onClose }:
-  { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean> }) {
+function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProtection }:
+  { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean>; protection?: { sl?: number; tp?: number }; onProtection: () => void }) {
   const [dx, setDx] = useState(0);
   const [phase, setPhase] = useState<"idle" | "drag" | "fly" | "back" | "gone">("idle");
   const [fx, setFx] = useState<"win" | "loss" | null>(null);
@@ -571,6 +611,7 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose }:
         </div>
         <span className={`mono pos-pnl ${pnl === null ? "muted" : win ? "lime" : "red"}`}><TickValue value={pnl}>{pnl === null ? "—" : signedMoney(pnl)}</TickValue></span>
         {busy && <span className="spinner" style={{ width: 12, height: 12 }} />}
+        <button className="position-protection" type="button" disabled={disabled} onPointerDown={e => e.stopPropagation()} onClick={onProtection} aria-label={`Manage SL/TP for ${MARKETS[p.market].title} ${p.side}`}><span>SL <b>{protection?.sl != null ? px(protection.sl, digits(p.market)) : "—"}</b></span><span>TP <b>{protection?.tp != null ? px(protection.tp, digits(p.market)) : "—"}</b></span><span className="manage-protection">Edit SL/TP ↗</span></button>
       </div>
       {fx === "win" && <div className="confetti" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ ["--i" as string]: i }} />)}</div>}
     </div>
