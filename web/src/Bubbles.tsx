@@ -1,4 +1,5 @@
 import { Avatar } from "./Avatar";
+import { tradeMarkers } from "./tradeMarkers";
 // pump.fun-style chart markers: every squad trade is a small avatar sitting right on the candles at
 // its fill. Green = long, red = short; a closed trade's exit is a hollow ring. Tap one for a trade card. Exits still pop (green), deflate (red) or crack and sink (REKT) as they happen.
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -42,35 +43,17 @@ export function avatarColor(handle: string): string {
 }
 
 /** The marker: a small green (long) or red (short) avatar; `exit` makes it a hollow ring. */
-export function TradeMarker({ handle, long, exit, me, fresh, faded, danger, style, onClick, label, testId }:
-  { handle: string; long: boolean; exit?: boolean; me?: boolean; fresh?: boolean; faded?: boolean; danger?: boolean; style?: CSSProperties;
+export function TradeMarker({ handle, long, exit, closed, count = 1, me, fresh, faded, danger, style, onClick, label, testId }:
+  { handle: string; long: boolean; exit?: boolean; closed?: boolean; count?: number; me?: boolean; fresh?: boolean; faded?: boolean; danger?: boolean; style?: CSSProperties;
     onClick?: () => void; label: string; testId?: string }) {
   const cls = `tm ${long ? "long" : "short"} ${exit ? "exit" : ""} ${me ? "me" : ""} ${fresh ? "fresh" : ""} ${faded ? "faded" : ""} ${danger ? "danger" : ""}`;
-  const face = <Avatar className="tm-face" handle={handle} />;
+  const face = <><Avatar className="tm-face" handle={handle} /><span className="tm-direction" aria-hidden="true">{exit ? "×" : long ? "▲" : "▼"}</span>{!exit && !closed && !faded && <span className="tm-live" aria-hidden="true" />}{count > 1 && <span className="tm-count" aria-hidden="true">{count}</span>}</>;
   return onClick
-    ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}<span className="tm-direction" aria-hidden="true">{exit || faded ? "×" : long ? "▲" : "▼"}</span>{!exit && !faded && <span className="tm-live" aria-hidden="true" />}</button>
-    : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}<span className="tm-direction" aria-hidden="true">{exit || faded ? "×" : long ? "▲" : "▼"}</span>{!exit && !faded && <span className="tm-live" aria-hidden="true" />}</span>;
+    ? <button type="button" className={cls} style={style} onClick={onClick} aria-label={label} data-testid={testId}>{face}</button>
+    : <span className={cls} style={style} role="img" aria-label={label} data-testid={testId}>{face}</span>;
 }
 
 interface Exit { b: Bubble; kind: "win" | "loss" | "rekt"; born: number }
-
-/** One marker per player per side: spam-clicking 20 micros shows as one trade (x20), not 20 dots.
- *  Size-weighted average entry, oldest leg's id and open time. */
-function mergeOpen(bubbles: Bubble[]): Bubble[] {
-  const groups = new Map<string, Bubble[]>();
-  for (const b of bubbles) {
-    if (b.state !== "open") continue;
-    const k = `${b.handle}|${b.side}`;
-    groups.set(k, [...(groups.get(k) ?? []), b]);
-  }
-  return [...groups.values()].map((legs) => {
-    legs = [...legs].sort((a, b) => Date.parse(a.opened_at) - Date.parse(b.opened_at));
-    const qty = legs.reduce((s, b) => s + b.quantity, 0);
-    const entry = legs.reduce((s, b) => s + b.entry_price * b.quantity, 0) / Math.max(1, qty);
-    const size = legs.reduce((s, b) => s + (b.size_pct ?? 0), 0);
-    return { ...legs[0], quantity: qty, entry_price: entry, size_pct: size };
-  });
-}
 
 const pnlAt = (b: Bubble, mark: number, mkt: Market) => (mark - b.entry_price) * MARKETS[mkt].pointValue * b.quantity * direction(b.side);
 
@@ -81,10 +64,9 @@ export function held(ms: number): string {
   return h < 24 ? `${h}h ${m % 60}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
-export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onEnter, hideMine, now, onZoomOut, showHistory = true }:
-  { showHistory?: boolean; onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
+export function BubbleLayer({ bubbles, market, quote, toXY, width, height, onSelect, onEnter, hideMine, now, onZoomOut, showHistory = true }:
+  { height: number; showHistory?: boolean; onZoomOut?: () => void; now: number; hideMine?: boolean; bubbles: Bubble[]; market: Market; quote: number | null; toXY: ToXY; width: number; onSelect: (b: Bubble) => void; onEnter: (b: Bubble) => void }) {
   const seenOpen = useRef<Set<string> | null>(null);
-  const merged = useMemo(() => mergeOpen(bubbles), [bubbles]);
   const [fresh, setFresh] = useState(new Set<string>());
   const entryExpiry = useRef(new Map<string, number>());
   useEffect(() => {
@@ -99,6 +81,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   const seenMarket = useRef(market);
   const [exits, setExits] = useState<Exit[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedGroup, setPickedGroup] = useState<string | null>(null);
 
   // Detect new entries (toast) and new exits (animation), once each.
   useEffect(() => {
@@ -117,8 +100,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       seenOpen.current.add(b.id);
       const age = now - Date.parse(b.opened_at);
       if (age < -5000 || age > 15000) continue;
-      const marker = merged.find(m => m.handle === b.handle && m.side === b.side);
-      if (marker) { entryExpiry.current.set(marker.id, Date.now() + FLIP_MS); setFresh(new Set(entryExpiry.current.keys())); }
+      entryExpiry.current.set(b.id, Date.now() + FLIP_MS); setFresh(new Set(entryExpiry.current.keys()));
       if (!b.is_you) onEnter(b);
     }
     const fx: Exit[] = [];
@@ -130,7 +112,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
       fx.push({ b, kind: b.reason === "blown" ? "rekt" : (b.pnl ?? 0) >= 0 ? "win" : "loss", born: Date.now() });
     }
     if (fx.length) setExits((e) => [...e, ...fx].slice(-MAX_FX));
-  }, [bubbles, market, onEnter, toXY, now, merged]);
+  }, [bubbles, market, onEnter, toXY, now]);
 
   useEffect(() => {
     if (!exits.length) return;
@@ -140,50 +122,53 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, onSelect, onE
   }, [exits]);
 
   // Reset when switching markets.
-  useEffect(() => { setExits([]); setPicked(null); }, [market]);
+  useEffect(() => { setExits([]); setPicked(null); setPickedGroup(null); }, [market]);
 
-  // Open positions lead. Optional closed exits are thinned by screen space.
-  type M = { key: string; b: Bubble; x: number; y: number; exit: boolean; faded: boolean; danger: boolean; t: number };
-  const markers = useMemo(() => {
-    const out: M[] = [];
-    const add = (b: Bubble, secs: number, price: number, exit: boolean, faded: boolean, danger = false) => {
-      const at = toXY(secs, price);
-      if (!at || at.x < 0 || at.x > width) return;
-      out.push({ key: `${b.id}-${exit ? "x" : "e"}`, b, x: at.x, y: at.y, exit, faded, danger, t: secs });
-    };
-    for (const b of merged) {
-      if (hideMine && b.is_you) continue;   // your own open trade is drawn by the chart (with its SL/TP handle)
-      const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.08) : 1;
-      add(b, Date.parse(b.opened_at) / 1000, b.entry_price, false, false, room < 0.2);
-    }
-    for (const b of showHistory ? [...bubbles].sort((a,b) => Date.parse(b.at) - Date.parse(a.at)) : []) {
-      if (b.state !== "closed" || b.exit_price === null) continue;
-      const at = toXY(Date.parse(b.at) / 1000, b.exit_price);
-      // Keep the newest exit in each small screen area; history stays readable at any zoom.
-      if (!at || out.some(m => Math.abs(m.x - at.x) < 26 && Math.abs(m.y - at.y) < 26)) continue;
-      add(b, Date.parse(b.at) / 1000, b.exit_price, true, false);
-    }
-    return out.sort((a, b) => a.t - b.t);
-  }, [merged, bubbles, toXY, width, hideMine, showHistory]);
+  const markers = useMemo(() => tradeMarkers(bubbles, toXY, width, height, !!hideMine, showHistory), [bubbles, toXY, width, height, hideMine, showHistory]);
+  const paths = showHistory ? bubbles.flatMap(b => {
+    if (b.state !== "closed" || b.exit_price === null) return [];
+    const entry = toXY(Date.parse(b.opened_at) / 1000, b.entry_price, true);
+    const exit = toXY(Date.parse(b.at) / 1000, b.exit_price, true);
+    return entry && exit ? [{ b, entry, exit }] : [];
+  }) : [];
 
   // Mates' exits that are off the left edge of this timeframe: offer to zoom out to find them.
-  const earlier = bubbles.filter((b) => b.state === "closed" && !b.is_you && b.exit_price !== null && !toXY(Date.parse(b.at) / 1000, b.exit_price)).length;
-  const sel = picked ? (merged.find((b) => b.id === picked) ?? bubbles.find((b) => b.id === picked && b.state === "closed")) : undefined;
+  const earlier = bubbles.filter((b) => b.state === "closed" && b.exit_price !== null && !toXY(Date.parse(b.opened_at) / 1000, b.entry_price) && !toXY(Date.parse(b.at) / 1000, b.exit_price)).length;
+  const sel = picked ? bubbles.find((b) => b.id === picked) : undefined;
+  const group = markers.find(m => m.key === pickedGroup);
 
   return (
     <>
-      {markers.map((m) => (
-        <TradeMarker key={m.key} handle={m.b.handle} long={m.b.side === "long"} exit={m.exit} me={m.b.is_you} fresh={!m.exit && fresh.has(m.b.id)} faded={m.faded} danger={m.danger}
-          style={{ left: m.x, top: m.y }} testId={m.exit ? "exit-mark" : "bubble"}
-          onClick={() => { setPicked(picked === m.b.id ? null : m.b.id); onSelect(m.b); }}
-          label={`${m.b.is_you ? "You" : `@${m.b.handle}`} ${m.exit ? "closed" : "is holding"} ${m.b.side} ${m.b.quantity} micros at ${px(m.exit ? m.b.exit_price! : m.b.entry_price)}`} />
-      ))}
+      <svg className="trade-connectors" width={width} height={height} aria-hidden="true">
+        {paths.map(({ b, entry, exit }) => <g key={b.id} className={`trade-path ${b.side} ${picked === b.id ? "selected" : ""}`} data-testid="trade-path" data-trade-id={b.id}>
+          <line className="trade-path-outline" x1={entry.x} y1={entry.y} x2={exit.x} y2={exit.y} />
+          <line className="trade-path-line" x1={entry.x} y1={entry.y} x2={exit.x} y2={exit.y} />
+        </g>)}
+        {markers.filter(m => Math.hypot(m.x - m.anchorX, m.y - m.anchorY) > 2).map(m => <g key={m.key} className="trade-stem">
+          <line x1={m.anchorX} y1={m.anchorY} x2={m.x} y2={m.y} /><circle cx={m.anchorX} cy={m.anchorY} r="2.5" />
+        </g>)}
+      </svg>
+      {markers.map((m) => {
+        const b = m.trades[0];
+        const room = b.equity && b.dd_floor ? (b.equity - b.dd_floor) / Math.max(1, b.equity * 0.08) : 1;
+        return <TradeMarker key={m.key} handle={b.handle} long={b.side === "long"} exit={m.exit} closed={b.state === "closed"} me={b.is_you} count={m.trades.length} fresh={!m.exit && m.trades.some(b => fresh.has(b.id))} danger={b.state === "open" && room < 0.2}
+          style={{ left: m.x, top: m.y }} testId={m.exit ? "exit-mark" : b.is_you && b.state === "open" ? "my-bubble" : "bubble"}
+          onClick={() => { setPickedGroup(m.trades.length > 1 ? m.key : null); setPicked(m.trades.length > 1 ? null : b.id); onSelect(b); }}
+          label={`${b.is_you ? "You" : `@${b.handle}`} ${m.trades.length > 1 || m.mixed ? `${m.trades.length} ${m.mixed ? "trades" : m.exit ? "exits" : "entries"}. Tap to view every trade` : `${m.exit ? "exited" : "entered"} ${b.side} ${b.quantity} micros at ${px(m.exit ? b.exit_price! : b.entry_price)}`}`} />;
+      })}
       {exits.map((e) => {
         const at = toXY(Date.parse(e.b.at) / 1000, e.b.exit_price ?? e.b.entry_price);
         return at && <ExitFx key={e.b.id} e={{ ...e, x: at.x, y: Math.max(24, at.y - 30) }} />;
       })}
       {showHistory && earlier > 0 && onZoomOut && <button type="button" className="earlier-pill" onClick={onZoomOut} data-testid="earlier-trades">
-        ◂ {earlier} earlier exit{earlier === 1 ? "" : "s"} · zoom out</button>}
+        ◂ {earlier} offscreen trade{earlier === 1 ? "" : "s"} · zoom out</button>}
+      {group && !sel && <div className="trade-card trade-group" role="dialog" aria-label={`${group.trades[0].handle}'s trades`} data-testid="trade-group" onPointerDown={e => e.stopPropagation()}>
+        <div className="row between"><b>@{group.trades[0].handle} · {group.trades.length} trades</b><button className="tc-x" aria-label="Close trade list" onClick={() => setPickedGroup(null)}>✕</button></div>
+        <div className="trade-group-list">{group.trades.map(b => <button type="button" key={b.id} onClick={() => { setPicked(b.id); onSelect(b); }}>
+          <span>{b.side === "long" ? "▲ Long" : "▼ Short"} ×{b.quantity}<small>{new Date(b.opened_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</small></span>
+          <span>{px(b.entry_price)} → {b.exit_price === null ? "Open" : px(b.exit_price)}<small className={(b.pnl ?? 0) >= 0 ? "lime" : "red"}>{b.pnl === null ? "Holding" : signedMoney(b.pnl)}</small></span>
+        </button>)}</div>
+      </div>}
       {sel && <TradeCard b={sel} quote={quote} market={market} now={now} onClose={() => setPicked(null)} />}
     </>
   );

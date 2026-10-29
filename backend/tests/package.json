@@ -1,5 +1,5 @@
 {
   "name": "brokie-backend-tests", "private": true,
-  "scripts": { "test": "node weekend.mjs && node feeds.cjs && node clean-floor.mjs && node server-brackets.mjs" },
+  "scripts": { "test": "node weekend.mjs && node feeds.cjs && node clean-floor.mjs && node server-brackets.mjs && node chart-history.mjs" },
   "devDependencies": { "@electric-sql/pglite": "0.5.11", "typescript": "5.6.3" }
 }

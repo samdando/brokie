@@ -1119,16 +1119,32 @@ body { background:radial-gradient(ellipse at 50% -10%,#20302F 0,#0B1018 62%); }
 .trade-dock .spam-sub { display:none; }
 .chat-room .msg.emoji { min-width:54px; overflow:visible; }
 .chat-room .msg.emoji .big { min-width:50px; white-space:nowrap; }
-/* Avatar trade stamps: direction ring + small arrow, with subdued closed history. */
-.tm { width:26px; height:26px; opacity:.55; --c:#40F6A0; border:2px solid var(--c); background:#101923; }
+/* Opaque trade stamps stay readable over bright candles, including closed fills. */
+.tm { width:30px; height:30px; opacity:1; --c:#40F6A0; border:2px solid var(--c); background:#101923; }
 .tm.short { --c:#FF4D73; }
 .tm:not(.fresh):not(.danger),.tm.me { box-shadow:0 0 0 2px #0b1018,0 0 9px color-mix(in srgb,var(--c) 65%,transparent); }
 .tm .tm-face.player-avatar { width:100%; height:100%; font-size:17px; border:0 !important; box-shadow:none; }
 .tm-direction { right:-5px; bottom:-7px; padding:0; width:12px; height:12px; line-height:12px; font-size:9px; border-radius:50%; background:#101923; color:var(--c); box-shadow:0 0 0 1px var(--c); }
 .tm-live { width:5px; height:5px; top:-3px; right:-3px; }
-.tm.exit,.tm.faded { opacity:.3; }
-.tm.exit { border-width:1px; }
-.tm.exit:not(.fresh):not(.danger) { box-shadow:0 0 0 1px #0b1018; }
+.tm.exit,.tm.faded { opacity:1; }
+.tm.exit { border-width:2px; transform:translate(-50%,-50%); }
+.tm.me { outline:2px solid #fff; outline-offset:2px; }
+.tm.exit .tm-direction { background:var(--c); color:#09131b; }
+.tm-count { position:absolute; left:-7px; top:-9px; min-width:17px; padding:1px 3px; border-radius:8px; color:#fff; background:#243247; border:1px solid #fff; font:800 10px/14px var(--mono); }
+.bubble-layer > .trade-connectors { position:absolute; left:0; top:0; pointer-events:none; overflow:hidden; }
+.trade-path { --trade-color:#40F6A0; }
+.trade-path.short { --trade-color:#FF4D73; }
+.trade-path-outline { stroke:#0b1018; stroke-width:5; }
+.trade-path-line { stroke:var(--trade-color); stroke-width:2; stroke-dasharray:5 4; }
+.trade-path.selected .trade-path-line { stroke:#fff; stroke-width:3; }
+.trade-stem line { stroke:#c6d3e8; stroke-width:1; }
+.trade-stem circle { fill:#fff; stroke:#0b1018; stroke-width:1; }
+.trade-group { max-height:calc(100% - 12px); display:flex; flex-direction:column; font-size:11px; }
+.trade-group-list { overflow-y:auto; overscroll-behavior:contain; margin-top:8px; }
+.trade-group-list > button { width:100%; display:flex; justify-content:space-between; gap:8px; padding:10px 0; border-top:1px solid var(--line); text-align:left; }
+.trade-group-list > button > span:last-child { text-align:right; }
+.trade-group-list small { display:block; margin-top:4px; font-size:10px; }
+.bubble-layer > .trade-card { max-height:calc(100% - 12px); overflow-y:auto; overscroll-behavior:contain; }
 body { overflow-x:clip; }
 .page-stage { overflow-x:clip; }
 .chart-card { margin-left:0; margin-right:0; }

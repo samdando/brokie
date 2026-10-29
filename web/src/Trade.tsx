@@ -110,6 +110,12 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const heldElsewhere = [...new Set(me.positions.filter(p => p.market !== "prediction").map(p => p.market))].filter(m => !shown.includes(m));
   const candles = game.liveCandles(market);
   const quote = mark(market);
+  // Own fills come from account state immediately, including each individual leg.
+  // The position pills may aggregate size, but chart entries keep their real fills.
+  const chartBubbles: Bubble[] = [
+    ...(st.bubbleScope === `${market}:${game.squad?.id ?? ""}` ? st.bubbles.filter(b => !(b.is_you && b.state === "open") && (crowd || b.is_you)) : []),
+    ...me.positions.filter(p => p.market === market).map(p => ({ ...p, state: "open" as const, handle: me.handle, is_you: true, exit_price: null, pnl: null, reason: null, at: p.opened_at, size_pct: null, dd_floor: null, equity: null })),
+  ];
   const open = game.isOpen(market);
   useLayoutEffect(() => {
     const card = chartCard.current;
@@ -204,8 +210,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           // Closed history stays visible by default; the squad toggle controls friends' markers.
-          overlay={(toXY, width) => st.bubbleScope === `${market}:${game.squad?.id ?? ""}` && <>
-            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} showHistory={showHistory} now={game.now()} hideMine bubbles={crowd ? st.bubbles : st.bubbles.filter((b) => b.is_you)} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
+          overlay={(toXY, width, height) => <>
+            <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} height={height} showHistory={showHistory} now={game.now()} bubbles={chartBubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
             {crowd && (activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>

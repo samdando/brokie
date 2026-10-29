@@ -1,5 +1,11 @@
 # Mobile UI smoke check
 
+`node tests/chart-history.cjs` checks opaque entry/exit markers, individual own fills, closed-trade connectors, offscreen clipping, and 200 overlapping trades from one player without losing another player's entries or exits. It checks every fill in a group remains accessible, History/Squad toggles, 320/393/430 px layouts, fullscreen and history-window request races. Uses the local server and Playwright setup below.
+
+`node ../backend/tests/chart-history.mjs` runs a disposable database check for uncapped squad history, quiet-player retention after 200 later closes, old open positions, chart history windows, legacy RPC defaults, permissions, drawdown floors and a rerunnable migration.
+
+For rollout, apply `backend/chart_history.sql` after the existing migrations (including `predictions.sql` and `rules_v4.sql`) **before deploying the web build**. It replaces the old two-argument `chart_bubbles` function with a compatible optional `p_from` parameter. The new web client requests fills since the first loaded candle, with no shared row cap; the server still restricts results to the current season, the selected market and authorized players. Older clients retain a 24-hour default window. Run `npm run build` from `web` for the frontend artifact.
+
 Start `npm run dev -- --host 127.0.0.1` from `web`, then run `node tests/ui-smoke.cjs` in another terminal. The check requires Playwright and Chrome; `PLAYWRIGHT_MODULE` can point to an existing Playwright installation. It uses a fresh browser profile, an unconfigured development build and synthetic account state. Run without production environment variables.
 
 Checks 320, 393 and 430 pixel widths, horizontal overflow, Buy/Sell placement, risk disclosure, chart info, squad management and chat, grouped feed expansion, completed lessons, disabled trading during lockout, history navigation, receipt details, lifetime stats and browser exceptions. Screenshots are written to `/tmp/brokie-*.png`.

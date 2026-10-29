@@ -442,10 +442,13 @@ export class Game {
     if (this.state.phase !== "ready") return;
     const market = this.state.market;
     const squad = this.squad?.id ?? null;
+    const bucket = this.state.candleSeconds;
+    const bars = this.state.candles[market];
+    const from = bars?.length ? new Date(bars[0].index * bucket * 1000).toISOString() : null;
     const request = ++this.bubbleRequest;
     try {
-      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad });
-      if (request === this.bubbleRequest && this.state.market === market && this.squad?.id === (squad ?? undefined)) this.set({ bubbles, bubbleScope: `${market}:${squad ?? ""}` });
+      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad, p_from: from });
+      if (request === this.bubbleRequest && this.state.market === market && this.state.candleSeconds === bucket && this.squad?.id === (squad ?? undefined)) this.set({ bubbles, bubbleScope: `${market}:${squad ?? ""}` });
     } catch { /* keep last */ }
   }
 
@@ -475,9 +478,12 @@ export class Game {
   }
 
   async refreshCandles(m: Market = this.state.market) {
+    const bucket = this.state.candleSeconds;
     try {
-      const bars = await this.api.rpc<Candle[]>("candles", { p_market: m, p_bucket_seconds: this.state.candleSeconds, p_limit: 300 });
+      const bars = await this.api.rpc<Candle[]>("candles", { p_market: m, p_bucket_seconds: bucket, p_limit: 300 });
+      if (this.state.candleSeconds !== bucket) return;
       this.set({ candles: { ...this.state.candles, [m]: bars } });
+      if (m === this.state.market) void this.refreshBubbles();
     } catch { /* keep last */ }
   }
 

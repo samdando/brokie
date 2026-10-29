@@ -2,7 +2,7 @@ import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, u
 import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams, Logical } from "lightweight-charts";
 import type { Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
-import { TradeCard, TradeMarker, useFreshIds } from "./Bubbles";
+import { TradeCard } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
@@ -15,14 +15,14 @@ const VIEW_BARS = 60;     // bars shown when snapped to live
 const ANIM_MS = 450;      // forming-candle tween (C4)
 
 /** The Brokie chart: candles or line with a time axis, squad trade markers, and your positions (hedges show both). */
-export type ToXY = (unixSeconds: number, price: number) => { x: number; y: number; clamped: boolean } | null;
+export type ToXY = (unixSeconds: number, price: number, unclipped?: boolean) => { x: number; y: number; clamped: boolean } | null;
 
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
 export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", fullscreen = false, height = CHART_SMALL }:
   { height?: number; fullscreen?: boolean; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
-    overlay?: (toXY: ToXY, width: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
+    overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   H = height;
   const [, setFrame] = useState(0);
@@ -52,8 +52,6 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const mine = positions.filter((p) => p.market === market);
   const m = MARKETS[market];
 
-  // Your own fills that arrived after the first load get the coin-flip entry.
-  const fresh = useFreshIds(positions.map((p) => p.id));
   const hedged = mine.some((p) => p.side === "long") && mine.some((p) => p.side === "short");
 
   const bucketRef = useRef(bucketSeconds);
@@ -247,21 +245,30 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
   const yOf = (price: number) => { const y = series_()?.priceToCoordinate(price); return y == null ? null : y; };
 
   const priceOf = (y: number) => { const v = series_()?.coordinateToPrice(y); return v == null ? null : Number(v); };
+  const plotHeight = Math.max(0, height - (chart.current?.timeScale().height() ?? 26));
 
-  const toXY: ToXY = (secs, price) => {
+  const toXY: ToXY = (secs, price, unclipped = false) => {
     const c = chart.current;
     if (!c || !series_() || !candles.length || !Number.isFinite(secs) || !Number.isFinite(price)) return null;
     const y = yOf(price);
-    if (y === null || y < 0 || y > H) return null;
+    if (y === null || (!unclipped && (y < 0 || y > plotHeight))) return null;
     const bucket = Math.floor(secs / bucketSeconds);
-    const index = candles.findIndex((bar) => bar.index === bucket);
+    let index = candles.findIndex((bar) => bar.index === bucket);
     // Never move an old trade onto the first visible candle or bridge missing
     // history. Its position card remains available outside this chart window.
-    if (index < 0) return null;
+    if (index < 0) {
+      if (!unclipped) return null;
+      // Only connectors may extend beyond loaded candles. Keep their true direction
+      // and let the SVG clip them; never invent a visible entry at the chart edge.
+      const next = candles.findIndex((bar) => bar.index > bucket);
+      if (next === 0) index = bucket - candles[0].index;
+      else if (next < 0) index = candles.length - 1 + bucket - candles[candles.length - 1].index;
+      else index = next - 1 + (bucket - candles[next - 1].index) / (candles[next].index - candles[next - 1].index);
+    }
     // Use the chart's native bar coordinate. Estimating it from plot width drifts when
     // the library rounds bar spacing or the price-axis width changes during a gesture.
     const x = c.timeScale().logicalToCoordinate(index as Logical);
-    if (x === null || x < 0 || x > plotRef.current) return null;
+    if (x === null || (!unclipped && (x < 0 || x > plotRef.current))) return null;
     return { x, y, clamped: false };
   };
 
@@ -299,10 +306,10 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
         }}>
         <div ref={host} style={{ width: "100%", height: H }} aria-label={`${m.title} price chart`} />
         {plotWidth > 0 && <div className="bubble-layer" style={{ width: plotWidth, right: "auto" }}>
-          {overlay?.(toXY, plotWidth)}
+          {overlay?.(toXY, plotWidth, plotHeight)}
           {hedged && <span className="hedge-pill" data-testid="my-hedged">HEDGED</span>}
-          {mine.map((p, i) => <MyPosition key={p.id} p={p} slot={i} handle={handle} quote={quote} toXY={toXY} yOf={yOf} priceOf={priceOf} width={plotWidth}
-            sizePct={sizePctOf?.(p) ?? null} fresh={fresh.has(p.id)} hedged={hedged} b={brackets?.[p.id] ?? {}}
+          {mine.map((p, i) => <MyPosition key={p.id} p={p} slot={i} handle={handle} quote={quote} yOf={yOf} priceOf={priceOf}
+            sizePct={sizePctOf?.(p) ?? null} hedged={hedged} b={brackets?.[p.id] ?? {}}
             onSet={onBracket && ((b) => onBracket(p.id, b))} onClear={(k) => onClearBracket?.(p.id, k)} />)}
         </div>}
         {(() => {
@@ -324,18 +331,17 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 }
 
 
-/** One of your positions: your marker at the fill (like everyone else's), and a pill on the entry
- *  line at the right edge with size and live P&L. The pill is the SL/TP handle (ticket 14): drag it
+/** One of your position stacks: a pill on the entry line with size and live P&L.
+ *  BubbleLayer draws individual fill markers. The pill is the SL/TP handle: drag it
  *  up or down. For a long, up is TP and down is SL; a short is the reverse. Set lines show
  *  "SL −$305"; tap one for its price and ✕, or drag it again. */
-function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct, fresh, hedged, b, onSet, onClear }:
-  { p: Position; slot: number; handle: string; quote: number | null; toXY: ToXY; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
-    width: number; sizePct: number | null; fresh: boolean; hedged: boolean; b: Bracket; onSet?: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
+function MyPosition({ p, slot, handle, quote, yOf, priceOf, sizePct, hedged, b, onSet, onClear }:
+  { p: Position; slot: number; handle: string; quote: number | null; yOf: (price: number) => number | null; priceOf: (y: number) => number | null;
+    sizePct: number | null; hedged: boolean; b: Bracket; onSet?: (b: Bracket) => void; onClear: (k: keyof Bracket) => void }) {
   const [details, setDetails] = useState(false);
   const [drag, setDrag] = useState<{ price: number; key: keyof Bracket } | null>(null);
   const [open, setOpen] = useState<keyof Bracket | null>(null);
   const entryY = yOf(p.entry_price);
-  const at = toXY(Date.parse(p.opened_at) / 1000, p.entry_price);
   const inView = (v: number | null): v is number => v !== null && v >= 0 && v <= H;
   // Zoomed in, your entry line can sit off the chart. The pill then pins to the top or bottom edge
   // (clear of the O/H/L/C legend and the time axis) so size and P&L are always on screen.
@@ -404,8 +410,6 @@ function MyPosition({ p, slot, handle, quote, toXY, yOf, priceOf, width, sizePct
 
   return (
     <>
-      {at && inView(at.y) && <TradeMarker handle={handle} long={p.side === "long"} me fresh={fresh} style={{ left: at.x, top: at.y }} onClick={() => setDetails(true)}
-        testId="my-bubble" label={`Your ${p.side} ${p.quantity} micros at ${px(p.entry_price)}`} />}
       {details && <TradeCard b={{ ...p, state: "open", handle, is_you: true, exit_price: null, pnl: null, reason: null, at: p.opened_at, size_pct: sizePct, dd_floor: null, equity: null }} quote={quote} market={p.market} now={Date.now()} onClose={() => setDetails(false)} />}
       {(["sl", "tp"] as const).map((k) => b[k] != null && !(drag && drag.key === k) ? line(k, b[k]!, false) : null)}
       {drag && line(drag.key, drag.price, true)}
