@@ -13,6 +13,7 @@ const LESSONS = [
     body: "Margin is collateral, not your maximum possible loss. Brokie reserves a simplified $1,000 per micro contract; real requirements vary. Smaller positions change your P&L less per point. Fills are instant with no costs, so results won't match real trading.",
     q: "You halve your contracts. Your P&L per point…", a: ["Doubles", "Stays the same", "Halves"], c: 2, why: "Position size scales losses as well as gains. Half the contracts means half the P&L per point." },
 ];
+const LESSON_ACCENTS = ["#A8B8FF", "#91C9EE", "#C6AEEC"];
 
 export function LearnScreen({ goTrade }: { goTrade: () => void }) {
   const [done, setDone] = useState<number[]>(() => { try { const saved: unknown = JSON.parse(localStorage.getItem("brokie.lessons") ?? "[]"); return Array.isArray(saved) ? [...new Set(saved.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < LESSONS.length))] : []; } catch { return []; } });
@@ -30,13 +31,13 @@ export function LearnScreen({ goTrade }: { goTrade: () => void }) {
       </section>
       {done.length === LESSONS.length && <Button onClick={goTrade}>Put it into practice →</Button>}
       <section className="lesson-list"><Eyebrow>Your starting point</Eyebrow>{LESSONS.map((x, i) => (
-        <button key={i} className="lesson-card" onClick={() => { setOpen(i); setPick(null); }} data-testid={`lesson-${i}`}>
+        <button key={i} className="lesson-card" style={{ ["--lesson-accent" as string]: LESSON_ACCENTS[i] }} onClick={() => { setOpen(i); setPick(null); }} data-testid={`lesson-${i}`}>
           <span className={`lesson-number ${done.includes(i) ? "complete" : ""}`}>{done.includes(i) ? "✓" : `0${i+1}`}</span><span><b>{x.title}</b><small>{x.sub}</small></span><span className="lesson-arrow" aria-hidden="true">↗</span>
         </button>
       ))}</section>
       <div className="learn-note"><span aria-hidden="true">↗</span><p>Real prices. Room to learn.<small>Practise the decision before the money is real.</small></p></div>
       <Sheet open={!!l} onClose={() => setOpen(null)}>
-        {l && <div className="stack lesson-content" style={{ gap: 20 }} data-testid="lesson-content">
+        {l && <div className="stack lesson-content" style={{ gap: 20, ["--lesson-accent" as string]: LESSON_ACCENTS[open!] }} data-testid="lesson-content">
           <div className="row between"><Eyebrow>The essentials / 0{open! + 1}</Eyebrow><button className="lime" style={{ fontWeight: 700 }} onClick={() => setOpen(null)}>Done</button></div>
           <h3 className="h3" style={{ fontSize: 28 }}>{l.title}</h3>
           <div className="muted" style={{ fontSize: 15, lineHeight: 1.6 }}>{l.body}</div>

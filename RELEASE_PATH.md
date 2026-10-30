@@ -1,5 +1,11 @@
 # Brokie release path · 30 October 2026
 
+## Social colour pass
+
+People's chosen identity colours now carry from avatar backgrounds/rings into Chat sender names, subtle message borders and fills. Identity accents share the existing avatar cache and update together after a profile-colour change. Squad uses restrained violet accents; Learn uses blue/lilac lesson and progress details. Positive confirmed trade receipts get a brief mint highlight, with motion disabled for reduced-motion preferences. Trading direction and P&L retain their consistent mint/rose colours. Cache advances to `brokie-shell-v18`.
+
+Validation: production build; synthetic mobile page/flow checks including live avatar/Chat colour synchronization; quick exits/protection/confirmed-win checks; repeated fullscreen-exit and viewport/safe-area regression checks. Phone screenshots were visually reviewed. This release requires no server migration.
+
 ## Fullscreen-exit layout repair
 
 The preview sizing code measured the chart's animated viewport bounds while its fullscreen transition scaled the chart. Exiting fullscreen could retain excess height, extending the chart behind the execution controls until a tab change remounted Trade. A synthetic 393px fixture reproduced preview height growing from 277px to 442px after one exit.

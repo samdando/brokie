@@ -41,7 +41,7 @@ await drag(status,-180);assert.equal(await page.evaluate(()=>window.closes.lengt
 await drag(status,18,60);assert.equal(await page.evaluate(()=>window.closes.length),0,'vertical scroll does not close');
 await drag(status,180,0,true);assert.equal(await page.evaluate(()=>window.closes.length),0,'cancel does not close');
 await drag(status,180,0,false,async()=>{assert.match(await page.locator('.quick-close-progress').innerText(),/Release to close/);await page.screenshot({path:'/tmp/brokie-quick-close.png'});});
-assert.deepEqual(await page.evaluate(()=>window.closes),[['p1','p2']],'only the displayed stack closes, not another market');assert.equal(await page.getByTestId('positions-sheet').count(),0);
+assert.deepEqual(await page.evaluate(()=>window.closes),[['p1','p2']],'only the displayed stack closes, not another market');assert.equal(await page.getByTestId('positions-sheet').count(),0);await page.screenshot({path:'/tmp/brokie-confirmed-win-colour.png'});
 // A newly added leg cancels the in-progress swipe rather than silently broadening its scope.
 await drag(status,180,0,false,async()=>{await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,positions:[...window.originalPositions,{...window.originalPositions[0],id:'new-size'}]}});});await page.waitForTimeout(50);});assert.equal(await page.evaluate(()=>window.closes.length),1);
 await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,positions:window.originalPositions}});g.closeStack=async ids=>{window.closes.push([...ids]);await new Promise(r=>window.resolveClose=r);return {error:'Close refused'};};});

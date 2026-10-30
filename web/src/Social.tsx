@@ -1,9 +1,9 @@
-import { Avatar } from "./Avatar";
+import { Avatar, usePlayerAccent } from "./Avatar";
 import { TodayPnl } from "./TodayPnl";
 import { PlayerLink } from "./Profiles";
 import { useEffect, useRef, useState } from "react";
 import { EMOJIS, game, useGame } from "./game";
-import type { FeedbackKind } from "./types";
+import type { ChatMsg, FeedbackKind } from "./types";
 import { Button, Eyebrow, Sheet, money } from "./ui";
 
 // ---------- Global leaderboard ----------
@@ -128,14 +128,7 @@ export function ChatCard() {
           const end = !next || next.handle !== m.handle || Date.parse(next.at) - Date.parse(m.at) >= 300000 || new Date(next.at).toLocaleDateString() !== day;
           return <div key={m.id} className="chat-entry">
             {newDay && <div className="chat-day"><span>{day === new Date().toLocaleDateString() ? "Today" : new Date(m.at).toLocaleDateString([], { day: "numeric", month: "short" })}</span></div>}
-            <div className={`message-row ${m.is_you ? "mine" : ""} ${grouped ? "grouped" : ""}`}>
-              {!m.is_you && <div className="message-avatar">{!grouped && <Avatar handle={m.handle} />}</div>}
-              <div className="message-content">
-                {!grouped && !m.is_you && <PlayerLink handle={m.handle}>@{m.handle}</PlayerLink>}
-                <div className={`msg ${m.kind === "emoji" ? "emoji" : ""} ${m.is_you ? "you" : ""}`} data-testid="chat-msg"><span className={m.kind === "emoji" ? "big" : "message-body"}>{m.body}</span></div>
-                {end && <time className="message-time" dateTime={m.at}>{new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>}
-              </div>
-            </div>
+            <MessageRow message={m} grouped={grouped} end={end} />
           </div>;
         })}
       </div>
@@ -151,6 +144,18 @@ export function ChatCard() {
       </div>
     </div>
   );
+}
+
+function MessageRow({ message:m, grouped, end }: { message: ChatMsg; grouped: boolean; end: boolean }) {
+  const accent = usePlayerAccent(m.handle);
+  return <div className={`message-row ${m.is_you ? "mine" : ""} ${grouped ? "grouped" : ""}`} style={{ ["--player-accent" as string]: accent }}>
+    {!m.is_you && <div className="message-avatar">{!grouped && <Avatar handle={m.handle} />}</div>}
+    <div className="message-content">
+      {!grouped && !m.is_you && <PlayerLink handle={m.handle}>@{m.handle}</PlayerLink>}
+      <div className={`msg ${m.kind === "emoji" ? "emoji" : ""} ${m.is_you ? "you" : ""}`} data-testid="chat-msg"><span className={m.kind === "emoji" ? "big" : "message-body"}>{m.body}</span></div>
+      {end && <time className="message-time" dateTime={m.at}>{new Date(m.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>}
+    </div>
+  </div>;
 }
 
 // ---------- Feedback ----------

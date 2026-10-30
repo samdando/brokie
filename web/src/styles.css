@@ -1787,3 +1787,41 @@ html,body { background:#0B121B; }
 .protection-preview b { font-family:var(--mono); font-weight:500; }
 .protection-preview small { font-size:9px; color:#728C9F; }
 @media(max-width:360px) { .dock-close-surface .quick-close-hint { font-size:8px; max-width:150px; } }
+
+/* Social colour belongs to people; learning gets a quiet blue/violet accent. */
+:root { --social:#B6ACED; --learning:#A8B8FF; }
+.squad-screen .page-heading > .eyebrow { color:#B2A6DE; }
+.squad-screen .seg button.on { background:#28283F; color:#DDD8F4; }
+.squad-screen .squad-chip.on { background:#26253A; border-color:#8676BC66; color:#D5CCF0; }
+.squad-summary { padding:18px; border:1px solid #49435D; border-radius:15px; background:radial-gradient(ellipse at top right,#8F7ED51B,transparent 75%),#121C2A; }
+.squad-summary .quiet-action { border-color:#8275AE77; color:#C8BCEB; background:#AAA0DB07; }
+.squad-summary .squad-faces { border:0; padding-bottom:0; }
+.squad-faces > .player-avatar { box-shadow:0 0 0 3px #121C2A; }
+.squad-summary .squad-faces > span:last-child:not(.player-avatar) { color:#9C98B4; }
+.squad-screen .quiet-disclosure > summary > small:not(.lime):not(.red) { color:#ABA1C4; }
+.chat-room-icon { background:#2B2742; color:#C6B7F1; border:1px solid #7765A93B; }
+.chat-heading { border-bottom-color:#50456355; }
+.chat-room .message-row .player-link { color:color-mix(in srgb,var(--player-accent) 76%,#FFFFFF); }
+.chat-room .message-row .msg:not(.emoji) { background:linear-gradient(120deg,color-mix(in srgb,var(--player-accent) 9%,#172635),#192837); border:1px solid color-mix(in srgb,var(--player-accent) 24%,#273645); color:#E7EEF6; }
+.chat-room .message-row.mine .msg:not(.emoji) { background:linear-gradient(120deg,color-mix(in srgb,var(--player-accent) 18%,#172635),color-mix(in srgb,var(--player-accent) 11%,#192837)); border-color:color-mix(in srgb,var(--player-accent) 32%,#273645); }
+.chat-composer form:focus-within { border-color:#8A79B6; box-shadow:0 0 0 3px #AB9BD20A; }
+.chat-empty-faces .player-avatar { box-shadow:0 0 0 3px #0F1924; }
+.learn-screen .page-heading > .eyebrow { color:#A3B4EE; }
+.learn-progress { background:radial-gradient(ellipse at top right,#A695EC14,transparent 80%),#151E30; border-color:#424963; }
+.learn-progress .row > span { color:#BAC8F2; }
+.learn-progress small { color:#9CA6C1; }
+.learn-progress-track > i { background:#34405B; }
+.learn-progress-track > i.complete { background:linear-gradient(90deg,#94BFF0,#B3A2E3); }
+.lesson-number { color:var(--lesson-accent,var(--learning)); border-color:color-mix(in srgb,var(--lesson-accent,var(--learning)) 38%,#28384A); background:color-mix(in srgb,var(--lesson-accent,var(--learning)) 9%,#101923); }
+.lesson-number.complete { color:#B5DDC5; border-color:#608D75; background:#1B3028; }
+.lesson-arrow { color:color-mix(in srgb,var(--lesson-accent,var(--learning)) 73%,#5B6D84); }
+.lesson-card:active { background:color-mix(in srgb,var(--lesson-accent,var(--learning)) 4%,transparent); }
+.lesson-content > .row .eyebrow { color:var(--lesson-accent,var(--learning)); }
+.lesson-content .lesson-answer:focus-visible { outline:2px solid var(--lesson-accent,var(--learning)); outline-offset:3px; }
+.learn-note > span { color:#A5AED9; }
+.learn-note p { color:#C0C5DF; }
+.trade-success { background:linear-gradient(125deg,#244B38,#172B24); border-color:#8CC9A3; box-shadow:0 8px 28px #0004; animation:quiet-arrival .24s ease-out,confirmed-highlight 1.2s ease-out; }
+.trade-success span { color:#BAD9C7; }
+.trade-success b { color:#C4EBCD; }
+@keyframes confirmed-highlight { from { box-shadow:0 0 0 5px #A7D4B926,0 8px 28px #0004; } to { box-shadow:0 0 0 0 #A7D4B900,0 8px 28px #0004; } }
+@media(prefers-reduced-motion:reduce) { .trade-success { animation:none !important; } }
