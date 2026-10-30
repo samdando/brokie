@@ -74,7 +74,7 @@ export function App() {
         <main className="page-stage" style={{ ["--slide" as string]: slide }}
           onTouchStart={e => {
             const el = e.target as HTMLElement;
-            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .chart-card, .pos-card, .hscroll, .selection-wheel, .sheet")) { swipe.current = null; return; }
+            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .trade-screen, .chart-card, .pos-card, .hscroll, .selection-wheel, .sheet")) { swipe.current = null; return; }
             swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
           }}
           onTouchEnd={e => {

@@ -1,4 +1,6 @@
 import { FloorPresence } from "./FloorPresence";
+import { useTradeSwipe } from "./useTradeSwipe";
+import { priceForPnl, protectionDirection, protectionPnl } from "./protection";
 import { EventStrip } from "./Events";
 import { tradingSummary } from "./tradingSummary";
 import { SelectionRail } from "./SelectionRail";
@@ -29,6 +31,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [showHistory, setShowHistory] = useState(() => { try { return localStorage.getItem("brokie.chartHistory") === "on"; } catch { return false; } });
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
+  const closeInFlight = useRef(false);
   const [pnlInfo, setPnlInfo] = useState(false);
   const [positionsOpen, setPositionsOpen] = useState(false);
   const [protectionId, setProtectionId] = useState<string | null>(null);
@@ -130,13 +133,29 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
   const stacks = stacksOf(me.positions);
   async function close(id: string, ids: string[], title: string): Promise<boolean> {
+    if (closeInFlight.current) return false;
+    closeInFlight.current = true;
     setClosing(id);
-    const r = await game.closeStack(ids);
-    setClosing(null);
-    if (!r.error && (r.pnl ?? 0) > 0) { setSettled({ pnl:r.pnl!,title }); haptic(10); }
-    else toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
-    return !r.error;
+    try {
+      const r = await game.closeStack(ids);
+      if (!r.error && (r.pnl ?? 0) > 0) { setSettled({ pnl:r.pnl!,title }); haptic(10); }
+      else toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
+      return !r.error;
+    } catch (e) { toast((e as Error).message || "Close wasn't confirmed. Check your position."); return false; }
+    finally { closeInFlight.current = false; setClosing(null); }
   }
+  const here = stacks.filter(s => s.merged.market === market);
+  const quick = here.length === 1 ? here[0] : null;
+  const quickTitle = quick ? `${MARKETS[market].title} · ${quick.merged.side === "long" ? "Long" : "Short"} ${quick.merged.quantity}` : "Choose a position";
+  const swipe = useTradeSwipe({
+    enabled: here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !st.chatOpen,
+    fullscreen: big,
+    revision: `${market}:${here.map(s=>`${s.ids.join(',')}:${s.merged.quantity}`).join('|')}`,
+    onCommit: () => {
+      if (!quick) { setPositionsOpen(true); return; }
+      void close(quick.merged.id, [...quick.ids], `${MARKETS[market].title} ${quick.merged.side} ×${quick.merged.quantity}`);
+    }
+  });
   async function saveProtection(id: string, b: { sl?: number; tp?: number }) {
     try { await game.setBracket(id, b); toast("SL/TP saved · stays active when you leave the app"); if (cardHint) { hintDone("cards"); setCardHint(false); } }
     catch (e) { toast((e as Error).message || "Stop was not saved. Try again."); }
@@ -155,7 +174,10 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     })}
   </div>;
   const orderDock = <div className="trade-dock">
-    <TradingStatus market={market} onOpen={()=>setPositionsOpen(true)}/>
+    <div className={`dock-close-surface ${swipe.distance ? "swiping" : ""}`} style={{ ["--close-progress" as string]: swipe.distance }} data-testid="quick-close">
+      <TradingStatus market={market} disabled={!!closing} onOpen={()=>rules?.status === "blown" ? setAccountOpen(true) : setPositionsOpen(true)} swipeHint={here.length ? closing ? "Closing…" : quick ? `Swipe → close ${quickTitle}` : "Swipe → choose a position" : undefined}/>
+      {swipe.distance > 0 && <div className="quick-close-progress" role="status"><span>{swipe.distance >= 1 ? quick ? "Release to close" : "Release to choose" : "Keep swiping →"}</span><b>{quickTitle}</b></div>}
+    </div>
     <div className="execution-options chart-controls">
       <button type="button" className="execution-style style-switch" role="switch" aria-checked={style === "line"} aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"} title={style === "candles" ? "Candles" : "Line"} data-testid="style-switch" onClick={()=>{const next=style === "candles" ? "line" : "candles";setStyle(next);try{localStorage.setItem("brokie.style",next);}catch{/* */}}}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">{style === "candles" ? <><path d="M7 3v4m0 9v5m10-18v7m0 7v4"/><rect x="4" y="7" width="6" height="9" rx="1"/><rect x="14" y="10" width="6" height="7" rx="1"/></> : <path d="m3 17 5-7 5 4 8-10"/>}</svg>
@@ -169,12 +191,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
 
   return (
-    <div className="stack trade-screen">
+    <div className="stack trade-screen" onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
 
       <div className="floor-toolbar">
         <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
         <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
       </div>
+      {rules?.status === "blown" && <button className="account-restriction" onClick={()=>setAccountOpen(true)} data-testid="season-restriction"><b>Season max-loss limit reached</b><span>{rules.resets_used === 0 ? "Free restart available ↗" : "View account status ↗"}</span></button>}
       <div className="market-stage" data-testid="markets-section" data-section={crypto ? "crypto" : "futures"}>
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
@@ -260,15 +283,15 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   );
 }
 
-function TradingStatus({ market, onOpen }: { market: Market; onOpen?: () => void }) {
+function TradingStatus({ market, onOpen, swipeHint, disabled }: { market: Market; onOpen?: () => void; swipeHint?: string; disabled?: boolean }) {
   const st = useGame(), now = useNow(1000) + st.clockOffset;
   const summary = tradingSummary(st.me?.positions ?? [], st.me?.quotes ?? [], market, now);
   const value = summary.pnl === null ? "—" : summary.flat ? "$0.00" : signedMoney(summary.pnl);
   const tone = summary.flat || summary.pnl === null ? "muted" : summary.pnl >= 0 ? "lime" : "red";
   const exposure = [summary.long ? `LONG ${summary.long}` : "", summary.short ? `SHORT ${summary.short}` : ""].filter(Boolean).join(" · ") || "FLAT";
   const content = <><span className="dock-pnl"><small>Unrealised <span>· all trades</span></small><b className={tone} data-testid="live-unrealised">{value}</b>{summary.stale && <em>{summary.pnl === null ? "Waiting for prices" : "Last quoted prices"}</em>}</span>
-    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Drawdown limit reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
-  return onOpen ? <button className="dock-status" onClick={onOpen} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
+    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Season max-loss reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b>{swipeHint && <em className="quick-close-hint">{swipeHint}</em>}</span></>;
+  return onOpen ? <button className="dock-status" onClick={onOpen} disabled={disabled} aria-busy={disabled || undefined} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
 }
 
 function ProtectionEditor({ id, toast, onClose }: { id: string; toast: (message: string) => void; onClose: () => void }) {
@@ -276,14 +299,26 @@ function ProtectionEditor({ id, toast, onClose }: { id: string; toast: (message:
   const stack = stacksOf(st.me?.positions ?? []).find(stack => stack.ids.includes(id));
   const p = stack?.merged, saved = st.brackets[p?.id ?? id] ?? {};
   const [levels, setLevels] = useState({ sl: saved.sl?.toString() ?? "", tp: saved.tp?.toString() ?? "" });
+  const [unit, setUnit] = useState<"price" | "pnl">("price");
   const busy = !!st.bracketSaving;
+  const draftPrice = (kind: "sl" | "tp") => !p || !levels[kind].trim() ? null : unit === "pnl" ? priceForPnl(p, kind, Number(levels[kind])) : Number(levels[kind]);
+  function changeUnit(next: "price" | "pnl") {
+    if (!p || next === unit) return;
+    setLevels(prev => Object.fromEntries((["sl","tp"] as const).map(kind => {
+      if (!prev[kind].trim()) return [kind, ""];
+      const price = draftPrice(kind);
+      const amount = price != null && Number.isFinite(price) ? protectionPnl(p, price) * (kind === "tp" ? 1 : -1) : null;
+      return [kind, next === "price" ? price != null ? String(price) : "" : amount != null && amount > 0 ? amount.toFixed(2) : ""];
+    })) as { sl: string; tp: string });
+    setUnit(next);
+  }
   async function submit(kind: "sl" | "tp", remove = false) {
     if (!p) return;
     try {
       if (remove) await game.clearBracket(p.id, kind);
       else {
-        const value = Number(levels[kind]);
-        if (!Number.isFinite(value) || value <= 0) { toast("Enter a valid price."); return; }
+        const value = draftPrice(kind);
+        if (value === null || !Number.isFinite(value) || value <= 0) { toast(unit === "price" ? "Enter a valid market price." : "Enter a positive dollar amount for this position."); return; }
         await game.setBracket(p.id, { [kind]: value });
       }
       if (remove) setLevels(prev => ({ ...prev, [kind]: "" }));
@@ -294,10 +329,17 @@ function ProtectionEditor({ id, toast, onClose }: { id: string; toast: (message:
     <div className="row between"><div><Eyebrow>Position protection</Eyebrow><h2 className="h2">{p ? `${MARKETS[p.market].title} · ${p.side.toUpperCase()} ×${p.quantity}` : "Position closed"}</h2></div><button className="text-action" onClick={onClose}>Done</button></div>
     {p ? <>
       <p className="muted">Saved orders stay active when you close the app. A triggered stop fills at the next available feed price, which can differ from your level.</p>
-      {(["sl", "tp"] as const).map(kind => <form key={kind} onSubmit={e => { e.preventDefault(); void submit(kind); }} className="protection-row">
+      <div className="protection-context"><span>Current {MARKETS[p.market].title} price <b>{game.quote(p.market) ? px(game.quote(p.market)!.price,digits(p.market)) : "—"}</b></span><small>Targets apply to {p.quantity} {p.quantity === 1 ? "micro" : "micros"} {p.side === "long" ? "long" : "short"} at {px(p.entry_price,digits(p.market))}.</small></div>
+      <div className="seg" role="group" aria-label="Target units"><button type="button" aria-pressed={unit === "price"} className={unit === "price" ? "on" : ""} disabled={busy} onClick={()=>changeUnit("price")}>Market price</button><button type="button" aria-pressed={unit === "pnl"} className={unit === "pnl" ? "on" : ""} disabled={busy} onClick={()=>changeUnit("pnl")}>Profit / loss ($)</button></div>
+      <p className="protection-unit-note">{unit === "price" ? "Enter the market’s price, not the dollar profit you want." : "Enter the profit to take or loss to cap for this position. We convert it to a market price."}</p>
+      {(["sl", "tp"] as const).map(kind => {
+        const draft = draftPrice(kind), valid = draft != null && Number.isFinite(draft) && draft > 0;
+        const snapped = valid ? Math.round(draft / MARKETS[p.market].tick) * MARKETS[p.market].tick : null;
+        return <form key={kind} onSubmit={e => { e.preventDefault(); void submit(kind); }} className="protection-row">
         <label htmlFor={`protect-${kind}`}>{kind === "sl" ? "Stop loss" : "Take profit"}<small className={saved[kind] != null ? "lime" : "muted"}>{saved[kind] != null ? `Active · ${px(saved[kind]!, digits(p.market))}` : "Not set"}</small></label>
-        <div className="row"><input id={`protect-${kind}`} aria-label={kind === "sl" ? "Stop loss price" : "Take profit price"} inputMode="decimal" placeholder="Enter price" value={levels[kind]} disabled={busy} onChange={e => setLevels(prev => ({ ...prev, [kind]: e.target.value }))}/><button className="protection-save" disabled={busy} type="submit">Save</button>{saved[kind] != null && <button type="button" className="protection-remove" disabled={busy} aria-label={`Cancel ${kind.toUpperCase()}`} onClick={() => void submit(kind,true)}>✕</button>}</div>
-      </form>)}
+        <div className="row"><input id={`protect-${kind}`} aria-label={`${kind === "sl" ? "Stop loss" : "Take profit"} ${unit === "price" ? "price" : "amount"}`} aria-describedby={`protect-${kind}-preview`} inputMode="decimal" placeholder={unit === "price" ? `${MARKETS[p.market].title} price` : kind === "tp" ? "Profit in USD" : "Loss in USD"} value={levels[kind]} disabled={busy} onChange={e => setLevels(prev => ({ ...prev, [kind]: e.target.value }))}/><button className="protection-save" disabled={busy} type="submit">Save</button>{saved[kind] != null && <button type="button" className="protection-remove" disabled={busy} aria-label={`Cancel ${kind.toUpperCase()}`} onClick={() => void submit(kind,true)}>✕</button>}</div>
+        <div className="protection-preview" id={`protect-${kind}-preview`} data-testid={`preview-${kind}`}>{snapped != null ? <><span>Trigger: {MARKETS[p.market].title} {protectionDirection(p,kind)} <b>{px(snapped,digits(p.market))}</b></span><span>Est. position P&amp;L <b className={protectionPnl(p,snapped) >= 0 ? "lime" : "red"}>{signedMoney(protectionPnl(p,snapped))}</b></span><small>Draft until saved · fills can differ after a gap.</small></> : <span>{kind === "tp" ? "A short takes profit as price falls; a long takes profit as price rises." : "Use a market price, or switch to a dollar loss amount."}</span>}</div>
+      </form>})}
       {busy && <span className="muted" role="status">Saving… your previous confirmed levels remain active.</span>}
     </> : <p className="muted">This position has closed. Its final result is in your trade history.</p>}
   </div>;
@@ -333,20 +375,21 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
   if (rules.status === "active") return null;
   if (rules.status === "locked") return (
     <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
-      <span style={{ fontSize: 26 }}>🔒</span>
+      <span className="status-symbol" aria-hidden="true">Ⅱ</span>
       <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. {until !== null ? until > 0 ? `Daily allowance resets in ${sessionCountdown(until)}.` : "Daily reset reached. Refresh your account." : "Trading resumes at the next daily reset."}</div><div className="row" style={{ gap: 16, marginTop: 8 }}><button className="text-action lime" onClick={goHistory}>Review your trades →</button><button className="text-action" disabled={busy} onClick={async () => { setBusy(true); try { await game.refreshState(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Refreshing…" : "Refresh status"}</button></div></div>
     </div>
   );
   return (
     <div className="status-card" style={{ background: "#1b1b1b", border: "1px solid #444", flexDirection: "column", alignItems: "stretch" }} data-testid="status-blown">
-      <div className="row"><span style={{ fontSize: 30, filter: "grayscale(1)" }}>💀</span>
-        <div><b style={{ fontSize: 17 }}>REKT.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>You hit the {rules.max_dd_pct}% max loss limit. Account blown for this season.</div></div></div>
+      <div className="row"><span className="status-symbol" aria-hidden="true">↘</span>
+        <div><b style={{ fontSize: 17 }}>Season max-loss limit reached.</b><div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight:1.7 }}>This is separate from the daily lock. A new trading day won't reset it.<br />Equity {money(rules.equity)} · season floor {money(rules.drawdown_floor)}.</div></div></div>
       {rules.resets_used === 0 ? (
         <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
           onClick={async () => { setBusy(true); try { await game.buyBack(); toast(`Back in. ${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily limit, and 5 new trading days to qualify.`); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
-          {busy ? <span className="spinner" /> : `Use your one buy-back (${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily · 8% max loss)`}
+          {busy ? <span className="spinner" /> : "Use free restart"}
         </button>
-      ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Buy-back used. See you next season.</div>}
+      ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Your one restart has been used. Trading resumes next season.</div>}
+      {rules.resets_used === 0 && <small className="muted">Restarts at {money(rules.start_balance,0)} paper funds, with a {rules.daily_loss_amount ? money(rules.daily_loss_amount,0) : "4%"} daily limit and 5 new qualifying days. One restart per season.</small>}
     </div>
   );
 }
@@ -493,8 +536,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   return <div className="spam-pad" data-testid="spam-pad">{btn("long")}{btn("short")}</div>;
 }
 
-/** Ticket 16: a position as a clean card. Drag it sideways; past 40% it tints (lime win / red
- *  loss) and buzzes; let go past that and it flies off and closes (confetti or crack). */
+/** Drag a position sideways and release past 40% to close. Cancellation never closes. */
 function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProtection }:
   { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean>; protection?: { sl?: number; tp?: number }; onProtection: () => void }) {
   const [dx, setDx] = useState(0);
@@ -516,7 +558,7 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
       if (over !== armed.current) { armed.current = over; if (over) buzz(22); }
     };
     const up = async () => {
-      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
       if (!locked) return;
       if (armed.current) {
         armed.current = false;
@@ -527,7 +569,11 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
         if (ok) setPhase("gone"); else { setPhase("back"); setDx(0); }
       } else { setPhase("back"); setDx(0); }
     };
-    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+    const cancel = () => {
+      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
+      armed.current = false; setPhase("back"); setDx(0);
+    };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
   }
   const over = Math.abs(dx) > w() * 0.4;
   const tint = phase === "drag" && over ? (win ? "tint-win" : "tint-loss") : "";

@@ -1,5 +1,15 @@
 # Brokie release path · 30 October 2026
 
+## Fast exits and explicit protection targets
+
+A right swipe across the lower chart preview or P&L area closes only the displayed market's single side stack. Fullscreen limits the gesture to the P&L area so chart pan/zoom remains available. A hedge opens the position chooser. The release threshold, pointer cancellation, vertical scroll, wrong direction, position changes, pending orders/closes and failed responses are tested; normal taps still open position management. No confirmation or success state claims a fill before the server confirms it.
+
+The protection editor separates market price from dollar profit/loss. Dollar amounts convert using weighted entry, current stack size, each market's point value and tick size. It previews the exact trigger direction, rounded market price and estimated position P&L. The server remains authoritative for saved protection and fill execution. A short TP triggers on a falling price; a long TP triggers on a rising price.
+
+Trade now distinguishes a season failure from a daily lock and exposes the existing player-controlled restart. No automatic restart, balance credit or history rewrite is part of this UI release. Cache version: `brokie-shell-v15`.
+
+Verification: production build, bracket sync, protection amount math, synthetic browser exit/protection/layout/gesture checks and full disposable backend suite. The fixed EOD loss-floor policy is being confirmed separately before any production risk-rule migration.
+
 ## Whole-app redesign and Crypto replacement
 
 The web release puts the chart, price and unrealised P&L first. Account equity, risk rules, session detail and trade history use progressive disclosure. BUY and SELL have identical dimensions and spacing, with secondary 1/10/100 size controls. Compact real squad avatars retain each entry's long/short direction; selected fills reveal exact paths. A lightweight squad activity sheet and user-triggered reactions keep the social layer available without opening Chat.

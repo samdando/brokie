@@ -20,7 +20,7 @@ await page.evaluate(async()=>{
  localStorage.setItem('brokie.lessons','[0,1,2]');
 });
 
-await page.getByTestId('equity').waitFor();
+await page.getByTestId('go-long').waitFor();
 await page.evaluate(()=>{const g=window.testGame;g.set({me:{...g.state.me,positions:[{id:'protected',market:'nas',side:'long',quantity:2,entry_price:29700,opened_at:new Date().toISOString(),stop_loss:null,take_profit:null}]}});
 window.rpcRequests=[];window.failSave=false;g.api.rpc=async(name,args)=>{if(name!=='set_position_bracket')return {};window.rpcRequests.push(args);await new Promise(resolve=>window.releaseSave=resolve);if(window.failSave)throw new Error('Connection lost. Stop was not saved.');const p={...g.state.me.positions[0],[args.p_kind==='sl'?'stop_loss':'take_profit']:args.p_price};return {positions:[p]};};});
 await page.getByTestId('trading-status').click();await page.getByRole('button',{name:'Manage SL/TP for NAS long'}).last().click();
