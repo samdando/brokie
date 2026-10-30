@@ -2,6 +2,7 @@
 
 Start an isolated preview from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_ANON_KEY='' npm run dev -- --host 127.0.0.1`. Browser tests use synthetic accounts, block external requests and never execute live orders. They require Playwright and Chrome. Set `PLAYWRIGHT_MODULE` or `CHROME_PATH` when using a bundled runtime; `BASE_URL` selects a different local preview port. Restart the dev server after source edits before running fixtures, so Vite does not create differently versioned game-store imports.
 
+- `node tests/eod-floor.cjs`: authoritative fixed EOD allowance/cap, season buffer separated from daily loss room, EOD-only explanation and mobile fit.
 - `node tests/trade-exits.cjs`: close gestures, displayed-market scope, cancellations and changed positions, pending/error handling, hedge choice, explicit price/dollar targets and season-status visibility.
 - `node tests/protection.cjs`: long/short dollar conversion, stack size, market point values, real tick rounding and invalid targets.
 - `node tests/server-protection.cjs` and `node tests/bracket-sync.cjs`: confirmed server saves, failed-save preservation, cancellation, cross-device sync and legacy migration.
@@ -15,6 +16,6 @@ Start an isolated preview from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_AN
 
 Run `npm run build` from `web` for the production artifact. The existing bundle-size warning is unchanged.
 
-Run `npm test` from `backend/tests` for the complete disposable database and feed suite: token contracts and wallet isolation, cosmetic purchases, session boundaries and recorded closes, risk limits, server brackets and uncapped squad chart history. These checks never use production keys or databases. For chart-history rollout, apply `backend/chart_history.sql` after the existing Predictions/risk migrations before deploying a build to a database that does not already have it.
+Run `npm test` from `backend/tests` for the complete disposable database and feed suite: token contracts and wallet isolation, cosmetic purchases, session boundaries and recorded closes, risk limits, server brackets, uncapped squad chart history, and the fixed-dollar EOD floor with its starting-balance cap and guarded admin repair. These checks never use production keys or databases. For chart-history rollout, apply `backend/chart_history.sql` after the existing Predictions/risk migrations before deploying a build to a database that does not already have it.
 
 The other historical UI scripts predate the current progressive-disclosure layout. The checks above are the current floor regression set. Physical iOS gestures, microphone, audio and native haptics require device verification.

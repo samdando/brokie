@@ -1,5 +1,15 @@
 # Brokie release path · 30 October 2026
 
+## Capped end-of-day floor
+
+`backend/capped_eod_floor.sql` sets a fixed $4,200 EOD trail per $100k starting funds, capped at the original starting balance. It scales to $2,100 for $50k: $52,100 EOD locks a $50k floor, and $104,200 EOD locks a $100k floor. The allowance stays fixed as equity grows. It keeps intraday peaks out of that calculation and preserves the explicit intraday-trailing hard mode, daily-loss rules, closing fills and qualification. Apply this migration last, after the existing rules/stop migrations. Historical migrations remain snapshots of their original policy; rerunning them requires reapplying this cap afterward.
+
+The migration also supplies a restricted admin correction for an account failed solely by the old uncapped floor. It requires the exact expected balance and failure timestamp, an unused restart, no open positions, and equity above both corrected season and daily floors. It records before/after state privately and only clears the account failure; it never changes cash, trades, qualifying dates or restart counts. Account-specific values are supplied in the signed-in production console and are not committed here.
+
+The user confirmed the $4,200/$100k allowance on 30 October 2026. The API supplies the authoritative fixed allowance and cap; the web account sheet shows season buffer separately from daily loss room. Cache version: `brokie-shell-v16`.
+
+Validation: `node backend/tests/capped-eod.mjs`, included in backend CI, covers initial floors, EOD vs intraday highs, the cap and remaining positive buffer, exact-floor breaches, hard mode, guarded restoration, idempotency, audit records and denied client access. Production migration was applied through the signed-in SQL console on 30 October 2026. The guarded correction returned active status, unchanged cash and zero restarts used. The rollout preview found no active account below the new floor.
+
 ## Fast exits and explicit protection targets
 
 A right swipe across the lower chart preview or P&L area closes only the displayed market's single side stack. Fullscreen limits the gesture to the P&L area so chart pan/zoom remains available. A hedge opens the position chooser. The release threshold, pointer cancellation, vertical scroll, wrong direction, position changes, pending orders/closes and failed responses are tested; normal taps still open position management. No confirmation or success state claims a fill before the server confirms it.
@@ -8,7 +18,7 @@ The protection editor separates market price from dollar profit/loss. Dollar amo
 
 Trade now distinguishes a season failure from a daily lock and exposes the existing player-controlled restart. No automatic restart, balance credit or history rewrite is part of this UI release. Cache version: `brokie-shell-v15`.
 
-Verification: production build, bracket sync, protection amount math, synthetic browser exit/protection/layout/gesture checks and full disposable backend suite. The fixed EOD loss-floor policy is being confirmed separately before any production risk-rule migration.
+Verification: production build, bracket sync, protection amount math, synthetic browser exit/protection/layout/gesture checks and full disposable backend suite. The confirmed fixed EOD floor is documented in the section above.
 
 ## Whole-app redesign and Crypto replacement
 

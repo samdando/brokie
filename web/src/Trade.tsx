@@ -398,7 +398,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const dailyRoom = Math.max(0, equity - rules.daily_floor), dailyMax = rules.day_start_equity - rules.daily_floor;
   const trailing = rules.dd_mode === "trailing";
-  const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = (rules.dd_base ?? rules.peak_equity) - rules.drawdown_floor;
+  const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = rules.max_loss_amount ?? (rules.dd_base ?? rules.peak_equity) - rules.drawdown_floor;
   const targetGain = Math.max(0, rules.target - rules.start_balance);
   const gain = Math.max(0, equity - rules.start_balance);
   const progress = targetGain > 0 ? Math.min(1, gain / targetGain) : 0;
@@ -409,7 +409,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
       <div className="meter-heading">{label} <span aria-hidden="true">ⓘ</span></div>
       <b style={{ color: tone(frac) }}>{money(remaining, 0)} <small>left</small></b>
       <div className="bar" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: tone(frac) }} /></div>
-      <div className="meter-caption">{id === "meter-daily" && rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : `${cap}%`} {id === "meter-daily" ? "daily cap" : trailing ? "trailing limit" : "end-of-day limit"}</div>
+      <div className="meter-caption">{id === "meter-daily" && rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : id === "meter-dd" && rules.max_loss_amount ? money(rules.max_loss_amount,0) : `${cap}%`} {id === "meter-daily" ? "daily cap" : trailing ? "trailing limit" : "EOD trail"}</div>
     </button>
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
@@ -417,14 +417,14 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
     "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until the next session opens at ${sessionOpenLabel()} your time (5pm New York).`,
     "meter-dd": trailing
       ? `Your current trailing floor is ${money(rules.drawdown_floor, 0)}, ${rules.max_dd_pct}% under your highest equity. Reaching it closes your positions and marks this season's account REKT.`
-      : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_dd_pct}% under your best end-of-day balance (${money(rules.dd_base ?? rules.peak_equity, 0)}). It only moves up when a session closes higher (5pm New York), not on intraday spikes. Touching it at any time closes your positions and marks this season's account REKT.`,
+      : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_loss_amount ? `a fixed ${money(rules.max_loss_amount,0)} below` : `${rules.max_dd_pct}% below`} your highest end-of-day balance (${money(rules.dd_base ?? rules.peak_equity,0)}), capped at your original ${money(rules.drawdown_cap ?? rules.start_balance,0)}. It only moves after a higher session close (5pm New York), never on intraday profit spikes. Once the floor reaches the cap it stays there. Your season buffer is equity minus this floor; daily loss room is separate. Touching either limit closes your positions.`,
     "meter-target": `Get funded: be at ${money(rules.target, 0)} (+10%) with at least ${rules.qualify_days} trading days (any session you open a trade). Hitting the target earlier earns 🎯 Target hit; you still need to be at +10% once the days are in. Funded is a game badge, with no real funding or cash payout. The same ${rules.qualify_days} days qualify you for the leaderboard.`,
   };
   return (
     <div className="hero-risk">
 
     <details className="rule-summary compact-rules">
-      <summary><span>Daily loss room <b style={{ color: tone(df) }}>{money(dailyRoom, 0)}</b></span><span className="muted">Risk details ⌄</span></summary>
+      <summary><span>Season loss buffer <b style={{ color: tone(dd) }}>{money(ddRoom, 0)}</b></span><span className="muted">Risk details ⌄</span></summary>
       <div className="risk-strips" aria-hidden="true">{[["DAILY ROOM", df], ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded || rules.target_hit ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
       <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded || rules.target_hit ? 1 : progress} /></div>
       <div className="meters">

@@ -22,6 +22,7 @@ export interface Trade extends PredictionFields {
 }
 export interface Quote { market: Market; price: number; quoted_at: string }
 export interface Rules {
+  max_loss_amount?: number | null; drawdown_cap?: number | null;
   unlock_at?: string | null; status: "active" | "locked" | "blown"; start_balance: number; peak_equity: number; day_start_equity: number;
   daily_loss_amount?: number | null; daily_loss_pct: number; max_dd_pct: number; daily_floor: number; drawdown_floor: number; target: number;
   /** "eod": the max loss floor sits under your best end-of-day balance (dd_base). "trailing": under the intraday peak. */
