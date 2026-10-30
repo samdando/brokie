@@ -48,13 +48,11 @@ function GlobalLine({ r, last }: { r: import("./types").GlobalRow; last: boolean
   return (
     <div>
       <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="global-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
-        <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{r.rank === 1 && r.return_pct > 0 ? "👑" : r.rank <= 3 && r.qualified ? ["🥇", "🥈", "🥉"][r.rank - 1] : String(r.rank).padStart(2, "0")}</span>
+        <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{String(r.rank).padStart(2, "0")}</span>
         <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}><PlayerLink handle={r.handle}>{r.is_you ? "You" : `@${r.handle}`}</PlayerLink> <TodayPnl value={r.today_pnl} />
-            {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }}>💀 REKT</span>}
-            {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒</span>}
-            {r.funded && <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span>}</div>
+            {r.status === "blown" ? <span className="chip-status">Account closed</span> : r.status === "locked" ? <span className="chip-status">Daily limit</span> : r.funded && <span className="chip-status lime">Funded</span>}</div>
           <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"}` : `Qualifying · ${r.trading_days}/5 days · ${r.trades} ${r.trades === 1 ? "trade" : "trades"}`}</div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -119,9 +117,9 @@ export function ChatCard() {
   }
   return (
     <div className="chat-room" data-testid="chat">
-      <header className="chat-heading"><span className="chat-room-icon" aria-hidden="true">#</span><div><h2>{game.squad?.name ?? "Squad chat"}</h2><small>{game.squad?.member_count ?? 0} members · Squad chat</small></div></header>
+      <header className="chat-heading"><span className="chat-room-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M5 5h14v11H9l-4 3Z"/></svg></span><div><h2>{game.squad?.name ?? "Squad chat"}</h2><small>{game.squad?.member_count ?? 0} members · Your trading circle</small></div></header>
       <div className="chat-log" ref={box} role="log" aria-label="Squad messages" aria-live="polite" onScroll={() => { const el = box.current; if (el) { atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; if (atBottom.current) setUnread(false); } }}>
-        {st.chat.length === 0 && <div className="chat-empty"><span aria-hidden="true">✦</span><b>The squad’s here.</b><small>First trade, hot take, terrible joke. Go on.</small></div>}
+        {st.chat.length === 0 && <div className="chat-empty"><div className="chat-empty-faces" aria-hidden="true">{st.leaderboard.slice(0,3).map(p=><Avatar key={p.handle} handle={p.handle}/>)}</div><b>A market worth talking about.</b><small>Drop a setup, celebrate a close,<br />or just say you're here.</small></div>}
         {st.chat.map((m, i) => {
           const prev = st.chat[i - 1], next = st.chat[i + 1];
           const day = new Date(m.at).toLocaleDateString();

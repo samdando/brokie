@@ -3,7 +3,7 @@ import { PlayerLink } from "./Profiles";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { ROOMS, useVoice, voice } from "./voice";
-import { Button, Eyebrow, Sheet, countdown, money, useNow } from "./ui";
+import { Button, Eyebrow, Sheet, countdown, money, signedMoney, useNow } from "./ui";
 import { ActiveSquadTrades, SquadDailyStats, useSquadDashboard } from "./SquadDashboard";
 import { GlobalBoard } from "./Social";
 import { TodayPnl } from "./TodayPnl";
@@ -16,6 +16,7 @@ export function SquadScreen(_props: { toast: (message: string) => void }) {
   const [view, setView] = useState<"squad" | "global">(() => { try { return localStorage.getItem("brokie.board") === "global" ? "global" : "squad"; } catch { return "squad"; } });
   const pick = (v: "squad" | "global") => { setView(v); try { localStorage.setItem("brokie.board", v); } catch { /* ignore */ } };
   const squad = game.squad;
+  const v = useVoice();
   const dashboard = useSquadDashboard(view === "squad" ? squad?.id : undefined);
   useEffect(() => {
     if (!squad || chatOpen) return;
@@ -24,26 +25,27 @@ export function SquadScreen(_props: { toast: (message: string) => void }) {
     return () => clearInterval(timer);
   }, [squad?.id, chatOpen]);
   return (
-    <div className="stack squad-screen" style={{ gap: 24 }}> 
+    <div className="stack squad-screen secondary-screen" style={{ gap: 24 }}>
+      <div className="page-heading"><Eyebrow>Squad</Eyebrow><h1>Your people.</h1><p>Same market. Better company.</p></div>
       <div className="seg" role="tablist" aria-label="Leaderboard">
         <button role="tab" aria-selected={view === "squad"} className={view === "squad" ? "on" : ""} onClick={() => pick("squad")} data-testid="seg-squad">My squad</button>
-        <button role="tab" aria-selected={view === "global"} className={view === "global" ? "on" : ""} onClick={() => pick("global")} data-testid="seg-global">🌍 Global</button>
+        <button role="tab" aria-selected={view === "global"} className={view === "global" ? "on" : ""} onClick={() => pick("global")} data-testid="seg-global">Everyone</button>
       </div>
       {view === "global" ? <GlobalBoard /> : st.squads.length === 0 ? <SquadStarter /> : (
         <>
-          <div className="hscroll">
+          <div className="hscroll squad-picker" aria-label="Choose a squad">
             {st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}
             <button className="squad-chip add" onClick={() => setAdding(true)}>+ Squad</button>
           </div>
-          {squad && <ActiveSquadTrades {...dashboard} />}
           {squad && <SquadCard />}
-          {squad && <SquadDailyStats data={dashboard.data} />}
+          {squad && <ActiveSquadTrades {...dashboard} />}
           {squad && <Leaderboard />}
-          {squad && <VoiceCard />}
+          {squad && <details className="quiet-disclosure" data-testid="squad-recap"><summary><span>Today's recap</span><small className={(dashboard.data?.players.reduce((s,p) => s + Number(p.pnl),0) ?? 0) < 0 ? "red" : "lime"}>{dashboard.data ? signedMoney(dashboard.data.players.reduce((s,p) => s + Number(p.pnl),0)) : "View"} <span aria-hidden="true">⌄</span></small></summary><SquadDailyStats data={dashboard.data} /></details>}
+          {squad && <details className="quiet-disclosure" open={v.status === "live" || v.status === "connecting" ? true : undefined}><summary><span>Voice lounge</span><small>{v.status === "live" ? "In the call" : v.status === "connecting" ? "Connecting…" : "Join your mates"} <span aria-hidden="true">⌄</span></small></summary><VoiceCard /></details>}
 
         </>
       )}
-      <Sheet open={adding} onClose={() => setAdding(false)}><SquadStarter onDone={() => setAdding(false)} /></Sheet>
+      <Sheet open={adding} onClose={() => setAdding(false)}><div className="stack"><div className="row between"><Eyebrow>Your next squad</Eyebrow><button className="text-action" onClick={() => setAdding(false)}>Done</button></div><SquadStarter onDone={() => setAdding(false)} /></div></Sheet>
     </div>
   );
 }
@@ -61,6 +63,7 @@ export async function shareInvite(squad: { invite_code: string }): Promise<"shar
 
 function SquadCard() {
   const squad = game.squad!;
+  const st = useGame();
   const [options, setOptions] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -73,7 +76,8 @@ function SquadCard() {
   }
   return (
     <div className="squad-summary">
-      <div className="row between"><div><h2 className="h2" data-testid="squad-title">{squad.name}</h2><span className="muted">{squad.member_count} players</span></div><button className="text-action lime" onClick={() => setOptions(true)}>Invite / manage ↗</button></div>
+      <div className="row between"><div><h2 className="h2" data-testid="squad-title">{squad.name}</h2><span className="muted">{squad.member_count} {squad.member_count === 1 ? "member" : "members"}</span></div><button className="quiet-action" onClick={() => setOptions(true)} aria-label="Invite or manage squad">Invite friends ↗</button></div>
+      <div className="squad-faces">{st.leaderboard.slice(0,5).map(p => <Avatar key={p.handle} handle={p.handle} />)}<span>{st.leaderboard.some(p => p.open_positions > 0) ? "A few moves in progress." : "Ready when you are."}</span></div>
       <Sheet open={options} onClose={() => setOptions(false)}>
         <div className="stack"><div className="row between"><h3 className="h3">{squad.name}</h3><button className="text-action" onClick={() => setOptions(false)}>Done</button></div>
         <div><Eyebrow>Invite code</Eyebrow><div className="code" data-testid="invite-code">{squad.invite_code}</div></div>
@@ -103,16 +107,18 @@ export function SquadStarter({ onDone }: { onDone?: () => void }) {
     setBusy(null);
   }
   return (
-    <div className="stack" style={{ gap: 16 }}>
+    <div className="stack squad-starter" style={{ gap: 20 }}>
+      <div className="empty-illustration" aria-hidden="true"><span>↗</span><span>↘</span><span>↗</span></div>
+      <div className="page-heading"><h2>Better with your mates.</h2><p>Share the trades, the takes, and the occasional bad entry.</p></div>
       <div className="panel stack" style={{ gap: 14 }}>
         <Eyebrow>Got a code?</Eyebrow><h3 className="h3">Join your mates.</h3>
-        <input className="field code" placeholder="ABC123" value={code} maxLength={6} data-testid="join-code"
+        <input className="field code" placeholder="ABC123" aria-label="Squad invite code" value={code} maxLength={6} data-testid="join-code"
           onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))} />
         <Button busy={busy === "join"} disabled={code.length !== 6} onClick={() => run("join", () => game.joinSquad(code))} id="join-squad">Join squad</Button>
       </div>
       <div className="panel stack" style={{ gap: 14 }}>
-        <Eyebrow>Start a squad</Eyebrow><h3 className="h3">Name the group chat.</h3>
-        <input className="field" placeholder="The rent money club" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} data-testid="new-squad-name" />
+        <Eyebrow>Or start your own</Eyebrow><h3 className="h3">Make room for the group.</h3>
+        <input className="field" placeholder="Give your squad a name" aria-label="New squad name" value={name} maxLength={32} onChange={(e) => setName(e.target.value)} data-testid="new-squad-name" />
         <Button busy={busy === "create"} disabled={!name.trim()} onClick={() => run("create", () => game.createSquad(name.trim()))} id="create-squad">Create squad</Button>
       </div>
       {err && <div className="err" data-testid="squad-error">{err}</div>}
@@ -185,14 +191,11 @@ function Leaderboard() {
       {st.leaderboard.map((r, i) => (
         <div key={r.handle}>
           <div className={`lb-row ${r.is_you ? "you" : ""} ${r.status === "blown" ? "rekt" : ""} ${r.funded ? "funded" : ""}`} data-testid="leader-row" style={{ filter: r.status === "blown" ? "grayscale(.8)" : undefined }}>
-            <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{i < 3 ? ["🥇", "🥈", "🥉"][i] : String(i + 1).padStart(2, "0")}</span>
+            <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{String(i + 1).padStart(2, "0")}</span>
             <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> <TodayPnl value={r.today_pnl} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
-                {r.status === "blown" && <span className="chip-status" style={{ background: "#333", color: "#ccc" }} data-testid="rekt-chip">💀 REKT</span>}
-                {r.status === "locked" && <span className="chip-status" style={{ background: "rgba(255,125,139,.12)", color: "var(--red)" }}>🔒 LOCKED</span>}
-                {r.funded ? <span className="chip-status" style={{ background: "rgba(242,202,115,.15)", color: "var(--gold)" }}>🏆 FUNDED</span> : r.target_hit && <span className="chip-status" style={{ background: "rgba(214,254,89,.12)", color: "var(--lime)" }}>🎯 TARGET HIT</span>}
-                {(r.resets_used ?? 0) > 0 && r.status !== "blown" && <span className="chip-status" style={{ background: "var(--line)", color: "var(--muted)" }}>BUY-BACK</span>}</div>
+                {r.status === "blown" ? <span className="chip-status" data-testid="rekt-chip">Account closed</span> : r.status === "locked" ? <span className="chip-status">Daily limit</span> : r.funded ? <span className="chip-status lime">Funded</span> : r.target_hit ? <span className="chip-status lime">Target reached</span> : (r.resets_used ?? 0) > 0 && <span className="chip-status">Restarted</span>}</div>
               <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"}${r.wins != null ? ` · ${r.wins}W–${r.losses ?? 0}L` : ""}`}</div>
             </div>
             <div style={{ textAlign: "right" }}>

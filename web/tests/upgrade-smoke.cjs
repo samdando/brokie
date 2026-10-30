@@ -20,7 +20,7 @@ await page.evaluate(async()=>{
  game.set({phase:'ready',me:{handle:'sam',season:'s1',season_number:1,season_ends_at:'2026-12-14T00:00:00Z',server_time:now,cash:99900,rules,protection_credit:0,liquidations:0,has_backup_code:true,positions:[],trades,quotes:['nas','gold','es'].map(market=>({market,price:29700,quoted_at:now}))},squads:[{id:'s',name:'Bing',member_count:5,invite_code:'ABCDEF',owner_id:'sam'}],squadId:'s',candles:{nas:candles,gold:candles,es:candles},leaderboard:['jaoushai','mrsdandylion','ankits','bum','sam'].map((handle,i)=>({handle,is_you:handle==='sam',equity:100000-i*100,return_pct:2-i,trades:5,worst_trade:-100,open_positions:0,trading_days:1,qualified:false})),feed:Array.from({length:5},(_,i)=>({kind:'opened',id:String(i),handle:'jaoushai',market:'nas',side:'long',quantity:2,price:29700,pnl:null,reason:null,at:now,is_you:false})),chat:[{id:1,handle:'sam',is_you:true,kind:'text',body:'See you tomorrow bro',at:now}],lifetime:{total_trades:5,win_rate:0,max_drawdown:5.1,seasons_played:1,seasons_funded:0,seasons_blown:0,seasons:[{season:'s1',number:1,return_pct:-5.01,status:'active',funded:false}]}});
  localStorage.setItem('brokie.lessons','[0,1,2]');
 });
-await page.getByTestId('equity').waitFor();
+await page.getByTestId('go-long').waitFor();
 
 await page.evaluate(()=>{
  const g=window.testGame, now=new Date().toISOString(); g.setCandleSeconds(60); g.set({me:{...g.state.me,positions:[{id:'pan-test',market:'nas',side:'long',quantity:1,entry_price:29700,opened_at:now}]}});
@@ -57,10 +57,10 @@ const during=await page.locator('.tabs').boundingBox(); assert.equal(during.y,fo
 await page.getByTestId('squad-active').waitFor(); await page.waitForTimeout(450);
 assert.equal(await page.getByText('The pit',{exact:true}).count(),0,'pit replaced');
 assert(await page.getByTestId('squad-active').innerText().then(t=>t.includes('sarah')),'active trade visible');
-assert(await page.getByTestId('squad-daily').innerText().then(t=>t.includes('123')&&t.includes('42')),'daily member totals visible');
+await page.getByTestId('squad-recap').locator('summary').click();assert(await page.getByTestId('squad-daily').innerText().then(t=>t.includes('123')&&t.includes('42')),'daily member totals visible');
 assert((await page.getByTestId('squad-active').boundingBox()).y < (await page.locator('.competition-board').boundingBox()).y,'active trades first');
 await page.screenshot({path:'/tmp/brokie-new-squad.png',fullPage:true});
-await page.getByTestId('tab-you').click(); await page.getByTestId('avatar-bull').waitFor(); await page.waitForTimeout(400);
+await page.getByTestId('tab-you').click(); await page.getByRole('button',{name:'Make it yours',exact:false}).click();await page.getByTestId('avatar-bull').waitFor(); await page.waitForTimeout(400);
 await page.getByTestId('avatar-bull').click(); await page.getByTestId('avatar-bull').getByText('Equipped ✓').waitFor();
 assert(await page.getByTestId('avatar-shop').innerText().then(t=>t.includes('5 tokens')),'shop updates wallet after purchase');
 await page.screenshot({path:'/tmp/brokie-new-you.png',fullPage:true});

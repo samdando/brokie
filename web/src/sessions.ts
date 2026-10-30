@@ -14,7 +14,9 @@ export function marketSessionOpen(m: Market, at: number) {
   const { hour } = localParts(at);
   return isCrypto(m) ? weekendMode(at) : !weekendMode(at) && (hour < 17 || hour >= 18);
 }
-export const sessionMarkets = (at: number): Market[] => weekendMode(at) ? ["btc", "eth", "sol"] : ["gold", "nas", "es", "us30"];
+export const FUTURES: Market[] = ["gold", "nas", "es", "us30"];
+export const CRYPTOS: Market[] = ["btc", "eth", "sol"];
+export const sessionMarkets = (at: number): Market[] => [...(weekendMode(at) ? CRYPTOS : FUTURES)];
 export function tradingDay(at: number) {
   const { date, hour } = localParts(at);
   if (hour >= 17) date.setUTCDate(date.getUTCDate() + 1);

@@ -14,19 +14,19 @@ export function Onboarding() {
     setBusy(false);
   }
   return (
-    <div className="onboard">
+    <div className="onboard welcome-screen">
       <div className="wordmark" style={{ fontSize: 44, letterSpacing: -2.4 }}>brokie<i style={{ width: 11, height: 11 }} /></div>
-      <h1 style={{ font: "600 30px/1.1 var(--round)", letterSpacing: -1, margin: "28px 0 0" }}>All the market.<br />None of the rent money.</h1>
-      <div className="stack" style={{ gap: 12, marginTop: 26 }}>
-        <div className="point"><i>📈</i>Real Gold, NAS, ES and US30 prices. Fake $100k.</div>
-        <div className="point"><i>🏆</i>8-week prop challenge: don't lose 8%, hit +10%.</div>
-        <div className="point"><i>🎙</i>Talk trades live with your mates.</div>
+      <div className="welcome-art" aria-hidden="true"><svg viewBox="0 0 320 115" fill="none"><path d="M0 89h320M0 49h320" stroke="currentColor" strokeOpacity=".15"/><path d="m0 96 23-9 19 5 20-29 22 10 20-25 21 7 20-21 23 9 17-22 21 9 22-17 22 6 22-13 22 3 26-5" stroke="currentColor" strokeWidth="1.5"/><circle cx="126" cy="54" r="15" fill="#172B27" stroke="currentColor" strokeOpacity=".6"/><path d="m121 56 5-5 5 5m-5-5v9" stroke="currentColor"/><circle cx="229" cy="14" r="13" fill="#2A202C" stroke="#D7A3AC" strokeOpacity=".6"/><path d="m225 12 4 4 4-4m-4-4v8" stroke="#D7A3AC"/></svg><span>Good trades. Better company.</span></div>
+      <h1>Take a position.<br />Bring your mates.</h1>
+      <p className="welcome-intro">Real markets. A pretend $100k.<br />Your group chat, with a trading floor.</p>
+      <div className="welcome-facts">
+        <span>Gold · Nasdaq · S&amp;P · Dow</span><span>8-week prop challenge</span>
       </div>
-      <div style={{ flex: 1, minHeight: 40 }} />
+      <div style={{ flex: 1, minHeight: 28 }} />
       <Eyebrow>Pick your handle</Eyebrow>
       <div className="row" style={{ marginTop: 10, gap: 0, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 13, paddingLeft: 16 }}>
         <span className="muted" style={{ fontSize: 17 }}>@</span>
-        <input className="field" style={{ border: 0, paddingLeft: 2 }} placeholder="chartgremlin" value={handle} maxLength={18} autoCapitalize="none" autoCorrect="off" autoFocus
+        <input className="field" style={{ border: 0, paddingLeft: 2 }} placeholder="yourhandle" aria-label="Your handle" value={handle} maxLength={18} autoCapitalize="none" autoCorrect="off"
           onChange={(e) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} onKeyDown={(e) => e.key === "Enter" && go()} data-testid="onboarding-handle" />
       </div>
       {err ? <div className="err" style={{ marginTop: 8 }} data-testid="onboarding-error">{err}</div> : <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>3–18 letters, numbers or _. No email, no password.</div>}

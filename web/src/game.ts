@@ -2,9 +2,10 @@
 // trade and owns every balance; this only mirrors and polls.
 import { useSyncExternalStore } from "react";
 import { Backend, BackendError } from "./api";
+import { haptic } from "./effects";
 import { isConfigured } from "./config";
 import { marketSessionOpen, sessionMarkets, weekendMode } from "./sessions";
-import type { Bubble, Candle, Position, ChatMsg, EventItem, EventsFeed, FeedEvent, FeedbackKind, Flash, GlobalBoard, LeaderRow, Lifetime, Market, MyState, Quote, Side, Squad, Trade } from "./types";
+import { MARKETS, type Bubble, type Candle, type Position, type ChatMsg, type EventItem, type EventsFeed, type FeedEvent, type FeedbackKind, type Flash, type GlobalBoard, type LeaderRow, type Lifetime, type Market, type MyState, type Quote, type Side, type Squad, type Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -99,7 +100,7 @@ export class Game {
   api = new Backend();
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
-    leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: (read(MARKET_KEY) as Market) || "nas",
+    leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: read(MARKET_KEY) !== "prediction" && read(MARKET_KEY) && Object.prototype.hasOwnProperty.call(MARKETS, read(MARKET_KEY) ?? "") ? read(MARKET_KEY) as Market : weekendMode(Date.now()) ? "btc" : "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: {}, bracketSaving: null, pending: null,
@@ -203,7 +204,7 @@ export class Game {
     if (weekend !== this.lastWeekend) {
       this.lastWeekend = weekend;
       const markets = sessionMarkets(this.now());
-      if (this.state.market !== "prediction" && !markets.includes(this.state.market)) this.setMarket(markets[0]);
+      if (!markets.includes(this.state.market)) this.setMarket(markets[0]);
     }
     this.checkSeason(me);
   }
@@ -530,7 +531,7 @@ export class Game {
       const pop = fresh.length && !this.state.chatOpen ? fresh[fresh.length - 1] : null;
       const unread = fresh.length && !this.state.chatOpen ? this.state.chatUnread + fresh.length : this.state.chatUnread;
       this.set(pop ? { chat: msgs, chatPop: pop, chatUnread: unread } : { chat: msgs, chatUnread: unread });
-      if (pop) { try { navigator.vibrate?.([15, 60, 15]); } catch { /* */ } }
+      if (pop) haptic(8);
     } catch { /* keep last */ }
   }
   async sendMessage(body: string, kind: "text" | "emoji" = "text"): Promise<string | null> {
@@ -584,7 +585,7 @@ export class Game {
 
   private raise(f: Flash) {
     this.set({ flash: f });
-    try { navigator.vibrate?.([70, 40, 70]); } catch { /* unsupported */ }
+    haptic(10);
   }
   dismissFlash() { this.set({ flash: null }); }
 

@@ -8,11 +8,11 @@ import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
 import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
-import { EventStrip, FlashOverlay } from "./Events";
+import { FlashOverlay } from "./Events";
 import { ChatCard, FeedbackSheet } from "./Social";
 
 import { useVoice, voice, ROOMS } from "./voice";
-import { Icon, Sheet, useNow, useToast } from "./ui";
+import { Icon, Sheet, useToast } from "./ui";
 
 type Tab = "trade" | "squad" | "learn" | "you";
 const TAB_ORDER: Tab[] = ["trade", "squad", "learn", "you"];
@@ -65,13 +65,11 @@ export function App() {
 
   return (
     <Profiles>
-      <div className="app">
+      <div className={`app app-${tab}`}>
         <div className="header">
           <div className="wordmark">brokie<i /></div>
-          <SeasonTimer number={st.me.season_number ?? 1} end={st.me.season_ends_at} offset={st.clockOffset} />
           <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
-        <EventStrip compact={tab === "trade"} />
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
         <main className="page-stage" style={{ ["--slide" as string]: slide }}
           onTouchStart={e => {
@@ -104,7 +102,7 @@ export function App() {
             <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat
           </button>
         ) : (
-          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
+          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} aria-current={tab === t && !st.chatOpen ? "page" : undefined} onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
@@ -114,9 +112,9 @@ export function App() {
         {game.squad ? <>
           {st.squads.length > 1 && <div className="hscroll">{st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}
           <ChatCard key={game.squad.id} />
-        </> : <div className="panel stack" style={{ gap: 12 }}>
-          <b>No squad yet</b>
-          <div className="muted" style={{ fontSize: 13 }}>Chat is for your squad. Start one or join with an invite code.</div>
+        </> : <div className="quiet-empty stack" style={{ gap: 12 }}>
+          <span aria-hidden="true">↗</span><b>Bring the group together.</b>
+          <div className="muted" style={{ fontSize: 13 }}>Your squad gets a place for setups, reactions, and everything between trades.</div>
           <button className="big-btn lime" onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate("squad"); }}>Go to Squad</button>
         </div>}
       </Sheet>
@@ -171,16 +169,4 @@ function ChatPop({ onOpen }: { onOpen: () => void }) {
       <span className="chat-pop-x" role="presentation" onClick={(e) => { e.stopPropagation(); game.dismissChatPop(); }}>✕</span>
     </button>
   );
-}
-
-/** Ticks on its own so the rest of the app doesn't re-render every second. */
-function SeasonTimer({ number, end, offset }: { number: number; end: string; offset: number }) {
-  const now = useNow(1000) + offset;
-  const remaining = Math.max(0, Date.parse(end) - now);
-  const minutes = Math.ceil(remaining / 60000);
-  const progress = Math.max(0, Math.min(100, (1 - remaining / (56 * 86400000)) * 100));
-  return <div className="season-timer" data-testid="season-pill" title={`Season ${number} · 8 weeks · ends Monday 00:00 Brisbane`}>
-    <span><span className="season-word">Season </span><span className="season-short">S</span>{number} · <span className="season-digits">{Math.floor(minutes / 1440)}d {String(Math.floor(minutes / 60) % 24).padStart(2, "0")}h {String(minutes % 60).padStart(2, "0")}m</span> left</span>
-    <div className="season-progress" role="progressbar" aria-label="Season elapsed" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}><i style={{ width: `${progress}%` }} /></div>
-  </div>;
 }

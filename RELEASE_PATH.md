@@ -1,6 +1,20 @@
-# Brokie release path · 28 October 2026
+# Brokie release path · 30 October 2026
 
-## Chart trade visibility · 29 October 2026
+## Whole-app redesign and Crypto replacement
+
+The web release puts the chart, price and unrealised P&L first. Account equity, risk rules, session detail and trade history use progressive disclosure. BUY and SELL have identical dimensions and spacing, with secondary 1/10/100 size controls. Compact real squad avatars retain each entry's long/short direction; selected fills reveal exact paths. A lightweight squad activity sheet and user-triggered reactions keep the social layer available without opening Chat.
+
+Crypto replaces the Predictions interface, following the final user correction. BTC, ETH and SOL have real-price charts and existing paper-order controls, with honest closed-session states. Both Futures and Crypto remain discoverable and remember the last selected market while switching. Existing server-owned weekday/weekend sessions, risk checks, balances and historical records are preserved. The Yes/No contract component, navigation, filters and client requests have been removed. Earned cosmetic tokens remain usable for avatar purchases. No database migration or account reset is part of this release.
+
+Squad uses restrained ranking rows, visible invitation controls, actual active trades, and expandable daily statistics and voice rooms. Chat retains grouped messages and a stable scroll/composer layout. Learn uses compact lessons and saved progress, with functional next-lesson transitions. You puts season return first; breakdown, cosmetics and settings are secondary. Trade receipts use a short initial list with access to all latest 50 records. Player cards, review sheets, onboarding and restore share the same type, spacing, dark surfaces and accents. Season countdowns stay in the relevant Squad/You context instead of the global header.
+
+Arcade streaks, explosions, exit effects and large event flashes are removed from Trade. Only confirmed positive closes show the brief success receipt. Sound and haptics are opt-in; reduced-motion preferences are respected. The installed app cache advances to `brokie-shell-v14`. Existing native WebKit clients load the same hosted app.
+
+Verification uses synthetic browser accounts with external requests blocked and disposable backend databases. It covers 320/393/430px phone/fullscreen layouts, all secondary pages, chart gestures/history, BUY/SELL sizing and batching, Crypto navigation without prediction requests, session boundaries, risk details, squads/invitations, reactions/chat, lessons/progress, reviews/notes, avatar purchases and feedback preferences. Physical-device microphone, audio and native haptics still require device verification.
+
+Deployment uses the existing GitHub Pages workflow on `main`, https://samdando.github.io/brokie/. The workflow runs backend tests and the production build before publishing. No database changes are required.
+
+## Previous chart release · 29 October 2026
 
 Production has `backend/chart_history.sql` applied. The chart RPC accepts an optional history start, returns every authorized player's fills in that current-season market window, and keeps legacy clients on a 24-hour default. The shared 60-close cap is removed; squad membership and authenticated-only execution remain enforced.
 

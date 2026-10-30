@@ -18,37 +18,36 @@ export function LearnScreen({ goTrade }: { goTrade: () => void }) {
   const [done, setDone] = useState<number[]>(() => { try { const saved: unknown = JSON.parse(localStorage.getItem("brokie.lessons") ?? "[]"); return Array.isArray(saved) ? [...new Set(saved.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < LESSONS.length))] : []; } catch { return []; } });
   const [open, setOpen] = useState<number | null>(null);
   const [pick, setPick] = useState<number | null>(null);
-  const finish = (i: number) => { if (!done.includes(i)) { const d = [...done, i]; setDone(d); localStorage.setItem("brokie.lessons", JSON.stringify(d)); } };
+  const finish = (i: number) => { if (!done.includes(i)) { const d = [...done, i]; setDone(d); try { localStorage.setItem("brokie.lessons", JSON.stringify(d)); } catch { /* Progress remains available this visit. */ } } };
   const l = open !== null ? LESSONS[open] : null;
   return (
-    <div className="stack" style={{ gap: 24 }}>
-      <div><h1 className="title">{"Less guessing.\nMore getting it."}</h1><div className="muted" style={{ fontSize: 13 }}>Tiny lessons. Fewer expensive habits.</div></div>
-      <div className="panel row" style={{ gap: 16 }}>
-        <span className="lesson-ring" style={{ ["--progress" as string]: `${done.length / LESSONS.length * 360}deg` }} aria-label={`${done.length} of ${LESSONS.length} complete`}><span>{done.length === LESSONS.length ? "✓" : "⚡"}</span></span>
-        <div><b style={{ fontSize: 14 }}>{done.length === LESSONS.length ? "Essentials complete." : "Build your market brain"}</b><div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{done.length} of {LESSONS.length} essentials complete</div></div>
-      </div>
+    <div className="stack learn-screen secondary-screen" style={{ gap: 24 }}>
+      <div className="page-heading"><Eyebrow>Learn</Eyebrow><h1>A little more edge.</h1><p>Three minutes to get the basics.<br />A whole season to practise.</p></div>
+      <section className="learn-progress" aria-label={`${done.length} of ${LESSONS.length} complete`}>
+        <div className="row between"><b>{done.length === LESSONS.length ? "The essentials, understood." : "Small lessons. Better decisions."}</b><span>{done.length} / {LESSONS.length}</span></div>
+        <div className="learn-progress-track" role="progressbar" aria-label="Lessons complete" aria-valuemin={0} aria-valuemax={LESSONS.length} aria-valuenow={done.length}>{LESSONS.map((_,i) => <i key={i} className={done.length > i ? "complete" : ""} />)}</div>
+        <small>{done.length === LESSONS.length ? "Come back for a refresher any time." : "One idea, one quick check. Go at your pace."}</small>
+      </section>
       {done.length === LESSONS.length && <Button onClick={goTrade}>Put it into practice →</Button>}
-      <Eyebrow>The essentials · tap to learn or review</Eyebrow>
-      {LESSONS.map((x, i) => (
-        <button key={i} className="panel lesson-card" style={{ textAlign: "left", border: "1px solid var(--line)" }} onClick={() => { setOpen(i); setPick(null); }}>
-          <div className="row between"><span className="eyebrow">Lesson 0{i + 1}</span><span className="lime">{done.includes(i) ? "✓" : "↗"}</span></div>
-          <div style={{ font: "600 23px var(--round)", letterSpacing: -0.5, margin: "10px 0" }}>{x.title}</div>
-          <div className="muted" style={{ fontSize: 12 }}>{x.sub}</div>
+      <section className="lesson-list"><Eyebrow>Your starting point</Eyebrow>{LESSONS.map((x, i) => (
+        <button key={i} className="lesson-card" onClick={() => { setOpen(i); setPick(null); }} data-testid={`lesson-${i}`}>
+          <span className={`lesson-number ${done.includes(i) ? "complete" : ""}`}>{done.includes(i) ? "✓" : `0${i+1}`}</span><span><b>{x.title}</b><small>{x.sub}</small></span><span className="lesson-arrow" aria-hidden="true">↗</span>
         </button>
-      ))}
+      ))}</section>
+      <div className="learn-note"><span aria-hidden="true">↗</span><p>Real prices. Room to learn.<small>Practise the decision before the money is real.</small></p></div>
       <Sheet open={!!l} onClose={() => setOpen(null)}>
-        {l && <div className="stack" style={{ gap: 20 }}>
+        {l && <div className="stack lesson-content" style={{ gap: 20 }} data-testid="lesson-content">
           <div className="row between"><Eyebrow>The essentials / 0{open! + 1}</Eyebrow><button className="lime" style={{ fontWeight: 700 }} onClick={() => setOpen(null)}>Done</button></div>
           <h3 className="h3" style={{ fontSize: 28 }}>{l.title}</h3>
           <div className="muted" style={{ fontSize: 15, lineHeight: 1.6 }}>{l.body}</div>
           <div className="sep" />
           <b style={{ fontSize: 17 }}>{l.q}</b>
           {l.a.map((a, i) => (
-            <button key={i} className="panel" style={{ padding: 17, borderRadius: 12, textAlign: "left", border: `1px solid ${pick === i ? (i === l.c ? "var(--lime)" : "var(--red)") : "var(--line)"}`, color: pick === i ? (i === l.c ? "var(--lime)" : "var(--red)") : "#fff" }}
+            <button key={i} className="lesson-answer" aria-pressed={pick === i} style={{ borderColor: pick === i ? (i === l.c ? "var(--lime)" : "var(--red)") : "var(--line)", color: pick === i ? (i === l.c ? "var(--lime)" : "var(--red)") : undefined }}
               onClick={() => { setPick(i); if (i === l.c) finish(open!); }}>{a}</button>
           ))}
-          {pick !== null && <div className={pick === l.c ? "lime" : "red"} style={{ fontSize: 13 }}>{pick === l.c ? `Nailed it. ${l.why}` : "Not quite. Give it another go."}</div>}
-          {pick === l.c && <Button onClick={() => setOpen(null)}>Next</Button>}
+          {pick !== null && <div role="status" className={`lesson-result ${pick === l.c ? "lime" : "red"}`}>{pick === l.c ? `That's it. ${l.why}` : "Not quite. Give it another go."}</div>}
+          {pick === l.c && <Button onClick={() => { if (open! < LESSONS.length-1) { setOpen(open!+1); setPick(null); } else setOpen(null); }}>{open! < LESSONS.length-1 ? "Next lesson →" : "Essentials complete ✓"}</Button>}
         </div>}
       </Sheet>
     </div>

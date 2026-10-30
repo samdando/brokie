@@ -1,37 +1,32 @@
+import { FloorPresence } from "./FloorPresence";
+import { EventStrip } from "./Events";
 import { tradingSummary } from "./tradingSummary";
 import { SelectionRail } from "./SelectionRail";
 import { SessionClock } from "./SessionClock";
-import { MarketArt } from "./MarketArt";
-import { orderEffect, readEffect } from "./effects";
-import { PredictionMarkets } from "./PredictionMarkets";
+import { haptic, orderEffect, readEffect } from "./effects";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { frameLabel, game, stacksOf, useGame } from "./game";
-import { sessionCountdown, sessionMarkets } from "./sessions";
+import { isCrypto, sessionCountdown, FUTURES, CRYPTOS } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
-import { Button, Eyebrow, Icon, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
+import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
 export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
   const me = st.me!;
-  const lastChart = useRef<Market>(st.market === "prediction" ? "nas" : st.market);
-  const [switching, setSwitching] = useState(false);
-  const switchTimer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(switchTimer.current), []);
-  function switchPrediction() {
-    if (switching) return;
-    if (st.market !== "prediction") lastChart.current = st.market;
-    setSwitching(true);
-    game.setMarket(st.market === "prediction" ? (shown.includes(lastChart.current) ? lastChart.current : shown[0]) : "prediction");
-    switchTimer.current = setTimeout(() => setSwitching(false), 420);
-  }
+  const crypto = isCrypto(st.market);
+  const lastFuture = useRef<Market>("nas");
+  const lastCrypto = useRef<Market>("btc");
+  if (crypto) lastCrypto.current = st.market; else if (st.market !== "prediction") lastFuture.current = st.market;
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [settled, setSettled] = useState<{ pnl: number; title: string } | null>(null);
+  useEffect(() => { if (!settled) return; const timer=setTimeout(()=>setSettled(null),2800); return ()=>clearTimeout(timer); },[settled]);
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
-  const [showHistory, setShowHistory] = useState(() => { try { return localStorage.getItem("brokie.chartHistory") !== "off"; } catch { return true; } });
-  const lastEnterToast = useRef(0);
+  const [showHistory, setShowHistory] = useState(() => { try { return localStorage.getItem("brokie.chartHistory") === "on"; } catch { return false; } });
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
   const [pnlInfo, setPnlInfo] = useState(false);
@@ -45,6 +40,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     window.addEventListener("resize", resize); window.visualViewport?.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("resize", resize); };
   }, []);
+  const [previewH, setPreviewH] = useState(CHART_SMALL);
   const [bigH, setBigH] = useState(Math.max(120, viewportH - 300));
   // Remember where the page was BEFORE the chart leaves the page flow: once it's fixed, the browser
   // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
@@ -84,30 +80,22 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       restore(); requestAnimationFrame(() => { restore(); requestAnimationFrame(restore); });
     };
   }, [big]);
-  const [activity, setActivity] = useState<{ text: string; n: number } | null>(null);
-  useEffect(() => { setActivity(null); }, [st.market, st.squadId]);
-  useEffect(() => { if (!activity) return; const t = setTimeout(() => setActivity(null), 5000); return () => clearTimeout(t); }, [activity]);
-  const [markerHint, setMarkerHint] = useState(() => hintOn("markers"));
   const [cardHint, setCardHint] = useState(() => hintOn("cards"));
   const mark = (m: Market) => game.quote(m)?.price ?? null;
-  const unrealized = me.positions.reduce((s, p) => s + (p.market === "prediction" ? pnlOf(p, 0) : mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
+  const unrealized = me.positions.reduce((s, p) => s + (mark(p.market) ? pnlOf(p, mark(p.market)!) : 0), 0);
   const equity = Math.max(0, me.cash + unrealized);
   const rules = me.rules;
-  const base = rules?.start_balance ?? 10000;
-  const pick = (_b: Bubble) => { if (markerHint) { hintDone("markers"); setMarkerHint(false); } };
-  // Players (not legs) on each side, for the squad toggle: spamming 20 micros is still one player.
-  const crowdHere = st.bubbleScope === `${st.market}:${game.squad?.id ?? ""}` ? st.bubbles.filter((b) => b.state === "open" && !b.is_you) : [];
-  const longs = new Set(crowdHere.filter((b) => b.side === "long").map((b) => b.handle)).size;
-  const shorts = new Set(crowdHere.filter((b) => b.side === "short").map((b) => b.handle)).size;
+  const base = rules?.start_balance ?? 100000;
+  const pick = (_b: Bubble) => hintDone("markers");
   useEffect(() => {
     void game.refreshBubbles();
     const t = setInterval(() => { if (!document.hidden) void game.refreshBubbles(); }, 3000);
     return () => clearInterval(t);
   }, [st.market, st.squadId]);
   const market = st.market;
-  // A market only shows once the price feed has a quote for it (so a new market appears by itself when its feed goes live).
-  const shown = sessionMarkets(game.now());
-  const heldElsewhere = [...new Set(me.positions.filter(p => p.market !== "prediction").map(p => p.market))].filter(m => !shown.includes(m));
+  // Both sections stay discoverable; the server still owns trading-session availability.
+  const shown: Market[] = [...(crypto ? CRYPTOS : FUTURES)];
+  const heldElsewhere = [...new Set(me.positions.map(p => p.market))].filter(m => !shown.includes(m));
   const candles = game.liveCandles(market);
   const quote = mark(market);
   // Own fills come from account state immediately, including each individual leg.
@@ -118,33 +106,35 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   ];
   const open = game.isOpen(market);
   useLayoutEffect(() => {
-    const card = chartCard.current;
-    if (!big || !card) return;
-    const fit = () => {
-      const css = getComputedStyle(card);
-      const used = Array.from(card.children).reduce((sum, child) => {
-        if (child.querySelector(".chart-host")) return sum;
-        const style = getComputedStyle(child);
-        // Layout height stays stable while the fullscreen entrance animation scales the card.
-        return sum + (child as HTMLElement).offsetHeight + parseFloat(style.marginTop || "0") + parseFloat(style.marginBottom || "0");
-      }, 0);
-      setBigH(Math.max(80, Math.floor(card.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - used - 2)));
+    const card=chartCard.current;
+    if (!card) return;
+    const dock=card.closest(".trade-screen")?.querySelector<HTMLElement>(".trade-dock");
+    const fit=()=>{
+      const css=getComputedStyle(card);
+      const used=Array.from(card.children).reduce((sum,child)=>{
+        const style=getComputedStyle(child);
+        if (child.querySelector(".chart-host") || ["fixed","absolute"].includes(style.position)) return sum;
+        return sum+(child as HTMLElement).offsetHeight+parseFloat(style.marginTop||"0")+parseFloat(style.marginBottom||"0");
+      },0);
+      const padding=parseFloat(css.paddingTop)+parseFloat(css.paddingBottom);
+      if(big) setBigH(Math.max(80,Math.floor(card.clientHeight-padding-used-2)));
+      else if(dock) setPreviewH(Math.max(96,Math.min(640,Math.floor(dock.getBoundingClientRect().top-card.getBoundingClientRect().top-window.scrollY-padding-used-12))));
     };
-    fit();
-    const ro = new ResizeObserver(fit); ro.observe(card);
-    for (const child of Array.from(card.children)) if (!child.querySelector(".chart-host")) ro.observe(child);
-    return () => ro.disconnect();
-  }, [big, viewportH, chartInfo, open]);
+    fit();const ro=new ResizeObserver(fit);ro.observe(card);if(dock)ro.observe(dock);
+    for(const child of Array.from(card.children))if(!child.querySelector(".chart-host"))ro.observe(child);
+    return ()=>ro.disconnect();
+  },[big,viewportH,open,market]);
   const change = quote && candles[0] ? quote - candles[0].open : 0;
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
 
-  const stacks = stacksOf(me.positions.filter(p => p.market !== "prediction"));
+  const stacks = stacksOf(me.positions);
   async function close(id: string, ids: string[], title: string): Promise<boolean> {
     setClosing(id);
     const r = await game.closeStack(ids);
     setClosing(null);
-    toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
+    if (!r.error && (r.pnl ?? 0) > 0) { setSettled({ pnl:r.pnl!,title }); haptic(10); }
+    else toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
     return !r.error;
   }
   async function saveProtection(id: string, b: { sl?: number; tp?: number }) {
@@ -165,110 +155,101 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     })}
   </div>;
   const orderDock = <div className="trade-dock">
-    <TradingStatus market={market} onOpen={() => setPositionsOpen(true)} />
-    <div className="size-picker"><span>MICROS</span><SelectionRail label="Order size" value={st.qty} options={[1, 10, 100].map(n => ({ value: n, label: `${n}` }))} disabled={!!st.pending || game.ordersInFlight > 0} onChange={n => game.setQty(n)} testId="micro-rail" itemPrefix="size" /></div>
-    <SpamPad toast={toast} disabled={rules?.status === "blown" || rules?.status === "locked" || !open} />
+    <TradingStatus market={market} onOpen={()=>setPositionsOpen(true)}/>
+    <div className="execution-options chart-controls">
+      <button type="button" className="execution-style style-switch" role="switch" aria-checked={style === "line"} aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"} title={style === "candles" ? "Candles" : "Line"} data-testid="style-switch" onClick={()=>{const next=style === "candles" ? "line" : "candles";setStyle(next);try{localStorage.setItem("brokie.style",next);}catch{/* */}}}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">{style === "candles" ? <><path d="M7 3v4m0 9v5m10-18v7m0 7v4"/><rect x="4" y="7" width="6" height="9" rx="1"/><rect x="14" y="10" width="6" height="7" rx="1"/></> : <path d="m3 17 5-7 5 4 8-10"/>}</svg>
+      </button>
+      <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>
+      <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
+    </div>
+    <SpamPad toast={toast} disabled={rules?.status === "blown"||rules?.status === "locked"||!open}/>
   </div>;
+
 
 
   return (
     <div className="stack trade-screen">
 
-      <div className="trade-mode-row"><span className="eyebrow">{market === "prediction" ? "Predictions" : "Markets"}</span>
-      <button className={`predictions-entry ${market === "prediction" ? "active" : ""}`} onClick={switchPrediction} aria-pressed={market === "prediction"} disabled={switching} data-testid="prediction-switch"><span className="prediction-orbit" aria-hidden="true">✦</span><span>{market === "prediction" ? "Back to charts" : "Predictions"}</span><span aria-hidden="true">{market === "prediction" ? "↙" : "↗"}</span></button></div>
-      <div key={market === "prediction" ? "predictions" : "charts"} className={`market-stage ${switching ? market === "prediction" ? "to-predictions" : "to-charts" : ""}`}>
-      {market !== "prediction" && <>
-
+      <div className="floor-toolbar">
+        <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
+        <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
+      </div>
+      <div className="market-stage" data-testid="markets-section" data-section={crypto ? "crypto" : "futures"}>
       <div className={`markets ${shown.length > 3 ? "four" : ""}`} style={{ ["--n" as string]: shown.length }}>
         {shown.map((m) => (
           <button key={m} className={`market ${market === m ? "on" : ""}`} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => game.setMarket(m)} data-testid={`market-${m}`}>
-            <span className="market-identity"><MarketArt market={m} /><b>{m === "nas" ? "US 100" : m === "es" ? "US 500" : m === "us30" ? "US 30" : MARKETS[m].title}</b></span>
-            <span className="mono">{mark(m) ? px(mark(m)!, digits(m)) : "—"}</span>
+            <span className="market-identity"><b>{m === "nas" ? "Nasdaq" : m === "es" ? "S&P" : m === "us30" ? "Dow" : MARKETS[m].title}</b></span>
           </button>
         ))}
       </div>
 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
-      </>}
-      {market === "prediction" ? <PredictionMarkets toast={toast} /> : <>
       <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
+        <div className="chart-utilities">
+          <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+          <div className="chart-actions">
+          <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => { const next = !showHistory; setShowHistory(next); try { localStorage.setItem("brokie.chartHistory", next ? "on" : "off"); } catch { /* */ } }} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
+          <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
+          <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
+            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
+          </div>
+        </div>
         <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
           <div>
-            <div className="instrument-title">{MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+
             <div className="row" style={{ gap: 8, alignItems: "baseline", marginTop: 6 }}>
               <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
               <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change), digits(market))}</span>
             </div>
           </div>
-          <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
-            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
+
 
         </div>
-        {chartInfo && <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Use the top-right expand button to pan, zoom and trade fullscreen."}</div>}
-        <BrokieChart fullscreen={big} height={big ? bigH : CHART_SMALL} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+        <FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
+        {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
+        <BrokieChart fullscreen={big} height={big ? bigH : previewH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          // Closed history stays visible by default; the squad toggle controls friends' markers.
+          // History is opt-in; current squad entries stay visible by default.
           overlay={(toXY, width, height) => <>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} height={height} showHistory={showHistory} now={game.now()} bubbles={chartBubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
-              onEnter={(b) => { const now = Date.now(); if (now - lastEnterToast.current < 5000) return; lastEnterToast.current = now; setActivity({ text: `@${b.handle} went ${b.side} ${b.quantity} micro${b.quantity === 1 ? "" : "s"}`, n: now }); }} />
-            {crowd && (activity ? <span key={activity.n} className="chart-toast" role="status">{activity.text}</span>
-              : markerHint && crowdHere.length > 0 && <span className="chart-toast hint">Tap a face for their trade</span>)}
+              onEnter={()=>{}} />
+            {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
           </>} />
-        <div className="chips chart-controls" style={{ marginTop: 10 }}>
-          {/* One button: shows the chart style you're on; tap to flip between candles and line. */}
-          <button type="button" className="chip lime on style-switch" role="switch" aria-checked={style === "line"} data-testid="style-switch"
-            aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"}
-            onClick={() => { const s = style === "candles" ? "line" : "candles"; setStyle(s); try { localStorage.setItem("brokie.style", s); } catch { /* */ } }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">{style === "candles" ? <><path d="M7 3v4m0 9v5m10-18v7m0 7v4"/><rect x="4" y="7" width="6" height="9" rx="1"/><rect x="14" y="10" width="6" height="7" rx="1"/></> : <path d="m3 17 5-7 5 4 8-10"/>}</svg><small>{style === "candles" ? "Candles" : "Line"}</small>
-          </button>
-          <SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f => ({ value: f, label: frameLabel(f) }))} onChange={f => game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe" />
-
-          <button className={`chip lime ${crowd ? "on" : ""}`} aria-pressed={crowd} data-testid="crowd-toggle"
-            aria-label={crowd ? "Hide squad trades on the chart" : "Show squad trades on the chart"}
-            onClick={() => { const v = !crowd; setCrowd(v); try { localStorage.setItem("brokie.crowd", v ? "on" : "off"); } catch { /* */ } }}>
-            <span className="crowd-chip">{Icon.squad}{crowd && longs > 0 && <span className="lime">{longs}▲</span>}{crowd && shorts > 0 && <span className="red">{shorts}▼</span>}</span><small>Squad</small>
-          </button>
-          <button className="chip history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => { const next = !showHistory; setShowHistory(next); try { localStorage.setItem("brokie.chartHistory", next ? "on" : "off"); } catch { /* */ } }} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg><small>History</small></button>
-          <button className="chip chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info">ⓘ<small>Info</small></button>
-        </div>
-        {!open && <div className="chart-attribution">Market closed · new trades resume when prices are live.</div>}
+        {!open && <div className="chart-attribution">{crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live."}</div>}
         {big && orderDock}
       </div>
 
-      <section className="positions-section" data-testid="positions-section">
-        {stacks.length > 0 ? <>
-          <div className="row between"><h2 className="h2">Open positions</h2><button className="text-action" onClick={() => setPositionsOpen(true)}>{stacks.length} open ↗</button></div>
-          {positionCards}
-          {cardHint && <div className="position-hint">Swipe a position to close · drag its chart pill for SL/TP</div>}
-        </> : <div className="flat-state"><span><i aria-hidden="true" />You’re flat <small>No open trades</small></span><button onClick={goHistory}>History ↗</button></div>}
-      </section>
+      <SessionClock market={market} compact />
+      {!big && orderDock}
 
+
+      </div>
+      <Sheet open={accountOpen} onClose={()=>setAccountOpen(false)}><div className="account-detail stack" data-testid="account-sheet"><div className="row between"><h2 className="h2">Account & risk</h2><button type="button" className="text-action" onClick={()=>setAccountOpen(false)}>Done</button></div><p className="account-context">{money(base,0)} starting balance · Simulated funds</p>
       <section className={`account-hero account-compact ${rules?.status ?? "active"}`}>
         <div className="account-summary">
           <div><Eyebrow>Account equity · USD</Eyebrow><div className="equity" data-testid="equity"><TickValue value={equity}>{money(equity)}</TickValue></div></div>
           <div className="account-season"><Eyebrow>Season {me.season_number ?? ""}</Eyebrow>
-            <button type="button" className={`gain-btn ${equity >= base ? "lime" : "red"}`} onClick={() => setPnlInfo(true)} data-testid="pnl-info" aria-label="Season P&L. How is this calculated?">{signedMoney(equity - base)} <span aria-hidden="true">ⓘ</span></button>
+            <button type="button" className={`gain-btn ${equity >= base ? "lime" : "red"}`} onClick={() => { setAccountOpen(false); setPnlInfo(true); }} data-testid="pnl-info" aria-label="Season P&L. How is this calculated?">{signedMoney(equity - base)} <span aria-hidden="true">ⓘ</span></button>
             <small className="season-return">{equity >= base ? "+" : ""}{((equity - base) / base * 100).toFixed(2)}%{rules?.funded ? <span className="chip-status" data-testid="funded-chip">Funded</span> : rules?.target_hit ? <span className="chip-status" data-testid="target-chip">Target hit</span> : null}</small>
           </div>
         </div>
         {rules && <RuleStatus rules={rules} toast={toast} goHistory={goHistory} />}
         {rules && <Meters rules={rules} equity={equity} />}
       </section>
-      <SessionClock market={market} />
-      {!big && orderDock}
-
-
-      </>}
-      </div>
+      <SessionClock market={market} alerts={false} /><EventStrip compact />
+      <button type="button" className="text-action" onClick={()=>{setAccountOpen(false);goHistory();}}>View trade history ↗</button></div></Sheet>
+      <Sheet open={chartInfo} onClose={()=>setChartInfo(false)}><div className="stack"><div className="row between"><h2 className="h2">Your chart</h2><button type="button" className="text-action" onClick={()=>setChartInfo(false)}>Done</button></div>        <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Use the top-right expand button to pan, zoom and trade fullscreen."} Pictures mark entries: green ↑ is long, red ↓ is short. Tap grouped pictures to see everyone and each trade. Small crosses mark exits.</div>
+</div></Sheet>
       <Sheet open={positionsOpen} onClose={() => setPositionsOpen(false)}>
         <div className="stack" data-testid="positions-sheet">
           <div className="row between"><h2 className="h2">Your open positions</h2><button className="text-action" aria-label="Close positions" onClick={() => setPositionsOpen(false)}>Done</button></div>
           <TradingStatus market={market} />
-          {stacks.length ? positionCards : <div className="flat-state">You’re flat. No open trades.</div>}
-          <small className="muted">Unrealised P&amp;L covers all open trades in USD. Prediction tokens are separate.</small>
+          {stacks.length ? positionCards : <div className="floor-empty"><span aria-hidden="true">↗</span><b>You’re flat. Room for a fresh setup.</b><p>Your open trades and their protection will appear here.</p></div>}
+          <small className="muted">Unrealised P&amp;L covers all open trades in USD.</small>
         </div>
       </Sheet>
       <Sheet open={protectionId !== null} onClose={() => setProtectionId(null)}>
@@ -286,7 +267,7 @@ function TradingStatus({ market, onOpen }: { market: Market; onOpen?: () => void
   const tone = summary.flat || summary.pnl === null ? "muted" : summary.pnl >= 0 ? "lime" : "red";
   const exposure = [summary.long ? `LONG ${summary.long}` : "", summary.short ? `SHORT ${summary.short}` : ""].filter(Boolean).join(" · ") || "FLAT";
   const content = <><span className="dock-pnl"><small>Unrealised <span>· all trades</span></small><b className={tone} data-testid="live-unrealised">{value}</b>{summary.stale && <em>{summary.pnl === null ? "Waiting for prices" : "Last quoted prices"}</em>}</span>
-    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small>{MARKETS[market].title} · {exposure}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
+    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Drawdown limit reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
   return onOpen ? <button className="dock-status" onClick={onOpen} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
 }
 
@@ -421,34 +402,12 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   );
 }
 
-const buzz = (ms: number | number[]) => { try { navigator.vibrate?.(ms); } catch { /* */ } };
+const buzz = haptic;
 
-/** Order taps retain the game’s batching and partial/hedge rules; combo feedback is visual only. */
-const COMBO_WINDOW_MS = 900;
-type TapCombo = { side: Side; count: number; at: number; id: number };
+/** Tap and hold retain the server's batching, partial and hedge rules. */
 function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: boolean }) {
   const st = useGame();
-  const [pops, setPops] = useState<{ id: number; side: Side }[]>([]);
-  const [squash, setSquash] = useState<Side | null>(null);
-  const [shake, setShake] = useState<Side | null>(null);
-  const [combo, setCombo] = useState<TapCombo | null>(null);
-  const comboRef = useRef<TapCombo | null>(null);
-  const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function clearCombo() {
-    if (comboTimer.current !== null) clearTimeout(comboTimer.current);
-    comboTimer.current = null;
-    comboRef.current = null;
-    setCombo(null);
-  }
-  // A streak belongs to one market, squad and order mode, and never survives a lockout.
-  useEffect(() => {
-    clearCombo();
-    return () => { if (comboTimer.current !== null) clearTimeout(comboTimer.current); };
-  }, [disabled, st.market, st.squadId, st.opposite]);
-  const seq = useRef(0);
-  const pend = st.pending;
   const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
-  const [tapHint] = useState(() => hintOn("taps"));
   /** One tap: +1 micro to the order being collected. `held` = the button is held down, so the
    *  order waits for the release (or fills to 10) instead of sending 300 ms after the tap. */
   function tap(side: Side, held = false) {
@@ -456,33 +415,18 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     const cur = game.state.pending;
     const n = cur && cur.side === side ? cur.count : 0;
     const cap = game.tapReduces(side) ? game.heldAgainst(side) : 100;
-    if (n >= cap) { buzz([20, 30, 20]); setShake(side); setTimeout(() => setShake(null), 300); return; }
-    const lvl = Math.min(2, Math.floor(n / 5));
-    buzz([12, 22, 35][lvl]);
-    orderEffect(readEffect());
-    const id = ++seq.current;
-    const now = performance.now();
-    const previous = comboRef.current;
-    const next = { side, count: previous?.side === side && now - previous.at < COMBO_WINDOW_MS ? previous.count + 1 : 1, at: now, id };
-    comboRef.current = next;
-    setCombo(next);
-    if (comboTimer.current !== null) clearTimeout(comboTimer.current);
-    // A short fade follows the chain window; taps after that window start a fresh streak.
-    comboTimer.current = setTimeout(clearCombo, COMBO_WINDOW_MS + 300);
-    setPops((p) => [...p.slice(-8), { id, side }]);
-    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 600);
-    setSquash(null); requestAnimationFrame(() => setSquash(side));
+    if (n >= cap) { haptic(10); return; }
+    haptic(8); orderEffect(readEffect());
     game.tap(side, done(side), held);
   }
   /** What happens when an order (a batch of taps) comes back from the server. */
   function done(side: Side) {
     const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
-    const id = seq.current;
     const market = MARKETS[st.market].title;
     return (err: string | null, q: number, pnl?: number) => {
-      if (err) { stopHold(false); game.dropTaps(); if (comboRef.current?.id === id) clearCombo(); buzz([30, 40, 30]); setShake(side); setTimeout(() => setShake(null), 400); toast(err); }
-      else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`✂️ Took ${q} off ${market} · ${signedMoney(pnl)}`); }
-      else { buzz([10, 40, 18]); toast(`${hedging ? "🛡 Hedged" : side === "long" ? "🚀 Bought" : "📉 Sold"} ${q} micro${q === 1 ? "" : "s"} ${market}`); }
+      if (err) { stopHold(false); game.dropTaps(); haptic(10); toast(err); }
+      else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`Closed ${q} ${market} · ${signedMoney(pnl)}`); }
+      else { buzz([10, 40, 18]); toast(`${hedging ? "Hedged" : side === "long" ? "Bought" : "Sold"} ${q} micro${q === 1 ? "" : "s"} ${market}`); }
     };
   }
 
@@ -534,27 +478,15 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     return () => { document.removeEventListener("visibilitychange", off); window.removeEventListener("blur", off); };
   }, []);
   const btn = (side: Side) => {
-    const n = pend && pend.side === side ? pend.count : 0;
     const label = side === "long" ? "BUY" : "SELL";
-    const hedge = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
-    const partial = st.opposite === "partial" && hedge;
-    const chain = !disabled && combo?.side === side && combo.count >= 3 ? combo : null;
-    const tier = chain ? chain.count >= 10 ? 3 : chain.count >= 6 ? 2 : 1 : 0;
-    const sign = side === "long" ? "+" : "−";   // BUY adds, SELL subtracts
     return (
-      <button type="button" className={`spam-btn effect-${readEffect()} ${side} combo-tier-${tier} ${squash === side ? "squash" : ""} ${shake === side ? "nope" : ""}`}
-        style={{ ["--glow" as string]: String(Math.min(1, n / 10)) }} disabled={disabled}
+      <button type="button" className={`spam-btn ${side}`} disabled={disabled}
         onPointerDown={(e) => { if (!e.isPrimary || e.button !== 0) return; e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); startHold(side); }} onPointerUp={() => stopHold()} onPointerCancel={() => { stopHold(false); game.dropTaps(); }} onLostPointerCapture={() => stopHold()}
         onContextMenu={(e) => e.preventDefault()}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!e.repeat) tap(side); } }}
         onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
-        onAnimationEnd={(e) => { if (e.target === e.currentTarget) setSquash(null); }} data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
-        {chain && <span key={chain.id} className={`combo-badge tier-${tier}`} data-testid="tap-combo" data-count={chain.count} data-side={side} aria-hidden="true">
-          <span className="combo-count">{chain.count}</span><span className="combo-copy"><b>{tier === 3 ? "UNREAL" : tier === 2 ? "ON FIRE" : "COMBO"}</b><small>TAP STREAK</small></span><span className="combo-symbol">{tier >= 2 ? "🔥" : "ϟ"}</span><i className="combo-fuse" />
-        </span>}
+        data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{label}</span>
-        <span className="spam-sub">{n ? `${sign}${n}` : partial ? `tap = close ${st.qty}` : hedge ? "tap = hedge" : tapHint ? `tap ${sign}${st.qty} · hold = spam` : "\u00a0"}</span>
-        {pops.filter((p) => p.side === side).map((p) => <span key={p.id} className="tap-feedback" aria-hidden="true"><span className="tap-fx"><i className="tap-ring" /><i className="tap-spark spark-one" /><i className="tap-spark spark-two" /><i className="tap-spark spark-three" /></span><span className="spam-pop">{sign}{st.qty}</span></span>)}
       </button>
     );
   };
@@ -567,7 +499,6 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
   { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean>; protection?: { sl?: number; tp?: number }; onProtection: () => void }) {
   const [dx, setDx] = useState(0);
   const [phase, setPhase] = useState<"idle" | "drag" | "fly" | "back" | "gone">("idle");
-  const [fx, setFx] = useState<"win" | "loss" | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const armed = useRef(false);
   const win = pnl !== null && pnl >= 0;
@@ -592,9 +523,8 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
         const dir = Math.sign(lastDx || 1);
         setPhase("fly"); setDx(dir * (w() + 60));
         buzz(win ? [10, 40, 18] : [40, 30, 40]);
-        setFx(pnl === null ? null : win ? "win" : "loss");
         const ok = await onClose();
-        if (ok) setPhase("gone"); else { setFx(null); setPhase("back"); setDx(0); }
+        if (ok) setPhase("gone"); else { setPhase("back"); setDx(0); }
       } else { setPhase("back"); setDx(0); }
     };
     el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
@@ -604,9 +534,9 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
   return (
     <div className={`swipe-wrap ${phase === "gone" ? "collapse" : ""}`} data-testid="position">
       <div className={`swipe-bg ${win ? "win" : "loss"}`} style={{ opacity: Math.min(1, Math.abs(dx) / (w() * 0.4)) }}>
-        <span>{win ? "💰 Bank it" : "✂️ Cut it"}</span><span>{win ? "💰 Bank it" : "✂️ Cut it"}</span>
+        <span>Close trade</span><span>Close trade</span>
       </div>
-      <div ref={ref} className={`pos-card ${tint} ${phase} ${fx === "loss" ? "crack" : ""}`} onPointerDown={down}
+      <div ref={ref} className={`pos-card ${tint} ${phase}`} onPointerDown={down}
         style={{ transform: `translateX(${dx}px) rotate(${dx / 40}deg)`, touchAction: "pan-y" }}
         onTransitionEnd={() => { if (phase === "back") setPhase("idle"); }}>
         <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
@@ -619,7 +549,6 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
         {busy && <span className="spinner" style={{ width: 12, height: 12 }} />}
         <button className="position-protection" type="button" disabled={disabled} onPointerDown={e => e.stopPropagation()} onClick={onProtection} aria-label={`Manage SL/TP for ${MARKETS[p.market].title} ${p.side}`}><span>SL <b>{protection?.sl != null ? px(protection.sl, digits(p.market)) : "—"}</b></span><span>TP <b>{protection?.tp != null ? px(protection.tp, digits(p.market)) : "—"}</b></span><span className="manage-protection">Edit SL/TP ↗</span></button>
       </div>
-      {fx === "win" && <div className="confetti" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ ["--i" as string]: i }} />)}</div>}
     </div>
   );
 }
