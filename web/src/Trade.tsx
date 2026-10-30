@@ -49,21 +49,17 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
   const pageScroll = useRef({ x: 0, y: 0 });
   const chartCard = useRef<HTMLDivElement>(null);
-  const chartRect = useRef<DOMRect | null>(null);
   const toggleBig = () => {
     if (!big) pageScroll.current = { x: window.scrollX, y: window.scrollY };
-    chartRect.current = chartCard.current?.getBoundingClientRect() ?? null;
     setBig(v => !v);
   };
   useLayoutEffect(() => {
-    const el = chartCard.current, from = chartRect.current;
-    if (!el || !from || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const to = el.getBoundingClientRect();
-    el.animate([
-      { transformOrigin: "top left", transform: `translate(${from.x - to.x}px, ${from.y - to.y}px) scale(${from.width / to.width}, ${from.height / to.height})`, borderRadius: big ? "21px" : "0" },
-      { transformOrigin: "top left", transform: "none", borderRadius: big ? "0" : "21px" }
-    ], { duration: 340, easing: "cubic-bezier(.2,.8,.2,1)" });
-    chartRect.current = null;
+    const el = chartCard.current;
+    if (!el || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Sizing reads viewport bounds. Scaling this element fed animated coordinates
+    // into the preview height and left the chart behind the execution dock on exit.
+    const animation = el.animate([{ opacity: .7 }, { opacity: 1 }], { duration: 180, easing: "ease-out" });
+    return () => animation.cancel();
   }, [big]);
   useEffect(() => {
     if (!big) return;

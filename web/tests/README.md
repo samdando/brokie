@@ -2,6 +2,7 @@
 
 Start an isolated preview from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_ANON_KEY='' npm run dev -- --host 127.0.0.1`. Browser tests use synthetic accounts, block external requests and never execute live orders. They require Playwright and Chrome. Set `PLAYWRIGHT_MODULE` or `CHROME_PATH` when using a bundled runtime; `BASE_URL` selects a different local preview port. Restart the dev server after source edits before running fixtures, so Vite does not create differently versioned game-store imports.
 
+- `node tests/fullscreen-exit.cjs`: repeated fullscreen exits at 320/393/430px without switching tabs, changing viewport heights, safe-area padding, position sheets, preserved scroll/styles and reduced motion; preview and bottom controls remain visible.
 - `node tests/eod-floor.cjs`: authoritative fixed EOD allowance/cap, season buffer separated from daily loss room, EOD-only explanation and mobile fit.
 - `node tests/trade-exits.cjs`: close gestures, displayed-market scope, cancellations and changed positions, pending/error handling, hedge choice, explicit price/dollar targets and season-status visibility.
 - `node tests/protection.cjs`: long/short dollar conversion, stack size, market point values, real tick rounding and invalid targets.

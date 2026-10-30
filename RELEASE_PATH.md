@@ -1,5 +1,13 @@
 # Brokie release path · 30 October 2026
 
+## Fullscreen-exit layout repair
+
+The preview sizing code measured the chart's animated viewport bounds while its fullscreen transition scaled the chart. Exiting fullscreen could retain excess height, extending the chart behind the execution controls until a tab change remounted Trade. A synthetic 393px fixture reproduced preview height growing from 277px to 442px after one exit.
+
+The transition now fades opacity without changing measurement geometry. The chart keeps its viewport-anchored layout and the normal preview fits above the execution dock after every exit. Cache advances to `brokie-shell-v17`.
+
+Validation: production build, `fullscreen-exit.cjs` (repeated 320/393/430px cycles without tab changes; viewport-height changes; safe-area padding; fullscreen position sheets; scroll/style restoration; reduced motion), plus fullscreen chart gestures and quick-exit/protection regression checks. Production publishes through the existing Pages workflow.
+
 ## Capped end-of-day floor
 
 `backend/capped_eod_floor.sql` sets a fixed $4,200 EOD trail per $100k starting funds, capped at the original starting balance. It scales to $2,100 for $50k: $52,100 EOD locks a $50k floor, and $104,200 EOD locks a $100k floor. The allowance stays fixed as equity grows. It keeps intraday peaks out of that calculation and preserves the explicit intraday-trailing hard mode, daily-loss rules, closing fills and qualification. Apply this migration last, after the existing rules/stop migrations. Historical migrations remain snapshots of their original policy; rerunning them requires reapplying this cap afterward.
