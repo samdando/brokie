@@ -4,6 +4,8 @@
   "version": "0.3.3",
   "type": "module",
   "scripts": {
+    "test:indicators": "node tests/indicators.cjs",
+    "test:rank": "node tests/rank.cjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"

@@ -514,7 +514,7 @@ export class Game {
     await this.refreshGlobal();
   }
 
-  /** Open or close the squad chat sheet; opening clears any pop-up. */
+  /** Track whether squad chat is visible; opening clears pop-ups and unread count. */
   setChatOpen(open: boolean) { this.set(open ? { chatOpen: true, chatPop: null, chatUnread: 0 } : { chatOpen: false }); }
   dismissChatPop() { this.set({ chatPop: null }); }
   async refreshChat() {

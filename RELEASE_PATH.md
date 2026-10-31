@@ -1,3 +1,7 @@
+# Brokie terminal and swipe pass · 31 October 2026
+
+Local changes bring the supplied Setup Rush chart references into Brokie: white/red candles, charcoal surfaces, configurable EMA/Bollinger/structure/FVG/candle reads, and a finger-following five-page deck with Chat as a page. Existing accounts, seasons, squad/voice features and server trading rules are retained. The P&L bar is the explicit close gesture; fullscreen keeps chart navigation. Full research, validation and preview instructions are in `docs/SETUP_RUSH_REFERENCE.md`. Cache advances to `brokie-shell-v19`. Also adds season rank tiers (Iron → Legend) on boards, profiles and the You page, and a paper-only "1 USDC play · Season 2 test" opt-in on the You page.
+
 # Brokie release path · 30 October 2026
 
 ## Social colour pass

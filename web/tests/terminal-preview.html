@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>Brokie · local simulated preview</title></head><body><div id="root"></div><script type="module">
+// Local QA only. No credentials, network accounts, messages or orders.
+import { game } from '/src/game.ts';
+const now=Date.parse('2026-10-31T04:00:00Z'),stamp=new Date(now).toISOString(),start=Math.floor(now/60000)-160;
+for(const n of ['setActive','start','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles'])game[n]=async()=>{};
+game.now=()=>now;game.checkBrackets=async()=>[];
+const prices={btc:81000,eth:2400,sol:160,nas:20500,gold:2750,es:5800,us30:42000};
+const candles=Object.fromEntries(Object.entries(prices).map(([m,p])=>{
+ const unit=p*.00045;let last=p-50*unit;
+ return [m,Array.from({length:160},(_,i)=>{
+  const open=last;let close=p+unit*(Math.sin(i*.13)*10+Math.sin(i*.41)*3+(i-160)*.28);
+  if(i>=139&&i<=142)close+=unit*(i-138)*3.7;
+  if(i>=143&&i<=147)close+=unit*(148-i)*3.7;
+  if(i===157)close=open-unit*1.6;
+  if(i===158)close=open+unit*4.8;
+  const wick=unit*(.3+Math.abs(Math.sin(i*2.7))*.8);last=close;
+  return {index:start+i,open,high:Math.max(open,close)+wick,low:Math.min(open,close)-wick*.7,close};
+ })];
+}));
+for(const m of Object.keys(prices))prices[m]=candles[m].at(-1).close;
+const handles=['sam','bum','jaoushai','ankits'];
+const rows=handles.map((handle,i)=>({handle,is_you:i===0,today_pnl:1480-i*390,equity:102480-i*390,return_pct:2.48-i*.39,trades:8-i,worst_trade:-210,open_positions:i<2?1:0,trading_days:3,qualified:false,wins:5-i,losses:2}));
+const lifetime={handle:'sam',total_trades:38,win_rate:64,avg_win:310,avg_loss:-190,best_trade:930,max_drawdown:2.1,seasons_played:2,seasons_funded:0,seasons_blown:0,seasons:[]};
+const rules={status:'active',start_balance:100000,peak_equity:103200,day_start_equity:101000,daily_loss_amount:4000,daily_loss_pct:4,max_dd_pct:8,daily_floor:97000,drawdown_floor:92000,dd_mode:'eod',dd_base:100000,target:110000,funded:false,resets_used:0,trading_days:3,qualify_days:5,equity:102480};
+const position={id:'mine',market:'btc',side:'long',quantity:10,entry_price:prices.btc-120,opened_at:new Date(now-12*60000).toISOString()};
+const trade={id:'receipt',market:'btc',side:'long',quantity:10,entry_price:prices.btc-500,exit_price:prices.btc-100,pnl:40,opened_at:new Date(now-40*60000).toISOString(),closed_at:new Date(now-20*60000).toISOString(),reason:'closed'};
+const dashboard={day:'2026-10-30',ends_at:new Date(now+36000000).toISOString(),players:rows.map(r=>({...r,pnl:r.today_pnl})),open:[]};
+game.api.rpc=async(n,a)=>{
+ if(n==='player_avatars')return Object.fromEntries((a?.p_handles??[]).map((h,i)=>[h,{symbol:({'sam':'👽','bum':'🐸','jaoushai':'💎','ankits':'😎'})[h]??null,color:({'sam':'#B5A0FE','bum':'#73E7C3','jaoushai':'#7CC8FF','ankits':'#F2CA73'})[h]??null}]));
+ if(n==='squad_dashboard')return dashboard;
+ if(n==='daily_leaderboard')return {day:'2026-10-30',today:'2026-10-30',rows:dashboard.players};
+ if(n==='daily_receipts')return [trade];
+ if(n==='avatar_shop')return {balance:8,equipped:null,items:[],color:'#B5A0FE'};
+ if(n==='lifetime_stats')return {...lifetime,handle:a?.p_handle??'sam'};
+ if(n==='review_trade')return {trade,candles:candles.btc.slice(-40),bucket_seconds:60,note:''};
+ if(n==='chart_bubbles')return [];
+ throw new Error('Not available in the local preview.');
+};
+game.open=async(side,quantity)=>{const p={...position,id:'demo-'+Date.now(),side,quantity,entry_price:game.quote(game.state.market).price,market:game.state.market,opened_at:stamp};game.set({me:{...game.state.me,positions:[...game.state.me.positions,p]}});return null;};
+game.closeStack=async(ids)=>{const positions=game.state.me.positions;let pnl=0;for(const p of positions.filter(p=>ids.includes(p.id)))pnl+=(game.quote(p.market).price-p.entry_price)*.01*p.quantity*(p.side==='long'?1:-1);game.set({me:{...game.state.me,cash:game.state.me.cash+pnl,positions:positions.filter(p=>!ids.includes(p.id))}});return {pnl};};
+game.sendMessage=async(body,kind)=>{game.set({chat:[...game.state.chat,{id:Date.now(),handle:'sam',is_you:true,kind,body,at:stamp}]});return null;};
+game.set({phase:'ready',market:'btc',candleSeconds:60,clockOffset:now-Date.now(),me:{handle:'sam',season:'2026-10-26',season_number:2,season_ends_at:'2026-11-02T00:00:00Z',server_time:stamp,cash:102480,rules,protection_credit:0,liquidations:0,has_backup_code:true,positions:[position],trades:[trade],quotes:Object.entries(prices).map(([market,price])=>({market,price,quoted_at:stamp}))},squads:[{id:'s',name:'The rent money club',member_count:4,invite_code:'DEMO00',owner_id:'sam'}],squadId:'s',candles,bubbleScope:'btc:s',bubbles:[{...position,id:'bum-entry',handle:'bum',is_you:false,state:'open',quantity:10,entry_price:prices.btc-80,exit_price:null,pnl:null,reason:null,at:new Date(now-5*60000).toISOString(),opened_at:new Date(now-5*60000).toISOString(),size_pct:3,dd_floor:92000,equity:100729}],leaderboard:rows,feed:[{id:'activity',kind:'closed',handle:'bum',is_you:false,market:'btc',side:'long',quantity:10,price:prices.btc,pnl:180,reason:'closed',at:stamp}],chat:[{id:1,handle:'bum',is_you:false,kind:'text',body:'That sweep was clean 👀',at:new Date(now-120000).toISOString()},{id:2,handle:'sam',is_you:true,kind:'text',body:'Watching the next close',at:new Date(now-60000).toISOString()},{id:3,handle:'ankits',is_you:false,kind:'emoji',body:'🔥',at:stamp}],global:{rows:rows.map((r,i)=>({...r,rank:i+1,status:'active',funded:false})),me:null,players:4,season:'2026-10-26'},lifetime});
+await import('/src/main.tsx');
+</script></body></html>

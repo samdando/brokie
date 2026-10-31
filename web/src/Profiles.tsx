@@ -3,6 +3,7 @@ import { game, useGame } from "./game";
 import type { Bubble, Lifetime, Market } from "./types";
 import { MARKETS, direction } from "./types";
 import { Sheet, TickValue, ago, money, px, signedMoney } from "./ui";
+import { RankBadge } from "./rank";
 
 const OpenProfile = createContext<(handle: string) => void>(() => {});
 export function PlayerLink({ handle, children }: { handle: string; children?: ReactNode }) {
@@ -29,7 +30,7 @@ export function Profiles({ children }: { children: ReactNode }) {
   return <OpenProfile.Provider value={setHandle}>{children}
     <Sheet open={!!handle} onClose={close}>
       <div className="stack player-card" data-testid="player-profile">
-        <div className="row between player-card-heading"><div><span className="eyebrow">Your trading circle</span><h3 className="h3">@{handle}</h3></div><button className="text-action lime" onClick={close}>Done</button></div>
+        <div className="row between player-card-heading"><div><span className="eyebrow">Your trading circle</span><h3 className="h3">@{handle} <ProfileRank handle={handle!} /></h3></div><button className="text-action lime" onClick={close}>Done</button></div>
         {handle && <LiveNow handle={handle} />}
         <div className="eyebrow" style={{ marginTop: 6 }}>Lifetime</div>
         {error ? <div className="err" role="alert">{error}<button className="text-action lime" onClick={() => setAttempt(x => x + 1)}>Try again</button></div>
@@ -103,4 +104,12 @@ function LiveNow({ handle }: { handle: string }) {
       </>}
     </div>
   );
+}
+
+/** Season rank from the squad or global board, when this player is on one you can see. */
+function ProfileRank({ handle }: { handle: string }) {
+  const st = useGame();
+  const h = handle.toLowerCase();
+  const row = st.leaderboard.find((r) => r.handle.toLowerCase() === h) ?? st.global?.rows.find((r) => r.handle.toLowerCase() === h) ?? (st.global?.me?.handle.toLowerCase() === h ? st.global.me : undefined);
+  return row ? <RankBadge r={row} /> : null;
 }

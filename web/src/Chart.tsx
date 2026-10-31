@@ -6,7 +6,7 @@ import { TradeCard } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
-const LIME = "#8CC5A7", RED = "#D69BA5", MUTED = "#7E8C9E";
+const LIME = "#F0F1F2", RED = "#FF656F", MUTED = "#737783";
 export const CHART_SMALL = 304;
 const PIN_TOP = 36, PIN_BOTTOM = 40;   // px kept clear for the O/H/L/C legend and the time axis   // chart height in px (includes the time axis)
 // One chart on screen at a time, so its height lives here and the overlay pieces read it.
@@ -62,7 +62,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       height: H,
       // Keep the compact library attribution inside the chart.
       layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 10, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: true },
-      grid: { vertLines: { visible: false }, horzLines: { color: "rgba(160,180,205,.055)", style: LineStyle.Solid } },
+      grid: { vertLines: { visible: false }, horzLines: { color: "rgba(180,185,200,.065)", style: LineStyle.Solid } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.16, bottom: 0.14 }, entireTextOnly: true },
       timeScale: { borderVisible: false, visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
         // The chart picks the mark type: year/month/day marks get a date, the rest a time.
@@ -128,6 +128,10 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       cancelAnimationFrame(anim.current);
       requestFrame.current = () => {};
       c.remove(); chart.current = null; series.current = null; quoteLine.current = null; lines.current = [];
+      // A recreated chart has empty series (including React's development remount).
+      // Never tween only the final bar into an otherwise empty chart.
+      shown.current = null; lastKey.current = ""; lastCount.current = 0; countRef.current = 0;
+      prevQuote.current = null; userMoved.current = false;
     };
   }, []);
 
@@ -236,7 +240,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     for (const l of lines.current) { try { s.candle.removePriceLine(l); } catch { /* */ } try { s.area.removePriceLine(l); } catch { /* */ } }
     lines.current = [];
     for (const p of mine) {
-      lines.current.push(target.createPriceLine({ price: p.entry_price, color: (p.side === "long" ? LIME : RED) + "88", lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: false, title: "" }));
+      lines.current.push(target.createPriceLine({ price: p.entry_price, color: (p.side === "long" ? "#7DD6B0" : RED) + "88", lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false, title: "" }));
     }
     requestFrame.current();
   }, [positions, market, style]);

@@ -1,5 +1,7 @@
 # Trading floor verification
 
+The 31 October terminal pass adds `npm run test:indicators` and a local-only `/tests/terminal-preview.html` route with synthetic accounts and mocked operations. Chat is now a page in Trade → Chat → Squad → Learn → You order. Page swipes work over the preview chart and content cards; swipe-to-close is confined to the P&L bar. See `docs/SETUP_RUSH_REFERENCE.md` for the verified browser matrix and remaining device checks.
+
 Start an isolated preview from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_ANON_KEY='' npm run dev -- --host 127.0.0.1`. Browser tests use synthetic accounts, block external requests and never execute live orders. They require Playwright and Chrome. Set `PLAYWRIGHT_MODULE` or `CHROME_PATH` when using a bundled runtime; `BASE_URL` selects a different local preview port. Restart the dev server after source edits before running fixtures, so Vite does not create differently versioned game-store imports.
 
 - `node tests/fullscreen-exit.cjs`: repeated fullscreen exits at 320/393/430px without switching tabs, changing viewport heights, safe-area padding, position sheets, preserved scroll/styles and reduced motion; preview and bottom controls remain visible.

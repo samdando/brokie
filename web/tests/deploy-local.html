@@ -1,0 +1,848 @@
+<html><head><meta charset="utf-8"><title>Local deployment sources</title></head><body><h2>enums</h2><pre id="enums">-- Run first, as a separate transaction (Postgres enum values must commit before use).
+alter type public.market add value if not exists &#x27;btc&#x27;;
+alter type public.market add value if not exists &#x27;eth&#x27;;
+alter type public.market add value if not exists &#x27;sol&#x27;;
+alter type public.market add value if not exists &#x27;prediction&#x27;;
+</pre><h2>weekend</h2><pre id="weekend">-- Weekend paper trading, scheduled settlement, daily scoreboards and private reviews.
+-- Requires the current schema, trading_day, rules_v4, funded, bars and weekend_markets.
+begin;
+insert into public.markets(id,point_value,tick_size,instrument) values
+ (&#x27;btc&#x27;,0.01,0.01,&#x27;BTC-USD&#x27;),(&#x27;eth&#x27;,0.1,0.01,&#x27;ETH-USD&#x27;),(&#x27;sol&#x27;,1,0.01,&#x27;SOL-USD&#x27;)
+on conflict(id) do update set point_value=excluded.point_value,tick_size=excluded.tick_size,instrument=excluded.instrument;
+alter table public.trades drop constraint if exists trades_reason_check;
+alter table public.trades add constraint trades_reason_check check
+ (reason in (&#x27;closed&#x27;,&#x27;liquidated&#x27;,&#x27;season_end&#x27;,&#x27;daily_limit&#x27;,&#x27;blown&#x27;,&#x27;reset&#x27;,&#x27;sl_fix&#x27;,&#x27;rules_fix&#x27;,&#x27;market_close&#x27;,&#x27;prediction_settled&#x27;));
+alter table public.trades add column if not exists exit_quoted_at timestamptz;
+
+create or replace function public.is_crypto(p_market public.market) returns boolean
+language sql immutable as $$ select p_market::text in (&#x27;btc&#x27;,&#x27;eth&#x27;,&#x27;sol&#x27;) $$;
+create or replace function public.weekend_mode(p_at timestamptz default now()) returns boolean
+language sql stable as $$
+ select extract(isodow from p_at at time zone &#x27;America/New_York&#x27;)=6
+ or (extract(isodow from p_at at time zone &#x27;America/New_York&#x27;)=5 and (p_at at time zone &#x27;America/New_York&#x27;)::time &gt;= time &#x27;17:00&#x27;)
+ or (extract(isodow from p_at at time zone &#x27;America/New_York&#x27;)=7 and (p_at at time zone &#x27;America/New_York&#x27;)::time &lt; time &#x27;18:00&#x27;)
+$$;
+create or replace function public.market_session_open(p_market public.market,p_at timestamptz default now()) returns boolean
+language sql stable as $$
+ select case when is_crypto(p_market) then weekend_mode(p_at) else
+ not weekend_mode(p_at) and ((p_at at time zone &#x27;America/New_York&#x27;)::time &lt; time &#x27;17:00&#x27;
+ or (p_at at time zone &#x27;America/New_York&#x27;)::time &gt;= time &#x27;18:00&#x27;) end
+$$;
+-- Brokie&#x27;s flat-at-close rule: weekdays at 17:00 NY; weekend crypto at Sunday 18:00 NY.
+-- Uses the named timezone rather than UTC offsets so DST is automatic.
+create or replace function public.position_session_end(p_market public.market,p_opened timestamptz) returns timestamptz
+language plpgsql stable as $$
+declare local_open timestamp := p_opened at time zone &#x27;America/New_York&#x27;; d date := local_open::date;
+begin
+ if is_crypto(p_market) then
+   d := d + ((7-extract(isodow from d)::int)%7);
+   if d + time &#x27;18:00&#x27; &lt;= local_open then d:=d+7; end if;
+   return (d+time &#x27;18:00&#x27;) at time zone &#x27;America/New_York&#x27;;
+ end if;
+ if local_open::time &gt;= time &#x27;17:00&#x27; then d:=d+1; end if;
+ while extract(isodow from d) in (6,7) loop d:=d+1; end loop;
+ return (d+time &#x27;17:00&#x27;) at time zone &#x27;America/New_York&#x27;;
+end $$;
+alter table public.positions add column if not exists session_closes_at timestamptz;
+update public.positions set session_closes_at=public.position_session_end(market,opened_at) where session_closes_at is null;
+create index if not exists positions_session_close on public.positions(session_closes_at);
+
+-- An authenticated client cannot pick the session time or bypass the calendar.
+create or replace function public.set_position_session() returns trigger
+language plpgsql security definer set search_path=public as $$
+begin
+ if not market_session_open(new.market,now()) then raise exception &#x27;This market session is closed.&#x27;; end if;
+ if exists(select 1 from positions where user_id=new.user_id and session_closes_at&lt;=now()) then
+   raise exception &#x27;A previous session is awaiting settlement. Please try again shortly.&#x27;;
+ end if;
+ new.session_closes_at:=position_session_end(new.market,new.opened_at);
+ return new;
+end $$;
+drop trigger if exists set_position_session on public.positions;
+create trigger set_position_session before insert on public.positions for each row execute function public.set_position_session();
+
+-- Runs without quotes arriving or clients connected. Never uses a reopening price.
+-- If no reliable closing-session mark exists, leave the position pending for investigation.
+create or replace function public.settle_market_closes(p_now timestamptz default now()) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare a accounts; p positions; mark numeric; quote_time timestamptz; value numeric; n int:=0; pending int:=0;
+begin
+ for a in select * from accounts x where exists(select 1 from positions o where o.user_id=x.user_id
+   and o.season=x.season and o.session_closes_at&lt;=p_now) order by user_id,season for update skip locked loop
+   for p in select * from positions where user_id=a.user_id and season=a.season and session_closes_at&lt;=p_now
+     order by session_closes_at,id for update loop
+     mark:=null; quote_time:=null;
+     select x.price,x.at into mark,quote_time from (
+       select q.price,q.quoted_at as at from quotes q where q.market=p.market
+       union all select t.price,t.quoted_at from quote_ticks t where t.market=p.market
+         and t.quoted_at&gt;=p.session_closes_at-interval &#x27;5 minutes&#x27; and t.quoted_at&lt;=p.session_closes_at
+       union all select b.close,b.last_at from bars b where b.market=p.market and b.secs=60
+         and b.idx between floor(extract(epoch from p.session_closes_at-interval &#x27;5 minutes&#x27;)/60)::bigint
+                       and floor(extract(epoch from p.session_closes_at)/60)::bigint
+     ) x where x.at&lt;=p.session_closes_at and x.at&gt;=p.session_closes_at-interval &#x27;5 minutes&#x27;
+       and x.at&gt;=p.opened_at order by x.at desc limit 1;
+     if mark is null then pending:=pending+1; continue; end if;
+     select (mark-p.entry_price)*m.point_value*p.quantity*direction(p.side) into value from markets m where m.id=p.market;
+     insert into trades(id,user_id,season,market,side,quantity,entry_price,exit_price,pnl,opened_at,closed_at,reason,exit_quoted_at)
+       values(p.id,p.user_id,p.season,p.market,p.side,p.quantity,p.entry_price,mark,value,p.opened_at,p.session_closes_at,&#x27;market_close&#x27;,quote_time);
+     update accounts set cash=cash+value where user_id=p.user_id and season=p.season;
+     delete from positions where id=p.id;
+     n:=n+1;
+   end loop;
+   if not exists(select 1 from positions where user_id=a.user_id and season=a.season and session_closes_at&lt;=p_now) then
+     perform enforce_rules(a.user_id,a.season);
+   end if;
+ end loop;
+ return jsonb_build_object(&#x27;settled&#x27;,n,&#x27;pending&#x27;,pending);
+end $$;
+revoke all on function public.settle_market_closes(timestamptz),public.set_position_session() from public,anon,authenticated;
+
+-- Prevent a manual close after the deadline from substituting a later/reopening mark.
+-- Automatic settlement removes the position; manual attempts can retry after the next job.
+create or replace function public.guard_session_exit() returns trigger
+language plpgsql security definer set search_path=public as $$
+begin
+ if new.reason &lt;&gt; &#x27;market_close&#x27; and exists(select 1 from positions p where p.user_id=new.user_id
+   and p.market=new.market and p.side=new.side and p.opened_at=new.opened_at and p.session_closes_at&lt;=now()) then
+   raise exception &#x27;Session ended. This position is awaiting its market-close receipt.&#x27;;
+ end if;
+ return new;
+end $$;
+drop trigger if exists guard_session_exit on public.trades;
+create trigger guard_session_exit before insert on public.trades for each row execute function public.guard_session_exit();
+revoke all on function public.guard_session_exit() from public,anon,authenticated;
+
+-- A close on the session boundary belongs to the session that just finished.
+create or replace function public.receipt_day(p_closed timestamptz,p_reason text) returns date
+language sql stable as $$ select trading_day_of(p_closed-case when p_reason=&#x27;market_close&#x27; then interval &#x27;1 microsecond&#x27; else interval &#x27;0&#x27; end) $$;
+create index if not exists trades_daily on public.trades(closed_at,user_id);
+create or replace function public.daily_leaderboard(p_day date default null,p_squad uuid default null) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user(); d date:=coalesce(p_day,trading_today()); result jsonb;
+begin
+ if p_squad is not null then perform require_member(p_squad); end if;
+ if d&gt;trading_today() or d&lt;trading_today()-365 then raise exception &#x27;Choose a date within the past year.&#x27;; end if;
+ select coalesce(jsonb_agg(to_jsonb(r) order by r.pnl desc,r.handle),&#x27;[]&#x27;::jsonb) into result from (
+   select p.handle,p.id=uid as is_you,coalesce(round(sum(t.pnl),2),0) as pnl,
+     count(t.id) as trades,count(t.id) filter(where t.pnl&gt;0) as wins,count(t.id) filter(where t.pnl&lt;0) as losses,
+     count(t.id) filter(where t.pnl=0) as breakevens
+   from profiles p left join trades t on t.user_id=p.id and receipt_day(t.closed_at,t.reason)=d
+   where case when p_squad is not null then exists(select 1 from squad_members m where m.squad_id=p_squad and m.user_id=p.id)
+     else (p.show_global or p.id=uid) and exists(select 1 from accounts a where a.user_id=p.id) end
+   group by p.id,p.handle
+ ) r;
+ return jsonb_build_object(&#x27;day&#x27;,d,&#x27;today&#x27;,trading_today(),&#x27;rows&#x27;,result,&#x27;timezone&#x27;,&#x27;America/New_York&#x27;,&#x27;reset_hour&#x27;,17);
+end $$;
+
+create or replace function public.daily_receipts(p_handle text,p_day date,p_squad uuid default null) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user(); owner uuid; visible boolean;
+begin
+ select id,show_global into owner,visible from profiles where handle=lower(p_handle);
+ if owner is null then raise exception &#x27;Player not found.&#x27;; end if;
+ if p_squad is not null then
+   perform require_member(p_squad);
+   if not exists(select 1 from squad_members where squad_id=p_squad and user_id=owner) then raise exception &#x27;Player is not in this squad.&#x27;; end if;
+ elsif owner&lt;&gt;uid and not coalesce(visible,false) then raise exception &#x27;This player is private.&#x27;; end if;
+ if p_day&gt;trading_today() or p_day&lt;trading_today()-365 then raise exception &#x27;Choose a date within the past year.&#x27;; end if;
+ return coalesce((select jsonb_agg(to_jsonb(t) order by t.closed_at desc) from (
+   select id,market,side,quantity,entry_price,exit_price,pnl,opened_at,closed_at,reason
+   from trades where user_id=owner and receipt_day(closed_at,reason)=p_day
+ ) t),&#x27;[]&#x27;::jsonb);
+end $$;
+
+create table if not exists public.trade_notes (
+ trade_id uuid primary key references public.trades(id) on delete cascade,
+ user_id uuid not null references public.profiles(id) on update cascade on delete cascade,
+ note text not null check(length(note)&lt;=2000),updated_at timestamptz not null default now()
+);
+alter table public.trade_notes enable row level security;
+revoke all on public.trade_notes from anon,authenticated;
+create or replace function public.save_trade_note(p_trade uuid,p_note text) returns void
+language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user();
+begin
+ if not exists(select 1 from trades where id=p_trade and user_id=uid) then raise exception &#x27;Trade not found.&#x27;; end if;
+ if length(coalesce(p_note,&#x27;&#x27;))&gt;2000 then raise exception &#x27;Notes must be under 2000 characters.&#x27;; end if;
+ insert into trade_notes(trade_id,user_id,note) values(p_trade,uid,coalesce(p_note,&#x27;&#x27;))
+ on conflict(trade_id) do update set note=excluded.note,updated_at=now();
+end $$;
+create or replace function public.review_trade(p_trade uuid) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user(); t trades; size int; data jsonb;
+begin
+ select * into t from trades where id=p_trade and user_id=uid;
+ if not found then raise exception &#x27;Trade not found.&#x27;; end if;
+ size:=case when t.closed_at-t.opened_at&gt;interval &#x27;7 days&#x27; then 86400 when t.closed_at-t.opened_at&gt;interval &#x27;6 hours&#x27; then 3600 else 60 end;
+ select coalesce(jsonb_agg(jsonb_build_object(&#x27;index&#x27;,b.idx,&#x27;open&#x27;,b.open,&#x27;high&#x27;,b.high,&#x27;low&#x27;,b.low,&#x27;close&#x27;,b.close) order by b.idx),&#x27;[]&#x27;::jsonb)
+ into data from bars b where b.market=t.market and b.secs=size
+   and b.idx between floor(extract(epoch from t.opened_at)/size)::bigint-3 and floor(extract(epoch from t.closed_at)/size)::bigint+3;
+ return jsonb_build_object(&#x27;trade&#x27;,to_jsonb(t),&#x27;candles&#x27;,data,&#x27;bucket_seconds&#x27;,size,
+   &#x27;note&#x27;,coalesce((select note from trade_notes where trade_id=t.id),&#x27;&#x27;));
+end $$;
+revoke all on function public.daily_leaderboard(date,uuid),public.daily_receipts(text,date,uuid),public.review_trade(uuid),public.save_trade_note(uuid,text) from public,anon;
+grant execute on function public.daily_leaderboard(date,uuid),public.daily_receipts(text,date,uuid),public.review_trade(uuid),public.save_trade_note(uuid,text) to authenticated;
+create or replace function public.enforce_rules(p_user uuid, p_season date) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  a accounts;
+  eq numeric;
+  today date := trading_today();
+begin
+  select * into a from accounts where user_id = p_user and season = p_season for update;
+  if not found then return null; end if;
+  -- Freeze risk checks until overdue positions have an authentic closing receipt.
+  if exists(select 1 from positions where user_id=p_user and season=p_season and session_closes_at&lt;=now()) then return a.status; end if;
+  eq := a.cash + unrealized(p_user, p_season);
+
+  -- New session (5pm New York). Equity at the rollover is yesterday&#x27;s closing balance:
+  -- it can raise the end-of-day high, then gets a fresh daily-loss allowance. A locked account unlocks.
+  if a.trading_day is distinct from today then
+    update accounts set trading_day = today, day_start_equity = eq,
+                        eod_peak = greatest(coalesce(eod_peak, start_balance), eq),
+                        status = case when status = &#x27;locked&#x27; then &#x27;active&#x27; else status end
+     where user_id = p_user and season = p_season returning * into a;
+  end if;
+  if a.status = &#x27;blown&#x27; then return &#x27;blown&#x27;; end if;
+
+  -- The intraday peak is still tracked for stats and for the trailing hard mode.
+  if eq &gt; a.peak_equity then
+    update accounts set peak_equity = eq where user_id = p_user and season = p_season returning * into a;
+  end if;
+  update accounts set worst_drawdown = greatest(worst_drawdown, round((1 - eq / nullif(a.peak_equity, 0)) * 100, 4))
+   where user_id = p_user and season = p_season;
+
+  -- Max loss limit -&gt; blown for the season.
+  if eq &lt;= dd_floor(a) then
+    perform close_all(p_user, p_season, &#x27;blown&#x27;);
+    update accounts set status = &#x27;blown&#x27;, blown_at = now(),
+                        protection_credit = protection_credit + greatest(0, -cash), cash = greatest(0, cash)
+     where user_id = p_user and season = p_season;
+    return &#x27;blown&#x27;;
+  end if;
+
+  -- Daily loss -&gt; locked until the next session.
+  if a.status = &#x27;active&#x27; and eq &lt;= a.day_start_equity * (1 - a.daily_loss_pct / 100) then
+    perform close_all(p_user, p_season, &#x27;daily_limit&#x27;);
+    update accounts set status = &#x27;locked&#x27;, locked_at = now() where user_id = p_user and season = p_season;
+    return &#x27;locked&#x27;;
+  end if;
+
+  -- Profit target -&gt; 🎯 target hit (sticky). Funded needs the target AND 5 trading days, checked
+  -- together: equity has to be at +10% on a check after the fifth trading day. Sticky for the season.
+  if eq &gt;= a.start_balance * 1.10 then
+    if a.target_hit_at is null then
+      update accounts set target_hit_at = now() where user_id = p_user and season = p_season;
+    end if;
+    if a.funded_at is null and trading_days(p_user, p_season) &gt;= 5 then
+      update accounts set funded_at = now() where user_id = p_user and season = p_season;
+    end if;
+  end if;
+  return a.status;
+end $$;
+create or replace function public.ingest_quotes(p_quotes jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  item jsonb;
+  m markets;
+  px numeric;
+  at timestamptz;
+  accepted int := 0;
+  breached int := 0;
+  acct record;
+begin
+  for item in select * from jsonb_array_elements(coalesce(p_quotes, &#x27;[]&#x27;::jsonb)) loop
+    m := null;
+    select * into m from markets where id::text = item-&gt;&gt;&#x27;market&#x27;;
+    px := (item-&gt;&gt;&#x27;price&#x27;)::numeric;
+    at := coalesce((item-&gt;&gt;&#x27;quoted_at&#x27;)::timestamptz, now());
+    continue when m.id is null or px is null or px &lt;= 0 or px &gt; 10000000 or at &gt; now() + interval &#x27;5 seconds&#x27;;
+    px := round(px / m.tick_size) * m.tick_size;
+    insert into quote_ticks (market, price, quoted_at) values (m.id, px, at);
+    insert into quotes (market, price, source, quoted_at, updated_at)
+    values (m.id, px, coalesce(item-&gt;&gt;&#x27;source&#x27;, &#x27;feed&#x27;), at, now())
+    on conflict (market) do update
+      set price = excluded.price, source = excluded.source, quoted_at = excluded.quoted_at, updated_at = now()
+      where quotes.quoted_at &lt;= excluded.quoted_at;
+    accepted := accepted + 1;
+  end loop;
+
+  perform settle_market_closes();
+  for acct in select distinct user_id, season from positions where season = current_season() loop
+    if enforce_rules(acct.user_id, acct.season) &lt;&gt; &#x27;active&#x27; then breached := breached + 1; end if;
+  end loop;
+  perform settle_old_seasons(null);
+  delete from quote_ticks where quoted_at &lt; now() - interval &#x27;3 days&#x27;;
+  return jsonb_build_object(&#x27;accepted&#x27;, accepted, &#x27;liquidated&#x27;, breached);
+end $$;
+create or replace function public.settle_old_seasons(p_user uuid default null) returns int
+language plpgsql security definer set search_path=public as $$
+declare a accounts; pos positions; n int:=0;
+begin
+ for a in select * from accounts x where x.season&lt;current_season() and (p_user is null or x.user_id=p_user)
+   and exists(select 1 from positions o where o.user_id=x.user_id and o.season=x.season)
+   order by user_id,season for update skip locked loop
+  for pos in select * from positions where user_id=a.user_id and season=a.season
+   and (session_closes_at is null or session_closes_at&gt;now()) for update loop
+   perform settle_position(pos,&#x27;season_end&#x27;); n:=n+1;
+  end loop;
+ end loop;
+ return n;
+end $$;
+create or replace function public.squad_leaderboard(p_squad uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare uid uuid := require_member(p_squad);
+begin
+  return coalesce((
+    select jsonb_agg(row_to_json(r) order by r.qualified desc, r.equity desc, r.handle)
+    from (
+      select p.handle,
+             (select coalesce(round(sum(t.pnl),2),0) from trades t where t.user_id=p.id and receipt_day(t.closed_at,t.reason)=trading_today()) as today_pnl,
+             p.id = uid as is_you,
+             round(coalesce(a.cash, starting_balance()) + unrealized(p.id, current_season()), 2) as equity,
+             round((coalesce(a.cash, starting_balance()) + unrealized(p.id, current_season()) - coalesce(a.start_balance, starting_balance()))
+                   / coalesce(a.start_balance, starting_balance()) * 100, 2) as return_pct,
+             (select count(*) from trades t where t.user_id = p.id and t.season = current_season()) as trades,
+             (select coalesce(min(t.pnl), 0) from trades t where t.user_id = p.id and t.season = current_season()) as worst_trade,
+             (select count(*) from trades t where t.user_id = p.id and t.season = current_season() and t.pnl &gt; 0) as wins,
+             (select count(*) from trades t where t.user_id = p.id and t.season = current_season() and t.pnl &lt; 0) as losses,
+             (select count(*) from positions o where o.user_id = p.id and o.season = current_season()) as open_positions,
+             coalesce(a.status, &#x27;active&#x27;) as status,
+             a.funded_at is not null as funded,
+             a.target_hit_at is not null as target_hit,
+             coalesce(a.resets_used, 0) as resets_used,
+             trading_days(p.id, current_season()) as trading_days,
+             trading_days(p.id, current_season()) &gt;= 5 as qualified,
+             coalesce(a.worst_drawdown, 0) as worst_drawdown
+      from squad_members m
+      join profiles p on p.id = m.user_id
+      left join accounts a on a.user_id = p.id and a.season = current_season()
+      where m.squad_id = p_squad
+    ) r), &#x27;[]&#x27;::jsonb);
+end $$;
+create or replace function public.global_leaderboard(p_limit int default 50) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+  lim int := greatest(5, least(coalesce(p_limit, 50), 100));
+  rows jsonb;
+  me jsonb;
+  total int;
+begin
+  create temp table _gl on commit drop as
+  with base as (
+    select p.id, p.handle, p.show_global,
+           (select coalesce(round(sum(t.pnl),2),0) from trades t where t.user_id=p.id and receipt_day(t.closed_at,t.reason)=trading_today()) as today_pnl,
+           round(coalesce(a.cash, starting_balance()) + unrealized(p.id, current_season()), 2) as equity,
+           coalesce(a.start_balance, starting_balance()) as start_balance,
+           coalesce(a.status, &#x27;active&#x27;) as status,
+           a.funded_at is not null as funded,
+           trading_days(p.id, current_season()) as trading_days,
+           (select count(*) from trades t where t.user_id = p.id and t.season = current_season()) as trades
+    from profiles p
+    join accounts a on a.user_id = p.id and a.season = current_season()
+  ), scored as (
+    select b.*, round((b.equity - b.start_balance) / b.start_balance * 100, 2) as return_pct,
+           b.trading_days &gt;= 5 as qualified
+    from base b
+  )
+  select s.*, row_number() over (order by s.qualified desc, s.return_pct desc, s.handle) as rank from scored s;
+
+  select count(*) into total from _gl where show_global or id = uid;
+
+  select coalesce(jsonb_agg(to_jsonb(r) order by r.rank), &#x27;[]&#x27;::jsonb) into rows from (
+    select g.rank, g.handle, g.id = uid as is_you, g.equity, g.return_pct, g.status, g.funded,
+           g.qualified, g.trading_days, g.trades, g.today_pnl
+    from _gl g where g.show_global or g.id = uid
+    order by g.rank limit lim
+  ) r;
+
+  select to_jsonb(r) into me from (
+    select g.rank, g.handle, true as is_you, g.equity, g.return_pct, g.status, g.funded,
+           g.qualified, g.trading_days, g.trades, g.today_pnl, g.show_global
+    from _gl g where g.id = uid
+  ) r;
+
+  drop table _gl;
+  return jsonb_build_object(&#x27;rows&#x27;, rows, &#x27;me&#x27;, me, &#x27;players&#x27;, total, &#x27;season&#x27;, current_season());
+end $$;
+commit;
+</pre><h2>predictions</h2><pre id="predictions">-- Paper prediction contracts using public Kalshi data. No wallets or real-money orders.
+begin;
+insert into markets(id,point_value,tick_size,instrument) values(&#x27;prediction&#x27;,1,0.0001,&#x27;KALSHI&#x27;) on conflict(id) do nothing;
+create table if not exists prediction_markets (
+ id text primary key,title text not null,rules text not null,close_at timestamptz not null,status text not null,
+ yes_bid numeric not null check(yes_bid between 0 and 1),yes_ask numeric not null check(yes_ask between 0 and 1),
+ no_bid numeric not null check(no_bid between 0 and 1),no_ask numeric not null check(no_ask between 0 and 1),
+ payout_yes numeric check(payout_yes between 0 and 1),quoted_at timestamptz not null,volume numeric not null default 0
+);
+create table if not exists prediction_ticks (id text not null references prediction_markets(id), quoted_at timestamptz not null, yes_bid numeric not null, no_bid numeric not null, primary key(id,quoted_at));
+alter table prediction_ticks enable row level security;
+revoke all on prediction_ticks from anon,authenticated;
+alter table prediction_markets enable row level security;
+revoke all on prediction_markets from anon,authenticated;
+alter table positions add column if not exists prediction_id text references prediction_markets(id);
+alter table positions add column if not exists prediction_outcome text check(prediction_outcome in (&#x27;yes&#x27;,&#x27;no&#x27;));
+alter table trades add column if not exists prediction_id text references prediction_markets(id);
+alter table trades add column if not exists prediction_outcome text;
+alter table trades add column if not exists prediction_question text;
+alter table positions drop constraint if exists positions_quantity_check;
+alter table positions add constraint positions_quantity_check check(quantity between 1 and case when market=&#x27;prediction&#x27; then 10000 else 3 end);
+alter table positions drop constraint if exists positions_prediction_check;
+alter table positions add constraint positions_prediction_check check
+ ((market=&#x27;prediction&#x27; and prediction_id is not null and prediction_outcome is not null and side=&#x27;long&#x27;)
+ or (market&lt;&gt;&#x27;prediction&#x27; and prediction_id is null and prediction_outcome is null));
+alter table trades drop constraint if exists trades_reason_check;
+alter table trades add constraint trades_reason_check check(reason in (&#x27;closed&#x27;,&#x27;liquidated&#x27;,&#x27;season_end&#x27;,&#x27;daily_limit&#x27;,&#x27;blown&#x27;,&#x27;reset&#x27;,&#x27;sl_fix&#x27;,&#x27;rules_fix&#x27;,&#x27;market_close&#x27;,&#x27;prediction_settled&#x27;));
+
+create or replace function public.position_mark(p positions) returns numeric language sql stable security definer set search_path=public as $$
+ select case when p.market=&#x27;prediction&#x27; then
+  (select case when m.payout_yes is not null then case when p.prediction_outcome=&#x27;yes&#x27; then m.payout_yes else 1-m.payout_yes end
+   else case when p.prediction_outcome=&#x27;yes&#x27; then m.yes_bid else m.no_bid end end from prediction_markets m where m.id=p.prediction_id)
+ else (select price from quotes where market=p.market) end
+$$;
+create or replace function public.unrealized(p_user uuid,p_season date) returns numeric language sql stable security definer set search_path=public as $$
+ select coalesce(sum((coalesce(position_mark(p),p.entry_price)-p.entry_price)*m.point_value*p.quantity*direction(p.side)),0)
+ from positions p join markets m on m.id=p.market where p.user_id=p_user and p.season=p_season
+$$;
+create or replace function public.position_margin(p positions) returns numeric language sql immutable as $$
+ select case when p.market=&#x27;prediction&#x27; then p.entry_price*p.quantity else p.quantity*1000 end
+$$;
+create or replace function public.set_position_session() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ if new.market=&#x27;prediction&#x27; then new.session_closes_at:=season_ends_at(new.season);
+ else
+  if not market_session_open(new.market,now()) then raise exception &#x27;This market session is closed.&#x27;; end if;
+  new.session_closes_at:=position_session_end(new.market,new.opened_at);
+ end if;
+ if exists(select 1 from positions where user_id=new.user_id and session_closes_at&lt;=now()) then raise exception &#x27;A previous session is awaiting settlement.&#x27;; end if;
+ return new;
+end $$;
+create or replace function public.settle_position(p_position positions,p_reason text) returns trades
+language plpgsql security definer set search_path=public as $$
+declare mark numeric; value numeric; result trades;
+begin
+ mark:=position_mark(p_position);
+ if mark is null then raise exception &#x27;No recorded price available.&#x27;; end if;
+ select (mark-p_position.entry_price)*m.point_value*p_position.quantity*direction(p_position.side) into value from markets m where m.id=p_position.market;
+ update accounts set cash=cash+value where user_id=p_position.user_id and season=p_position.season;
+ insert into trades(id,user_id,season,market,side,quantity,entry_price,exit_price,pnl,opened_at,reason,prediction_id,prediction_outcome,prediction_question,exit_quoted_at)
+ values(p_position.id,p_position.user_id,p_position.season,p_position.market,p_position.side,p_position.quantity,p_position.entry_price,mark,value,p_position.opened_at,p_reason,
+ p_position.prediction_id,p_position.prediction_outcome,(select title from prediction_markets where id=p_position.prediction_id),
+ case when p_position.market=&#x27;prediction&#x27; then (select quoted_at from prediction_markets where id=p_position.prediction_id) else (select quoted_at from quotes where market=p_position.market) end)
+ returning * into result;
+ delete from positions where id=p_position.id;
+ return result;
+end $$;
+create or replace function public.prediction_board() returns jsonb language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user();
+begin
+ return jsonb_build_object(&#x27;markets&#x27;,coalesce((select jsonb_agg(to_jsonb(m) order by volume desc) from (
+  select * from prediction_markets where (status=&#x27;active&#x27; and close_at&gt;now() and quoted_at&gt;now()-interval &#x27;3 minutes&#x27;)
+   or id in(select prediction_id from positions where user_id=uid) order by volume desc limit 60) m),&#x27;[]&#x27;::jsonb));
+end $$;
+create or replace function public.open_prediction(p_market text,p_outcome text,p_stake numeric default 100) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user(); a accounts; m prediction_markets; ask numeric; qty int; used numeric; p positions;
+begin
+ if p_outcome is null or p_outcome not in (&#x27;yes&#x27;,&#x27;no&#x27;) or p_stake is null or p_stake&lt;1 or p_stake&gt;1000 then raise exception &#x27;Choose Yes or No and a paper stake between $1 and $1,000.&#x27;; end if;
+ a:=ensure_account(uid);
+ select * into a from accounts where user_id=uid and season=a.season for update;
+ if a.status&lt;&gt;&#x27;active&#x27; then raise exception &#x27;This account is locked or blown.&#x27;; end if;
+ select * into m from prediction_markets where id=p_market;
+ if not found or m.status&lt;&gt;&#x27;active&#x27; or m.close_at&lt;=now() or m.quoted_at&lt;now()-interval &#x27;90 seconds&#x27; or m.quoted_at&gt;now()+interval &#x27;5 seconds&#x27; or m.payout_yes is not null then raise exception &#x27;This prediction is closed or its prices are stale.&#x27;; end if;
+ ask:=case when p_outcome=&#x27;yes&#x27; then m.yes_ask else m.no_ask end;
+ if ask&lt;=0 or ask&gt;=1 then raise exception &#x27;No executable price for this outcome.&#x27;; end if;
+ qty:=least(10000,floor(p_stake/ask)::int);
+ if qty&lt;1 then raise exception &#x27;Choose a larger paper stake.&#x27;; end if;
+ select coalesce(sum(position_margin(o)),0) into used from positions o where user_id=uid and season=a.season;
+ if a.cash+unrealized(uid,a.season)-used&lt;qty*ask then raise exception &#x27;Not enough buying power.&#x27;; end if;
+ if (select count(*) from positions where user_id=uid and season=a.season)&gt;=10 then raise exception &#x27;Max 10 open positions.&#x27;; end if;
+ if (select count(*) from positions where user_id=uid and opened_at&gt;now()-interval &#x27;10 seconds&#x27;)&gt;=5 then raise exception &#x27;Slow down — max 5 new trades per 10 seconds.&#x27;; end if;
+ insert into positions(user_id,season,market,side,quantity,entry_price,prediction_id,prediction_outcome)
+ values(uid,a.season,&#x27;prediction&#x27;,&#x27;long&#x27;,qty,ask,m.id,p_outcome) returning * into p;
+ perform enforce_rules(uid,a.season);
+ return to_jsonb(p);
+end $$;
+create or replace function public.close_prediction(p_id uuid) returns jsonb language plpgsql security definer set search_path=public as $$
+declare uid uuid:=require_user(); p positions; m prediction_markets; t trades;
+begin
+ perform 1 from accounts where user_id=uid order by season for update;
+ select * into p from positions where id=p_id and user_id=uid and market=&#x27;prediction&#x27; for update;
+ if not found then raise exception &#x27;Prediction already closed.&#x27;; end if;
+ select * into m from prediction_markets where id=p.prediction_id;
+ if m.payout_yes is null and (m.status&lt;&gt;&#x27;active&#x27; or m.close_at&lt;=now()) then raise exception &#x27;This event has closed and is awaiting its official result.&#x27;; end if;
+ if m.payout_yes is null and (m.quoted_at&lt;now()-interval &#x27;90 seconds&#x27; or position_mark(p)&lt;=0) then raise exception &#x27;No fresh exit bid. Try again shortly.&#x27;; end if;
+ t:=settle_position(p,case when m.payout_yes is not null then &#x27;prediction_settled&#x27; else &#x27;closed&#x27; end);
+ perform enforce_rules(uid,p.season); return to_jsonb(t);
+end $$;
+-- Service-only ingestion validates all prices and settles only official final payouts.
+create or replace function public.ingest_predictions(p_rows jsonb) returns jsonb language plpgsql security definer set search_path=public as $$
+declare r jsonb; a accounts; p positions; n int:=0; settled int:=0;
+begin
+ for r in select * from jsonb_array_elements(p_rows) loop
+  if (r-&gt;&gt;&#x27;quoted_at&#x27;)::timestamptz&lt;now()-interval &#x27;90 seconds&#x27; or (r-&gt;&gt;&#x27;quoted_at&#x27;)::timestamptz&gt;now()+interval &#x27;5 seconds&#x27; then continue; end if;
+  insert into prediction_markets(id,title,rules,close_at,status,yes_bid,yes_ask,no_bid,no_ask,payout_yes,quoted_at,volume)
+  values(r-&gt;&gt;&#x27;id&#x27;,r-&gt;&gt;&#x27;title&#x27;,r-&gt;&gt;&#x27;rules&#x27;,(r-&gt;&gt;&#x27;close_at&#x27;)::timestamptz,r-&gt;&gt;&#x27;status&#x27;,(r-&gt;&gt;&#x27;yes_bid&#x27;)::numeric,(r-&gt;&gt;&#x27;yes_ask&#x27;)::numeric,
+  (r-&gt;&gt;&#x27;no_bid&#x27;)::numeric,(r-&gt;&gt;&#x27;no_ask&#x27;)::numeric,(r-&gt;&gt;&#x27;payout_yes&#x27;)::numeric,(r-&gt;&gt;&#x27;quoted_at&#x27;)::timestamptz,coalesce((r-&gt;&gt;&#x27;volume&#x27;)::numeric,0))
+  on conflict(id) do update set title=excluded.title,rules=excluded.rules,close_at=excluded.close_at,status=case when prediction_markets.payout_yes is not null then prediction_markets.status else excluded.status end,
+  yes_bid=case when excluded.status=&#x27;active&#x27; then excluded.yes_bid else prediction_markets.yes_bid end,
+  yes_ask=case when excluded.status=&#x27;active&#x27; then excluded.yes_ask else prediction_markets.yes_ask end,
+  no_bid=case when excluded.status=&#x27;active&#x27; then excluded.no_bid else prediction_markets.no_bid end,
+  no_ask=case when excluded.status=&#x27;active&#x27; then excluded.no_ask else prediction_markets.no_ask end,
+  payout_yes=coalesce(prediction_markets.payout_yes,excluded.payout_yes),quoted_at=excluded.quoted_at,volume=excluded.volume
+  where prediction_markets.quoted_at&lt;=excluded.quoted_at;
+  insert into prediction_ticks(id,quoted_at,yes_bid,no_bid) select id,quoted_at,
+   coalesce(payout_yes,yes_bid),case when payout_yes is not null then 1-payout_yes else no_bid end
+   from prediction_markets where id=r-&gt;&gt;&#x27;id&#x27; on conflict do nothing;
+  n:=n+1;
+ end loop;
+ for a in select * from accounts x where exists(select 1 from positions o where o.user_id=x.user_id and o.season=x.season and o.market=&#x27;prediction&#x27;) order by user_id,season for update skip locked loop
+  for p in select o.* from positions o join prediction_markets m on m.id=o.prediction_id where o.user_id=a.user_id and o.season=a.season and m.payout_yes is not null for update of o loop
+   perform settle_position(p,&#x27;prediction_settled&#x27;); settled:=settled+1;
+  end loop;
+  perform enforce_rules(a.user_id,a.season);
+ end loop;
+ delete from prediction_ticks where quoted_at&lt;now()-interval &#x27;7 days&#x27;;
+ return jsonb_build_object(&#x27;accepted&#x27;,n,&#x27;settled&#x27;,settled);
+end $$;
+create or replace function public.prediction_watchlist() returns jsonb language sql security definer set search_path=public as $$
+ select coalesce(jsonb_agg(id),&#x27;[]&#x27;::jsonb) from (select distinct prediction_id as id from positions where prediction_id is not null) x
+$$;
+revoke all on function position_mark(positions),position_margin(positions),open_prediction(text,text,numeric),close_prediction(uuid),prediction_board(),ingest_predictions(jsonb),prediction_watchlist() from public,anon,authenticated;
+grant execute on function open_prediction(text,text,numeric),close_prediction(uuid),prediction_board() to authenticated;
+grant execute on function ingest_predictions(jsonb),prediction_watchlist() to service_role;
+create or replace function public.my_state() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+  acct accounts := ensure_account(uid);
+  eq numeric := acct.cash + unrealized(uid, acct.season);
+begin
+  return jsonb_build_object(
+    &#x27;handle&#x27;,  (select handle from profiles where id = uid),
+    &#x27;season&#x27;,  acct.season,
+    &#x27;season_number&#x27;, season_number(acct.season),
+    &#x27;season_ends_at&#x27;, season_ends_at(acct.season),
+    &#x27;server_time&#x27;, now(),
+    &#x27;cash&#x27;, acct.cash,
+    &#x27;protection_credit&#x27;, acct.protection_credit,
+    &#x27;liquidations&#x27;, acct.liquidations,
+    &#x27;has_backup_code&#x27;, exists (select 1 from account_recovery where user_id = uid),
+    &#x27;rules&#x27;, jsonb_build_object(
+      &#x27;status&#x27;, acct.status,
+      &#x27;start_balance&#x27;, acct.start_balance,
+      &#x27;peak_equity&#x27;, acct.peak_equity,
+      &#x27;day_start_equity&#x27;, acct.day_start_equity,
+      &#x27;daily_loss_pct&#x27;, acct.daily_loss_pct,
+      &#x27;max_dd_pct&#x27;, acct.max_dd_pct,
+      &#x27;dd_mode&#x27;, acct.dd_mode,
+      &#x27;dd_base&#x27;, round(dd_base(acct), 2),
+      &#x27;daily_floor&#x27;, round(acct.day_start_equity * (1 - acct.daily_loss_pct / 100), 2),
+      &#x27;drawdown_floor&#x27;, dd_floor(acct),
+      &#x27;target&#x27;, round(acct.start_balance * 1.10, 2),
+      &#x27;funded&#x27;, acct.funded_at is not null,
+      &#x27;target_hit&#x27;, acct.target_hit_at is not null,
+      &#x27;resets_used&#x27;, acct.resets_used,
+      &#x27;trading_days&#x27;, trading_days(uid, acct.season),
+      &#x27;qualify_days&#x27;, 5,
+      &#x27;equity&#x27;, round(eq, 2)),
+    &#x27;positions&#x27;, coalesce((select jsonb_agg((to_jsonb(p) || jsonb_build_object(&#x27;mark_price&#x27;,position_mark(p),&#x27;prediction_question&#x27;,(select title from prediction_markets where id=p.prediction_id))) order by p.opened_at)
+                             from positions p where p.user_id = uid and p.season = acct.season), &#x27;[]&#x27;::jsonb),
+    &#x27;trades&#x27;, coalesce((select jsonb_agg(to_jsonb(t) order by t.closed_at desc)
+                          from (select * from trades where user_id = uid and season = acct.season
+                                order by closed_at desc limit 50) t), &#x27;[]&#x27;::jsonb),
+    &#x27;quotes&#x27;, coalesce((select jsonb_agg(to_jsonb(q)) from quotes q), &#x27;[]&#x27;::jsonb)
+  );
+end $$;
+create or replace function public.open_position(p_market public.market, p_side public.trade_side, p_quantity int)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+  acct accounts;
+  q quotes;
+  equity numeric;
+  used numeric;
+  pos positions;
+  recent int;
+begin
+  if p_quantity not between 1 and 10 then
+    raise exception &#x27;Choose 1 to 10 contracts.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  acct := ensure_account(uid);
+  select * into acct from accounts where user_id = uid and season = acct.season for update;
+  if acct.status = &#x27;blown&#x27; then
+    raise exception &#x27;Account blown for this season. 💀 Use your buy-back or wait for next season.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  if acct.status = &#x27;locked&#x27; then
+    raise exception &#x27;Daily loss limit hit. Trading unlocks when the next session opens (5pm New York, % Brisbane).&#x27;,
+      to_char(trading_day_ends_at() at time zone &#x27;Australia/Brisbane&#x27;, &#x27;FMHH12am&#x27;) using errcode = &#x27;P0001&#x27;;
+  end if;
+  select count(*) into recent from positions where user_id = uid and opened_at &gt; now() - interval &#x27;10 seconds&#x27;;
+  if recent &gt;= 5 then raise exception &#x27;Slow down — max 5 new trades per 10 seconds.&#x27; using errcode = &#x27;P0001&#x27;; end if;
+  select * into q from quotes where market = p_market;
+  if not found or q.quoted_at &lt; now() - quote_max_age() then
+    raise exception &#x27;Market is closed or the price feed is stale. Try again when it&#x27;&#x27;s live.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  if (select count(*) from positions where user_id = uid and season = acct.season) &gt;= 10 then
+    raise exception &#x27;Max 10 open positions. Close one first.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  equity := acct.cash + unrealized(uid, acct.season);
+  select coalesce(sum(position_margin(positions)), 0) into used from positions where user_id = uid and season = acct.season;
+  if equity - used + 0.000001 &lt; p_quantity * 1000 then
+    raise exception &#x27;Not enough buying power. Close a position or choose fewer contracts.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  insert into positions (user_id, season, market, side, quantity, entry_price)
+  values (uid, acct.season, p_market, p_side, p_quantity, q.price)
+  returning * into pos;
+  return to_jsonb(pos);
+end $$;
+create or replace function public.close_position(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+  pos positions;
+  result trades;
+begin
+  perform 1 from accounts where user_id=uid order by season for update;
+  select * into pos from positions where id = p_id and user_id = uid for update;
+  if not found then raise exception &#x27;That position is already closed.&#x27; using errcode = &#x27;P0001&#x27;; end if;
+  if pos.market=&#x27;prediction&#x27; then return close_prediction(p_id); end if;
+  result := settle_position(pos, &#x27;closed&#x27;);
+  perform enforce_rules(uid, pos.season);
+  return to_jsonb(result);
+end $$;
+create or replace function public.reduce_position(p_market public.market, p_side public.trade_side, p_quantity int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+  v_season date := current_season();
+  left_to_close int := p_quantity;
+  leg positions;
+  part positions;
+  t trades;
+  total numeric := 0;
+  closed int := 0;
+begin
+  if p_market=&#x27;prediction&#x27; then raise exception &#x27;Use the prediction exit button.&#x27;; end if;
+  if p_quantity is null or p_quantity &lt; 1 then
+    raise exception &#x27;Choose at least 1 micro to close.&#x27; using errcode = &#x27;P0001&#x27;;
+  end if;
+  perform 1 from accounts where user_id = uid and accounts.season = v_season for update;
+  if not exists (select 1 from positions where user_id = uid and positions.season = v_season and market = p_market and side = p_side) then
+    raise exception &#x27;No % position on that market to take a partial from.&#x27;, p_side using errcode = &#x27;P0001&#x27;;
+  end if;
+
+  for leg in
+    select * from positions
+     where user_id = uid and positions.season = v_season and market = p_market and side = p_side
+     order by opened_at desc, id desc
+     for update
+  loop
+    exit when left_to_close &lt;= 0;
+    if leg.quantity &lt;= left_to_close then
+      t := settle_position(leg, &#x27;closed&#x27;);
+      left_to_close := left_to_close - leg.quantity;
+      closed := closed + leg.quantity;
+    else
+      -- Split: settle the closed slice as its own trade (new id), keep the rest open.
+      part := leg;
+      part.id := gen_random_uuid();
+      part.quantity := left_to_close;
+      t := settle_position(part, &#x27;closed&#x27;);   -- its delete finds no row; only the trade + cash move
+      update positions set quantity = quantity - left_to_close where id = leg.id;
+      closed := closed + left_to_close;
+      left_to_close := 0;
+    end if;
+    total := total + t.pnl;
+  end loop;
+
+  perform enforce_rules(uid, v_season);
+  return jsonb_build_object(&#x27;closed&#x27;, closed, &#x27;pnl&#x27;, round(total, 2));
+end $$;
+create or replace function public.guard_session_exit() returns trigger
+language plpgsql security definer set search_path=public as $$
+begin
+ if new.reason not in (&#x27;market_close&#x27;,&#x27;prediction_settled&#x27;) and exists(select 1 from positions p where p.user_id=new.user_id
+   and p.market=new.market and p.side=new.side and p.opened_at=new.opened_at and p.session_closes_at&lt;=now()) then
+   raise exception &#x27;Session ended. This position is awaiting its market-close receipt.&#x27;;
+ end if;
+ return new;
+end $$;
+create or replace function public.settle_market_closes(p_now timestamptz default now()) returns jsonb
+language plpgsql security definer set search_path=public as $$
+declare a accounts; p positions; mark numeric; quote_time timestamptz; value numeric; n int:=0; pending int:=0;
+begin
+ for a in select * from accounts x where exists(select 1 from positions o where o.user_id=x.user_id
+   and o.season=x.season and o.session_closes_at&lt;=p_now) order by user_id,season for update skip locked loop
+   for p in select * from positions where user_id=a.user_id and season=a.season and session_closes_at&lt;=p_now
+     order by session_closes_at,id for update loop
+     mark:=null; quote_time:=null;
+     if p.market=&#x27;prediction&#x27; then
+       select case when p.prediction_outcome=&#x27;yes&#x27; then t.yes_bid else t.no_bid end,t.quoted_at into mark,quote_time
+       from prediction_ticks t where t.id=p.prediction_id and t.quoted_at between p.session_closes_at-interval &#x27;5 minutes&#x27; and p.session_closes_at
+       order by t.quoted_at desc limit 1;
+     else
+     select x.price,x.at into mark,quote_time from (
+       select q.price,q.quoted_at as at from quotes q where q.market=p.market
+       union all select t.price,t.quoted_at from quote_ticks t where t.market=p.market
+         and t.quoted_at&gt;=p.session_closes_at-interval &#x27;5 minutes&#x27; and t.quoted_at&lt;=p.session_closes_at
+       union all select b.close,b.last_at from bars b where b.market=p.market and b.secs=60
+         and b.idx between floor(extract(epoch from p.session_closes_at-interval &#x27;5 minutes&#x27;)/60)::bigint
+                       and floor(extract(epoch from p.session_closes_at)/60)::bigint
+     ) x where x.at&lt;=p.session_closes_at and x.at&gt;=p.session_closes_at-interval &#x27;5 minutes&#x27;
+       and x.at&gt;=p.opened_at order by x.at desc limit 1;
+     end if;
+     if mark is null then pending:=pending+1; continue; end if;
+     select (mark-p.entry_price)*m.point_value*p.quantity*direction(p.side) into value from markets m where m.id=p.market;
+     insert into trades(id,user_id,season,market,side,quantity,entry_price,exit_price,pnl,opened_at,closed_at,reason,exit_quoted_at,prediction_id,prediction_outcome,prediction_question)
+       values(p.id,p.user_id,p.season,p.market,p.side,p.quantity,p.entry_price,mark,value,p.opened_at,p.session_closes_at,&#x27;market_close&#x27;,quote_time,p.prediction_id,p.prediction_outcome,(select title from prediction_markets where id=p.prediction_id));
+     update accounts set cash=cash+value where user_id=p.user_id and season=p.season;
+     delete from positions where id=p.id;
+     n:=n+1;
+   end loop;
+   if not exists(select 1 from positions where user_id=a.user_id and season=a.season and session_closes_at&lt;=p_now) then
+     perform enforce_rules(a.user_id,a.season);
+   end if;
+ end loop;
+ return jsonb_build_object(&#x27;settled&#x27;,n,&#x27;pending&#x27;,pending);
+end $$;
+-- Preserve per-event identity and marks in squad profiles.
+create or replace function public.chart_bubbles(p_market public.market, p_squad uuid default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid := require_user();
+begin
+  if p_squad is not null then perform require_member(p_squad); end if;
+  return coalesce((
+    select jsonb_agg(row_to_json(b) order by b.at)
+    from (
+      select &#x27;open&#x27;::text as state, o.id, p.handle, o.user_id = uid as is_you, o.side, o.quantity, o.entry_price,
+             null::numeric as exit_price, null::numeric as pnl, null::text as reason, o.opened_at as at, o.opened_at,
+             round(position_margin(o) / nullif(a.cash + unrealized(o.user_id, o.season), 0) * 100, 2) as size_pct,
+             a.peak_equity * (1 - a.max_dd_pct / 100) as dd_floor,
+             a.cash + unrealized(o.user_id, o.season) as equity, o.prediction_id, o.prediction_outcome,
+             (select title from prediction_markets where id=o.prediction_id) as prediction_question, position_mark(o) as mark_price
+      from positions o
+      join profiles p on p.id = o.user_id
+      join accounts a on a.user_id = o.user_id and a.season = o.season
+      where o.market = p_market and o.season = current_season()
+        and (o.user_id = uid or (p_squad is not null and exists (select 1 from squad_members m where m.squad_id = p_squad and m.user_id = o.user_id)))
+      union all
+      select * from (
+        select &#x27;closed&#x27;::text, t.id, p.handle, t.user_id = uid, t.side, t.quantity, t.entry_price, t.exit_price, t.pnl, t.reason,
+               t.closed_at, t.opened_at, null::numeric, null::numeric, null::numeric,
+               t.prediction_id, t.prediction_outcome, t.prediction_question, t.exit_price
+        from trades t join profiles p on p.id = t.user_id
+        where t.market = p_market and t.season = current_season() and t.closed_at &gt; now() - interval &#x27;24 hours&#x27;
+          and (t.user_id = uid or (p_squad is not null and exists (select 1 from squad_members m where m.squad_id = p_squad and m.user_id = t.user_id)))
+        order by t.closed_at desc limit 60
+      ) recent
+    ) b), &#x27;[]&#x27;::jsonb);
+end $$;
+
+
+commit;
+</pre><h2>crypto</h2><pre id="crypto">// Server-side Coinbase quotes for Brokie paper contracts. Called by our secret-protected cron.
+// https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-ticker
+const products = { btc: &quot;BTC-USD&quot;, eth: &quot;ETH-USD&quot;, sol: &quot;SOL-USD&quot; };
+export function parseTicker(market: string, payload: { price?: string; time?: string }, now = Date.now()) {
+  const price = Number(payload.price), at = Date.parse(payload.time ?? &quot;&quot;);
+  if (!Object.hasOwn(products, market) || !Number.isFinite(price) || price &lt;= 0 || price &gt; 10_000_000 || !Number.isFinite(at) || now-at &gt; 45_000 || at-now &gt; 5000) return null;
+  return { market, price, quoted_at: new Date(at).toISOString(), source: &quot;coinbase&quot; };
+}
+Deno.serve(async (req: Request) =&gt; {
+  const key = Deno.env.get(&quot;BROKIE_SERVICE_KEY&quot;) ?? Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;);
+  const base = Deno.env.get(&quot;SUPABASE_URL&quot;);
+  if (!key || !base) return Response.json({ error: &quot;Missing server configuration&quot; }, { status: 500 });
+  const headers: Record&lt;string,string&gt; = { apikey: key, &quot;Content-Type&quot;: &quot;application/json&quot; };
+  if (key.startsWith(&quot;eyJ&quot;)) headers.Authorization = `Bearer ${key}`;
+  const rpc = (name: string, body: unknown) =&gt; fetch(`${base}/rest/v1/rpc/${name}`, { method: &quot;POST&quot;, headers, body: JSON.stringify(body), signal: AbortSignal.timeout(8000) });
+  const auth = await rpc(&quot;check_cron_secret&quot;, { p_secret: req.headers.get(&quot;x-cron-secret&quot;) ?? &quot;&quot; });
+  if (!auth.ok || await auth.json() !== true) return new Response(&quot;Forbidden&quot;, { status: 403 });
+  // Independent requests: a failure for one product never fabricates a quote or blocks the others.
+  const results = await Promise.allSettled(Object.entries(products).map(async ([market, product]) =&gt; {
+    const response = await fetch(`https://api.exchange.coinbase.com/products/${product}/ticker`, { headers: { Accept: &quot;application/json&quot; }, signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error(`${market}: HTTP ${response.status}`);
+    return parseTicker(market, await response.json());
+  }));
+  const quotes = results.flatMap(r =&gt; r.status === &quot;fulfilled&quot; &amp;&amp; r.value ? [r.value] : []);
+  if (!quotes.length) return Response.json({ error: &quot;No fresh crypto quotes&quot; }, { status: 502 });
+  const result = await rpc(&quot;ingest_quotes&quot;, { p_quotes: quotes });
+  return new Response(await result.text(), { status: result.status, headers: { &quot;Content-Type&quot;: &quot;application/json&quot; } });
+});
+</pre><h2>feed</h2><pre id="feed">// Public market data only. All orders and payouts stay in Brokie&#x27;s paper ledger.
+// https://docs.kalshi.com/api-reference/market/get-markets
+const FEED = &quot;https://api.elections.kalshi.com/trade-api/v2&quot;;
+export function parseMarket(m: Record&lt;string, unknown&gt;, at = new Date().toISOString()) {
+  if (typeof m.ticker !== &quot;string&quot; || typeof m.title !== &quot;string&quot; || m.market_type !== &quot;binary&quot; || Number(m.notional_value_dollars) !== 1 || m.mve_collection_ticker) return null;
+  const prices = [m.yes_bid_dollars,m.yes_ask_dollars,m.no_bid_dollars,m.no_ask_dollars].map(v =&gt; v == null || v === &quot;&quot; ? NaN : Number(v));
+  if (prices.some(p =&gt; !Number.isFinite(p) || p &lt; 0 || p &gt; 1) || !Number.isFinite(Date.parse(String(m.close_time)))) return null;
+  const [yes_bid,yes_ask,no_bid,no_ask] = prices;
+  if (m.status === &quot;active&quot; &amp;&amp; (yes_bid &gt; yes_ask || no_bid &gt; no_ask)) return null;
+  // A tentative result is not a settlement. Respect final scalar/void payouts as well as Yes/No.
+  let payout: number | null = null;
+  if (m.status === &quot;finalized&quot; || m.status === &quot;settled&quot;) {
+    const value = m.settlement_value_dollars == null || m.settlement_value_dollars === &quot;&quot; ? NaN : Number(m.settlement_value_dollars);
+    if (Number.isFinite(value) &amp;&amp; value &gt;= 0 &amp;&amp; value &lt;= 1) payout = value;
+    else if (m.result === &quot;yes&quot;) payout = 1;
+    else if (m.result === &quot;no&quot;) payout = 0;
+  }
+  const rules = [m.rules_primary,m.rules_secondary].filter(v =&gt; typeof v === &quot;string&quot; &amp;&amp; v).join(&quot;\n\n&quot;);
+  return { id:m.ticker,title:m.title,rules,close_at:m.close_time,status:rules ? m.status : &quot;paused&quot;,yes_bid,yes_ask,no_bid,no_ask,payout_yes:payout,quoted_at:at,volume:Number(m.volume_24h_fp)||0 };
+}
+Deno.serve(async (req: Request) =&gt; {
+  const key = Deno.env.get(&quot;BROKIE_SERVICE_KEY&quot;) ?? Deno.env.get(&quot;SUPABASE_SERVICE_ROLE_KEY&quot;), base = Deno.env.get(&quot;SUPABASE_URL&quot;);
+  if (!key || !base) return Response.json({ error:&quot;Missing server configuration&quot; },{status:500});
+  const headers:Record&lt;string,string&gt;={apikey:key,&quot;Content-Type&quot;:&quot;application/json&quot;};
+  if (key.startsWith(&quot;eyJ&quot;)) headers.Authorization=`Bearer ${key}`;
+  const rpc=(name:string,body:unknown)=&gt;fetch(`${base}/rest/v1/rpc/${name}`,{method:&quot;POST&quot;,headers,body:JSON.stringify(body),signal:AbortSignal.timeout(8000)});
+  const check=await rpc(&quot;check_cron_secret&quot;,{p_secret:req.headers.get(&quot;x-cron-secret&quot;)??&quot;&quot;});
+  if(!check.ok || await check.json()!==true)return new Response(&quot;Forbidden&quot;,{status:403});
+  const get=async(path:string)=&gt;{const r=await fetch(`${FEED}${path}`,{headers:{Accept:&quot;application/json&quot;},signal:AbortSignal.timeout(6000)});if(!r.ok)throw new Error(`Feed ${r.status}`);return r.json();};
+  const watchResponse=await rpc(&quot;prediction_watchlist&quot;,{});
+  if(!watchResponse.ok)return Response.json({error:&quot;Watchlist unavailable&quot;},{status:502});
+  const watch:string[]=await watchResponse.json();
+  const requests=[...[&#x27;KXBTC15M&#x27;,&#x27;KXNBAGAME&#x27;].map(series=&gt;get(`/markets?status=open&amp;limit=100&amp;series_ticker=${series}`)),
+    ...Array.from({length:Math.ceil(watch.length/50)},(_,i)=&gt;get(`/markets?limit=100&amp;tickers=${encodeURIComponent(watch.slice(i*50,i*50+50).join(&#x27;,&#x27;))}`))];
+  const results=await Promise.allSettled(requests);
+  const all=results.flatMap(r=&gt;r.status===&#x27;fulfilled&#x27; &amp;&amp; Array.isArray(r.value.markets)?r.value.markets:[]);
+  const parsed=all.map(m=&gt;parseMarket(m)).filter((m):m is NonNullable&lt;ReturnType&lt;typeof parseMarket&gt;&gt;=&gt;m!==null);
+  const tracked=parsed.filter(m=&gt;watch.includes(m.id));
+  const candidates=parsed.filter(m=&gt;m.status===&#x27;active&#x27; &amp;&amp; m.volume&gt;0 &amp;&amp; m.yes_ask-m.yes_bid&lt;=0.2 &amp;&amp; m.no_ask-m.no_bid&lt;=0.2 &amp;&amp; m.yes_ask&gt;0 &amp;&amp; m.yes_ask&lt;1 &amp;&amp; m.no_ask&gt;0 &amp;&amp; m.no_ask&lt;1 &amp;&amp; Date.parse(String(m.close_at))&gt;Date.now()).sort((a,b)=&gt;b.volume-a.volume).slice(0,12);
+  const rows=[...new Map([...candidates,...tracked].map(m=&gt;[m.id,m])).values()];
+  if(!rows.length)return Response.json({error:&quot;No fresh prediction markets&quot;},{status:502});
+  const out=await rpc(&quot;ingest_predictions&quot;,{p_rows:rows});
+  return new Response(await out.text(),{status:out.status,headers:{&quot;Content-Type&quot;:&quot;application/json&quot;}});
+});
+</pre><pre id="crons">-- Install after weekend.sql. Independent of external price ingestion.
+select cron.unschedule(jobid) from cron.job where jobname=&#x27;brokie-market-close&#x27;;
+select cron.schedule(&#x27;brokie-market-close&#x27;,&#x27;* * * * *&#x27;,$$select public.settle_market_closes();$$);
+-- Inspect pending closures rather than assigning a fabricated price:
+-- select id,market,session_closes_at from positions where session_closes_at&lt;=now();
+
+-- Deploy crypto-quotes first. Reuses the project&#x27;s existing cron secret.
+insert into public.brokie_private(key,value)
+select &#x27;crypto_ingest_url&#x27;,regexp_replace(value,&#x27;/functions/v1/[^/]+$&#x27;,&#x27;/functions/v1/crypto-quotes&#x27;)
+from public.brokie_private where key=&#x27;ingest_url&#x27;
+on conflict(key) do update set value=excluded.value;
+select cron.unschedule(jobid) from cron.job where jobname=&#x27;brokie-crypto-quotes&#x27;;
+select cron.schedule(&#x27;brokie-crypto-quotes&#x27;,&#x27;10 seconds&#x27;,$job$
+ select net.http_post(url:=(select value from public.brokie_private where key=&#x27;crypto_ingest_url&#x27;),
+ headers:=jsonb_build_object(&#x27;Content-Type&#x27;,&#x27;application/json&#x27;,&#x27;x-cron-secret&#x27;,(select value from public.brokie_private where key=&#x27;cron_secret&#x27;)),
+ body:=&#x27;{}&#x27;::jsonb,timeout_milliseconds:=8000);
+$job$);
+
+-- Deploy prediction-quotes before installing this schedule.
+insert into public.brokie_private(key,value)
+select &#x27;prediction_ingest_url&#x27;,regexp_replace(value,&#x27;/functions/v1/[^/]+$&#x27;,&#x27;/functions/v1/prediction-quotes&#x27;)
+from public.brokie_private where key=&#x27;ingest_url&#x27;
+on conflict(key) do update set value=excluded.value;
+select cron.unschedule(jobid) from cron.job where jobname=&#x27;brokie-prediction-quotes&#x27;;
+select cron.schedule(&#x27;brokie-prediction-quotes&#x27;,&#x27;30 seconds&#x27;,$job$
+ select net.http_post(url:=(select value from public.brokie_private where key=&#x27;prediction_ingest_url&#x27;),
+ headers:=jsonb_build_object(&#x27;Content-Type&#x27;,&#x27;application/json&#x27;,&#x27;x-cron-secret&#x27;,(select value from public.brokie_private where key=&#x27;cron_secret&#x27;)),
+ body:=&#x27;{}&#x27;::jsonb,timeout_milliseconds:=15000);
+$job$);
+</pre></body></html>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-/** The lower preview is a close surface. Fullscreen keeps chart gestures intact. */
+/** The P&L bar is the explicit close surface; chart swipes navigate pages. */
 export function useTradeSwipe({ enabled, fullscreen, revision, onCommit }: { enabled: boolean; fullscreen: boolean; revision: string; onCommit: () => void }) {
   const [distance, setDistance] = useState(0);
   const active = useRef<(() => void) | null>(null);
@@ -15,7 +15,7 @@ export function useTradeSwipe({ enabled, fullscreen, revision, onCommit }: { ena
     const target = e.target as HTMLElement, status = target.closest(".trade-dock .dock-status");
     if (target.closest(".sheet,.scrim,.execution-options,.spam-pad,.bracket,.tc,[data-testid='bracket-grip'],input,textarea,a,select")) return;
     if (target.closest("button") && !status) return;
-    if (fullscreen ? !status : !status && e.clientY < window.innerHeight / 2) return;
+    if (!status) return;
     const root = e.currentTarget, id = e.pointerId, startX = e.clientX, startY = e.clientY;
     const threshold = Math.min(145, root.clientWidth * .38);
     let x = 0, locked: boolean | null = null, armed = false;

@@ -7,6 +7,8 @@ import { FRAME_OPTIONS, game, useGame } from "./game";
 import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui";
 import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
+import { RankCard } from "./rank";
+import { UsdcPlay } from "./UsdcPlay";
 
 export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; onFeedback: () => void }) {
   const st = useGame();
@@ -35,6 +37,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <div className="seg" role="tablist" aria-label="Performance period"><button role="tab" aria-selected={period === "season"} className={period === "season" ? "on" : ""} onClick={() => setPeriod("season")}>This season</button><button role="tab" aria-selected={period === "lifetime"} className={period === "lifetime" ? "on" : ""} onClick={() => setPeriod("lifetime")}>Lifetime</button></div>
       {period === "season" ? <>
       <section className="season-score"><div className="row between"><Eyebrow>Season {me.season_number ?? ""} · total return</Eyebrow><span className="profile-season-end">{countdown(me.season_ends_at, game.now())} left</span></div><strong className={me.cash + unrealized >= base ? "lime" : "red"}>{((me.cash + unrealized - base) / base * 100) >= 0 ? "+" : ""}{((me.cash + unrealized - base) / base * 100).toFixed(2)}%</strong><div className={`season-score-money ${me.cash + unrealized >= base ? "lime" : "red"}`}>{signedMoney(me.cash + unrealized - base)}</div><span className="muted">{money(me.cash + unrealized)} paper equity</span></section>
+      <RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} />
       <div className="profile-stats">
         {[["Trades · last 50", String(me.trades.length)], ["Win rate · last 50", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized P&L", signedMoney(me.cash - base)]].map(([k, v]) => (
           <div key={k} className={`panel ${k === "Realized P&L" ? me.cash >= base ? "lime" : "red" : ""}`} style={{ flex: 1, padding: 13, borderRadius: 14 }}><div className="eyebrow" style={{ fontSize: 7 }}>{k}</div><div style={{ font: "600 19px var(--round)", marginTop: 12, whiteSpace: "nowrap" }}>{v}</div></div>
@@ -53,6 +56,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <button className="profile-customize" onClick={() => setLook(true)}><Avatar handle={me.handle} /><span><b>Make it yours</b><small>Your face on the trading floor.</small></span><span aria-hidden="true">↗</span></button>
       <Sheet open={look} onClose={() => setLook(false)}><div className="stack"><div className="row between"><Eyebrow>Your look</Eyebrow><button className="text-action" onClick={() => setLook(false)}>Done</button></div><AvatarShop toast={toast} /></div></Sheet>
       <DailyRecap />
+      <UsdcPlay />
       <div id="receipts" className="stack" style={{ gap: 14 }}>
         <div className="row between"><h2 className="h2">Your trades</h2><span className="section-caption">Latest 50 · tap to review</span></div>
         {me.trades.length === 0 && <div className="quiet-empty"><span aria-hidden="true">↗</span><b>A fresh start.</b><p>Your closed trades will land here.<br />Every entry has something to teach you.</p></div>}

@@ -1,4 +1,6 @@
 import { FloorPresence } from "./FloorPresence";
+import { ChartIndicators, INDICATOR_ITEMS } from "./ChartIndicators";
+import { candleRead, IndicatorOptions, readIndicators, saveIndicators } from "./indicators";
 import { useTradeSwipe } from "./useTradeSwipe";
 import { priceForPnl, protectionDirection, protectionPnl } from "./protection";
 import { EventStrip } from "./Events";
@@ -36,6 +38,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [positionsOpen, setPositionsOpen] = useState(false);
   const [protectionId, setProtectionId] = useState<string | null>(null);
   const [chartInfo, setChartInfo] = useState(false);
+  const [indicators, setIndicators] = useState(readIndicators);
+  const [indicatorsOpen, setIndicatorsOpen] = useState(false);
+  const updateIndicators = (next: IndicatorOptions) => { setIndicators(next); saveIndicators(next); };
   const [big, setBig] = useState(false);
   const [viewportH, setViewportH] = useState(window.visualViewport?.height ?? window.innerHeight);
   useEffect(() => {
@@ -96,6 +101,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const shown: Market[] = [...(crypto ? CRYPTOS : FUTURES)];
   const heldElsewhere = [...new Set(me.positions.map(p => p.market))].filter(m => !shown.includes(m));
   const candles = game.liveCandles(market);
+  const pattern = indicators.patterns ? candleRead(candles.slice(0, -1)) : null;
+  const indicatorCount = Object.values(indicators).filter(Boolean).length;
   const quote = mark(market);
   // Own fills come from account state immediately, including each individual leg.
   // The position pills may aggregate size, but chart entries keep their real fills.
@@ -144,7 +151,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const quick = here.length === 1 ? here[0] : null;
   const quickTitle = quick ? `${MARKETS[market].title} · ${quick.merged.side === "long" ? "Long" : "Short"} ${quick.merged.quantity}` : "Choose a position";
   const swipe = useTradeSwipe({
-    enabled: here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !st.chatOpen,
+    enabled: here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !indicatorsOpen && !st.chatOpen,
     fullscreen: big,
     revision: `${market}:${here.map(s=>`${s.ids.join(',')}:${s.merged.quantity}`).join('|')}`,
     onCommit: () => {
@@ -209,6 +216,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         <div className="chart-utilities">
           <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
           <div className="chart-actions">
+          <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>
           <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => { const next = !showHistory; setShowHistory(next); try { localStorage.setItem("brokie.chartHistory", next ? "on" : "off"); } catch { /* */ } }} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
           <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
@@ -223,8 +231,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change), digits(market))}</span>
             </div>
           </div>
-
-
+          <div className={`candle-read ${pattern?.side ?? "neutral"}`} data-testid="candle-read"><small>{pattern ? "CLOSED CANDLE" : "MARKET LENS"}</small><b>{pattern?.name ?? (indicators.structure ? "Reading structure" : "Price action")}</b><span>{pattern ? "Pattern identified" : "Your trade. Your call."}</span></div>
         </div>
         <FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
@@ -233,11 +240,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
           // History is opt-in; current squad entries stay visible by default.
           overlay={(toXY, width, height) => <>
+            <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={width} height={height}/>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} height={height} showHistory={showHistory} now={game.now()} bubbles={chartBubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={()=>{}} />
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
           </>} />
+        {indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
         {!open && <div className="chart-attribution">{crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live."}</div>}
         {big && orderDock}
       </div>
@@ -263,6 +272,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <button type="button" className="text-action" onClick={()=>{setAccountOpen(false);goHistory();}}>View trade history ↗</button></div></Sheet>
       <Sheet open={chartInfo} onClose={()=>setChartInfo(false)}><div className="stack"><div className="row between"><h2 className="h2">Your chart</h2><button type="button" className="text-action" onClick={()=>setChartInfo(false)}>Done</button></div>        <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Use the top-right expand button to pan, zoom and trade fullscreen."} Pictures mark entries: green ↑ is long, red ↓ is short. Tap grouped pictures to see everyone and each trade. Small crosses mark exits.</div>
 </div></Sheet>
+      <Sheet open={indicatorsOpen} onClose={() => setIndicatorsOpen(false)}><div className="indicator-settings stack" data-testid="indicator-settings">
+        <div className="row between"><div><Eyebrow>Your market lens</Eyebrow><h2 className="h2">Read between the candles.</h2></div><button type="button" className="text-action" onClick={() => setIndicatorsOpen(false)}>Done</button></div>
+        <div className="indicator-presets" role="group" aria-label="Indicator presets"><button type="button" onClick={() => updateIndicators({ ema: false, bands: false, structure: false, gaps: false, patterns: false })}>Clean</button><button type="button" onClick={() => updateIndicators({ ema: true, bands: false, structure: true, gaps: true, patterns: true })}>Structure</button><button type="button" onClick={() => updateIndicators({ ema: true, bands: true, structure: false, gaps: false, patterns: true })}>Momentum</button></div>
+        <div>{INDICATOR_ITEMS.map(item => <label className="indicator-setting" key={item.key}><span className="indicator-setting-icon" style={{ color: item.color }} aria-hidden="true">{item.key === "ema" ? "∿" : item.key === "bands" ? "≋" : item.key === "structure" ? "⌁" : item.key === "gaps" ? "▱" : "✦"}</span><span><b>{item.name}</b><small>{item.detail}</small></span><input type="checkbox" aria-label={item.name} checked={indicators[item.key]} onChange={e => updateIndicators({ ...indicators, [item.key]: e.target.checked })}/><i aria-hidden="true"/></label>)}</div>
+        {pattern && <div className={`indicator-pattern-detail ${pattern.side}`}><Eyebrow>Latest closed candle</Eyebrow><b>{pattern.name}</b><p>{pattern.description}</p></div>}
+        <p className="indicator-footnote">Calculated from your chart’s closed candles. Structure pivots need two later closes; filled gaps disappear. Overlays describe price action and never place trades.</p>
+      </div></Sheet>
       <Sheet open={positionsOpen} onClose={() => setPositionsOpen(false)}>
         <div className="stack" data-testid="positions-sheet">
           <div className="row between"><h2 className="h2">Your open positions</h2><button className="text-action" aria-label="Close positions" onClick={() => setPositionsOpen(false)}>Done</button></div>

@@ -12,10 +12,10 @@ import { FlashOverlay } from "./Events";
 import { ChatCard, FeedbackSheet } from "./Social";
 
 import { useVoice, voice, ROOMS } from "./voice";
-import { Icon, Sheet, useToast } from "./ui";
+import { Icon, useToast } from "./ui";
 
-type Tab = "trade" | "squad" | "learn" | "you";
-const TAB_ORDER: Tab[] = ["trade", "squad", "learn", "you"];
+type Tab = "trade" | "chat" | "squad" | "learn" | "you";
+const TAB_ORDER: Tab[] = ["trade", "chat", "squad", "learn", "you"];
 
 export function App() {
   const st = useGame();
@@ -23,13 +23,23 @@ export function App() {
   const [previous, setPrevious] = useState<Tab | null>(null);
   const [slide, setSlide] = useState(1);
   const current = useRef(tab);
-  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const swipe = useRef<{ id: number; x: number; y: number; at: number; locked: boolean; width: number } | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [peek, setPeek] = useState<Tab | null>(null);
+  const [releaseX, setReleaseX] = useState(0);
+  const swallowClick = useRef(false);
   const navigate = (next: Tab) => {
     if (next === current.current) return;
     setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(current.current) ? 1 : -1);
+    game.setChatOpen(next === "chat");
     setPrevious(current.current); current.current = next; setTab(next);
   };
-  useEffect(() => { if (!previous) return; const t = setTimeout(() => setPrevious(null), 360); return () => clearTimeout(t); }, [tab, previous]);
+  useEffect(() => { if (!previous) return; const t = setTimeout(() => { setPrevious(null); setReleaseX(0); }, 300); return () => clearTimeout(t); }, [tab, previous]);
+  useEffect(() => {
+    const cancel = () => { swipe.current = null; setDragX(0); setPeek(null); };
+    window.addEventListener("blur", cancel); document.addEventListener("visibilitychange", cancel);
+    return () => { window.removeEventListener("blur", cancel); document.removeEventListener("visibilitychange", cancel); };
+  }, []);
   useEffect(() => {
     const lock = () => {
       const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
@@ -71,22 +81,49 @@ export function App() {
           <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
-        <main className="page-stage" style={{ ["--slide" as string]: slide }}
-          onTouchStart={e => {
+        <div className="page-map" aria-label="App pages">{TAB_ORDER.map((t, i) => <button type="button" key={t} aria-label={`Go to ${t}`} aria-current={t === tab ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }}><i/>{t === tab ? <span>{t === "you" ? "You" : t[0].toUpperCase() + t.slice(1)}</span> : null}{i === TAB_ORDER.indexOf(tab) + 1 && <small aria-hidden="true">→</small>}</button>)}<span className="page-swipe-hint" aria-hidden="true">swipe to explore</span></div>
+        <main className={`page-stage swipe-deck ${peek ? "dragging" : ""}`} data-testid="page-deck" style={{ ["--slide" as string]: slide, ["--release-x" as string]: `${releaseX}px` }}
+          onPointerDown={e => {
+            swallowClick.current = false;
+            if (swipe.current) { swipe.current = null; setPeek(null); setDragX(0); return; }
             const el = e.target as HTMLElement;
-            if (e.touches.length !== 1 || el.closest("button, a, input, textarea, .trade-screen, .chart-card, .pos-card, .hscroll, .selection-wheel, .sheet")) { swipe.current = null; return; }
-            swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            const card = el.closest(".lesson-card,.receipt-ticket,.profile-customize");
+            if (!e.isPrimary || e.button !== 0 || previous || document.querySelector('.sheet,.chart-fullscreen') || el.closest("a, input, textarea, select, [role='slider'], .trade-dock, .pos-card, .hscroll, .selection-wheel, .sheet, .tm, .bracket, .tc, .bub, .cluster") || el.closest("button") && !card) return;
+            swipe.current = { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now(), locked: false, width: e.currentTarget.clientWidth };
           }}
-          onTouchEnd={e => {
-            const from = swipe.current; swipe.current = null;
-            if (!from || !e.changedTouches[0]) return;
-            const dx = e.changedTouches[0].clientX - from.x, dy = e.changedTouches[0].clientY - from.y;
-            if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
-            const next = TAB_ORDER[TAB_ORDER.indexOf(tab) + (dx < 0 ? 1 : -1)];
-            if (next) { setReviewHistory(false); navigate(next); }
-          }}>
-          {TAB_ORDER.filter(t => t === tab || t === previous).map(t => <div key={t} className={`page-screen ${t === tab ? previous ? "entering" : "" : "leaving"}`} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
+          onPointerMove={e => {
+            const from = swipe.current; if (!from || from.id !== e.pointerId) return;
+            const dx = e.clientX - from.x, dy = e.clientY - from.y;
+            if (!from.locked) {
+              if (Math.hypot(dx, dy) < 12) return;
+              if (Math.abs(dx) < Math.abs(dy) * 1.45) { swipe.current = null; return; }
+              from.locked = true; swallowClick.current = true;
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
+            e.preventDefault();
+            const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + (dx < 0 ? 1 : -1)];
+            setPeek(next ?? null); setDragX(next ? Math.max(-from.width, Math.min(from.width, dx)) : dx * .16);
+          }}
+          onPointerUp={e => {
+            const from = swipe.current; if (!from || from.id !== e.pointerId) return;
+            swipe.current = null;
+            const dx = e.clientX - from.x, velocity = Math.abs(dx) / Math.max(1, performance.now() - from.at);
+            const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + (dx < 0 ? 1 : -1)];
+            if (from.locked && next && (Math.abs(dx) > Math.min(100, from.width * .24) || Math.abs(dx) > 36 && velocity > .5)) {
+              setReleaseX(dragX); setReviewHistory(false); navigate(next);
+            }
+            setDragX(0); setPeek(null);
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+          }}
+          onPointerCancel={() => { swipe.current = null; setPeek(null); setDragX(0); }}
+          onLostPointerCapture={() => { swipe.current = null; setPeek(null); setDragX(0); }}
+          onClickCapture={e => { if (swallowClick.current) { swallowClick.current = false; e.preventDefault(); e.stopPropagation(); } }}>
+          {TAB_ORDER.filter(t => t === tab || t === previous || t === peek).map(t => <div key={t} className={`page-screen ${t === tab ? previous ? "entering" : "" : t === previous ? "leaving" : "peeking"}`} style={{ ["--page-shift" as string]: `${t === peek ? dragX + (TAB_ORDER.indexOf(t) > TAB_ORDER.indexOf(tab) ? 1 : -1) * (swipe.current?.width ?? 480) : t === tab ? dragX : 0}px` }} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
             {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
+            {t === "chat" && <div className="chat-page secondary-screen" data-testid="chat-page">
+              <div className="page-heading"><span className="eyebrow">Chat</span><h1>Your people.<br/>Your market.</h1></div>
+              {game.squad ? <>{st.squads.length > 1 && <div className="hscroll">{st.squads.map(s => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}<ChatCard key={game.squad.id}/></> : <div className="quiet-empty stack" style={{ gap: 12 }}><span aria-hidden="true">↗</span><b>Bring the group together.</b><div className="muted">Your squad gets a place for setups, reactions, and everything between trades.</div><button className="big-btn lime" onClick={() => navigate("squad")}>Go to Squad</button></div>}
+            </div>}
             {t === "squad" && <SquadScreen toast={setToast} />}
             {t === "learn" && <LearnScreen goTrade={() => navigate("trade")} />}
             {t === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
@@ -96,28 +133,17 @@ export function App() {
       {tab !== "squad" && <MiniBar onOpen={() => navigate("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
         {(["trade", "chat", "squad", "learn", "you"] as const).map((t) => t === "chat" ? (
-          // Chat opens over whatever screen you're on, so the chart stays put underneath.
-          <button key={t} className={`tab chat-btn ${st.chatOpen ? "on" : ""}`} onClick={() => game.setChatOpen(true)} data-testid="chat-btn"
+          // Chat participates in the same swipe order as the other main pages.
+          <button key={t} className={`tab chat-btn ${tab === "chat" ? "on" : ""}`} aria-current={tab === "chat" ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate("chat"); }} data-testid="chat-btn"
             aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"}>
             <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat
           </button>
         ) : (
-          <button key={t} className={`tab ${tab === t && !st.chatOpen ? "on" : ""}`} aria-current={tab === t && !st.chatOpen ? "page" : undefined} onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
+          <button key={t} className={`tab ${tab === t ? "on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
         ))}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
-      <ChatPop onOpen={() => game.setChatOpen(true)} />
-      <Sheet open={st.chatOpen} onClose={() => game.setChatOpen(false)}>
-        <button className="chat-close" aria-label="Close squad chat" onClick={() => game.setChatOpen(false)}>✕</button>
-        {game.squad ? <>
-          {st.squads.length > 1 && <div className="hscroll">{st.squads.map((s) => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}
-          <ChatCard key={game.squad.id} />
-        </> : <div className="quiet-empty stack" style={{ gap: 12 }}>
-          <span aria-hidden="true">↗</span><b>Bring the group together.</b>
-          <div className="muted" style={{ fontSize: 13 }}>Your squad gets a place for setups, reactions, and everything between trades.</div>
-          <button className="big-btn lime" onClick={() => { game.setChatOpen(false); setReviewHistory(false); navigate("squad"); }}>Go to Squad</button>
-        </div>}
-      </Sheet>
+      <ChatPop onOpen={() => navigate("chat")} />
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
