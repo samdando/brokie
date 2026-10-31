@@ -1,11 +1,12 @@
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArcadeChart, HoldPreview, levelsFromSlide } from "./ArcadeChart";
 import { ChartIndicators } from "./ChartIndicators";
+import { BubbleLayer } from "./Bubbles";
 import { candleRead, IndicatorOptions } from "./indicators";
 import { frameLabel, game, stacksOf, useGame } from "./game";
 import { isCrypto, FUTURES, CRYPTOS } from "./sessions";
-import { MARKETS, Market, Side, digits, pnlOf } from "./types";
-import { Sheet, px, signedMoney } from "./ui";
+import { MARKETS, Market, Side, digits, pnlOf, type Bubble } from "./types";
+import { Sheet, hintDone, px, signedMoney } from "./ui";
 import { haptic, orderEffect, readEffect } from "./effects";
 import { swipeGuard } from "./pageSwipe";
 
@@ -17,9 +18,11 @@ const coachTrades = () => { try { return Number(localStorage.getItem("brokie.coa
 
 /** The default Trade page: Brokie's own chart fills the screen. Hold to trade, slide for TP/SL,
  *  hold "Cash out" to close. Everything else lives in the drawer. */
-export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPositions, onClassic, presence }: {
+export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPositions, onClassic, presence, crowd, onCrowd, showHistory, onHistory }: {
   toast: (m: string) => void; indicators: IndicatorOptions; onIndicators: () => void; onAccount: () => void; onPositions: () => void;
   onClassic: () => void; presence: ReactNode;
+  /** Friends' trades on the chart (the 👥 toggle) and whether closed trades show too. */
+  crowd: boolean; onCrowd: () => void; showHistory: boolean; onHistory: () => void;
 }) {
   const st = useGame();
   const me = st.me!;
@@ -41,6 +44,16 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   // Hold tutorial: the top half is washed white for your first few opens; it pops when you trade, then steps aside.
   const [holdCoach, setHoldCoach] = useState(() => coachTrades() < COACH_TRADES);
   const [coachPop, setCoachPop] = useState<Side | null>(null);
+  // The hints fade on their own after a few seconds, or the moment you touch the chart.
+  const [coachFading, setCoachFading] = useState(false);
+  useEffect(() => {
+    if (!holdCoach) return;
+    setCoachFading(false);
+    const fade = setTimeout(() => setCoachFading(true), 6000);
+    const gone = setTimeout(() => setHoldCoach(false), 6700);
+    return () => { clearTimeout(fade); clearTimeout(gone); };
+  }, [holdCoach]);
+  useEffect(() => { if (preview && holdCoach) setHoldCoach(false); }, [preview]); // eslint-disable-line
   const [positionCoach, setPositionCoach] = useState(() => !seen("brokie.coach.position"));
   const coachTrade = (side: Side) => {
     if (!holdCoach) return;
@@ -68,6 +81,10 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   const rules = me.rules;
   const stacks = stacksOf(me.positions);
   const here = stacks.filter(s => s.merged.market === market);
+  // Squad fills on this market (and your own closed trades). Your open positions are already drawn as entry lines.
+  const scope = `${market}:${game.squad?.id ?? ""}`;
+  const chartBubbles: Bubble[] = st.bubbleScope === scope ? st.bubbles.filter(b => !(b.is_you && b.state === "open") && (crowd || b.is_you)) : [];
+  const mates = new Set(chartBubbles.filter(b => !b.is_you && b.state === "open").map(b => b.handle)).size;
   const herePnl = quote == null ? null : here.reduce((s, x) => s + pnlOf(x.merged, quote), 0);
   const showPositionCoach = positionCoach && here.length > 0;
   useEffect(() => {
@@ -198,12 +215,17 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
         <ArcadeChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={here.map(s => s.merged)} brackets={st.brackets}
           preview={preview} onMoveLevel={moveLevel} height={chartH} topPad={small ? 18 : 26} bottomPad={small ? 14 : 20}
           trade={{ blocked, onArm, onSlide, onRelease, onBlocked: (r) => { toast(r); haptic(10); } }}
-          overlay={(toXY, w, hh) => <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={w} height={hh} />} />
+          overlay={(toXY, w, hh) => <>
+            <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={w} height={hh} />
+            <BubbleLayer key={scope} height={hh} width={w} showHistory={showHistory} now={game.now()} bubbles={chartBubbles} market={market} quote={quote} toXY={toXY}
+              onSelect={() => hintDone("markers")} onEnter={() => {}}
+              onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined} />
+          </>} />
         {!open && <div className="focus-banner">{blocked}</div>}
         {pattern && open && !preview && !holdCoach && <div className={`pattern-callout ${pattern.side}`} data-testid="pattern-callout"><small>Pattern</small><b>{pattern.name}</b></div>}
-        {holdCoach && open && <div className={`hold-coach ${coachPop ? `pop-${coachPop}` : ""}`} data-testid="hold-coach" aria-hidden="true">
-          <div className="coach-zone long"><b>Hold to BUY</b><span>▲ top half</span></div>
-          <div className="coach-zone short"><span>▼ bottom half</span><b>Hold to SELL</b></div>
+        {holdCoach && open && here.length === 0 && <div className={`hold-coach ${coachPop ? `pop-${coachPop}` : ""} ${coachFading ? "fading" : ""}`} data-testid="hold-coach" aria-hidden="true">
+          <div className="coach-zone long"><span className="coach-pill">▲ Hold the top half to buy</span></div>
+          <div className="coach-zone short"><span className="coach-pill">▼ Hold the bottom half to sell</span></div>
         </div>}
         {showPositionCoach && !preview && <small className="focus-tip" data-testid="focus-tip" role="note">Hold the same half to add · the other half to close</small>}
       </div>
@@ -234,6 +256,8 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
           {presence}
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onPositions(); }}><b>Open positions</b><span>{stacks.length ? `${stacks.length} open · ${signedMoney(unrealized)}` : "Flat"} ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onAccount(); }}><b>Account &amp; risk</b><span>{money0(me.cash + unrealized)} ›</span></button>
+          <button type="button" className="drawer-row" onClick={onCrowd} aria-pressed={crowd} data-testid="focus-crowd"><b>Friends' trades on chart</b><span>{crowd ? `On${mates ? ` · ${mates} in right now` : ""}` : "Off"} ›</span></button>
+          <button type="button" className="drawer-row" onClick={onHistory} aria-pressed={showHistory} data-testid="focus-history"><b>Closed trades on chart</b><span>{showHistory ? "On" : "Off"} ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onIndicators(); }}><b>Indicators</b><span>{Object.values(indicators).filter(Boolean).length} on ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onClassic(); }} data-testid="classic-layout"><b>Classic layout</b><span>Buttons + TradingView chart ›</span></button>
           <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.trades"); localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setCoachPop(null); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>

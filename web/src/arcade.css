@@ -63,18 +63,14 @@
 .focus-size button[aria-pressed="true"] { background:#2a2c36; color:#fff; box-shadow:inset 0 0 0 1px #3a3d49; }
 
 /* Hold tutorial: the top half is washed white for your first few opens and pops when you trade. Never blocks a hold. */
-.hold-coach { position:absolute; inset:0 62px 22px 0; display:grid; grid-template-rows:1fr 1fr; pointer-events:none; animation:coach-in .5s ease both; transition:opacity .5s ease .25s; }
-.coach-zone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; transition:transform .22s cubic-bezier(.2,1.6,.4,1), background-color .22s ease, box-shadow .22s ease; }
-.coach-zone b { font:850 italic 19px/1 var(--round); letter-spacing:.03em; }
-.coach-zone span { font:650 9px var(--mono); text-transform:uppercase; letter-spacing:.12em; opacity:.75; }
-.coach-zone { position:relative; isolation:auto; }
-.coach-zone::before { content:""; position:absolute; inset:0; border-radius:inherit; background:#fff; opacity:0; transition:opacity .22s ease; }
-.coach-zone > * { position:relative; }
-.coach-zone.long { color:#fff; border-radius:14px 14px 0 0; text-shadow:0 1px 10px rgba(0,0,0,.6); }
-.coach-zone.long::before { opacity:.16; }
-.coach-zone.short { color:#c9ccd5; }
-.hold-coach.pop-long .coach-zone.long, .hold-coach.pop-short .coach-zone.short { transform:scale(1.03); border-radius:14px; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:1; color:#fff; }
-.hold-coach.pop-long .coach-zone.long::before, .hold-coach.pop-short .coach-zone.short::before { opacity:.3; }
+.hold-coach { position:absolute; inset:0 62px 22px 0; display:grid; grid-template-rows:1fr 1fr; pointer-events:none; animation:coach-in .5s ease both; transition:opacity .6s ease; }
+.hold-coach.fading { opacity:0; }
+.coach-zone { display:flex; align-items:center; justify-content:center; }
+.coach-zone.long { align-items:flex-start; padding-top:14px; }
+.coach-zone.short { align-items:flex-end; padding-bottom:14px; }
+.coach-pill { font:600 10px var(--mono); letter-spacing:.04em; color:#d5d8e0; padding:8px 12px; border-radius:99px; background:#1b1c23ee; border:1px solid #33353f; white-space:nowrap; transition:transform .22s cubic-bezier(.2,1.6,.4,1), background-color .22s ease, color .22s ease; }
+.hold-coach.pop-long .coach-zone.long .coach-pill { transform:scale(1.06); background:#7FE0B8; color:#0b0c0f; border-color:#7FE0B8; }
+.hold-coach.pop-short .coach-zone.short .coach-pill { transform:scale(1.06); background:#FF6F79; color:#0b0c0f; border-color:#FF6F79; }
 @keyframes coach-in { from { opacity:0; } }
 .focus-market-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .focus-market-grid button { display:grid; gap:2px; text-align:left; padding:12px; border-radius:10px; background:#191b22; border:1px solid #2b2d37; }
@@ -93,4 +89,8 @@
 @media (prefers-reduced-motion: reduce) { .hold-ring, .pattern-callout, .hold-coach, .focus-tip { animation:none; } }
 .focus-tip { position:absolute; left:50%; top:14px; transform:translateX(-50%); white-space:nowrap; font:600 10px var(--mono); color:#c3c6cf; padding:8px 12px; border-radius:99px; background:#1b1c23ee; border:1px solid #33353f; pointer-events:none; animation:coach-in .4s ease both; }
 .chart-live { position:absolute; bottom:30px; min-height:36px; padding:0 14px; border-radius:99px; background:#1b1c23ee; border:1px solid #3a3d48; color:#e9ebef; font:650 11px var(--mono); box-shadow:0 6px 18px #0007; }
-.hold-coach[class*="pop-"] .coach-zone > * { opacity:0; transition:opacity .12s ease; }
+
+/* Friends' trades on the focus chart: the markers, cards and pills are tappable, the overlay itself stays see-through. */
+.arcade-overlay .trade-connectors { position:absolute; left:0; top:0; pointer-events:none; overflow:hidden; }
+.arcade-overlay .tm, .arcade-overlay .trade-card, .arcade-overlay .trade-group, .arcade-overlay .earlier-pill { pointer-events:auto; }
+.arcade-overlay .trade-card { max-height:calc(100% - 12px); overflow-y:auto; overscroll-behavior:contain; }

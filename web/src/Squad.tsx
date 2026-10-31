@@ -8,6 +8,7 @@ import { ActiveSquadTrades, SquadDailyStats, useSquadDashboard } from "./SquadDa
 import { GlobalBoard } from "./Social";
 import { TodayPnl } from "./TodayPnl";
 import { RankBadge } from "./rank";
+import { PoolChip } from "./Pool";
 
 export function SquadScreen(_props: { toast: (message: string) => void }) {
   const st = useGame();
@@ -195,7 +196,7 @@ function Leaderboard() {
             <span className="mono muted" style={{ width: 22, fontSize: 12, fontWeight: 600 }}>{String(i + 1).padStart(2, "0")}</span>
             <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> <RankBadge r={r} /> <TodayPnl value={r.today_pnl} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
+              <div style={{ fontSize: 13, fontWeight: 600 }}><PlayerLink handle={r.handle} /> <RankBadge r={r} /><PoolChip handle={r.handle} /> <TodayPnl value={r.today_pnl} /> {r.open_positions > 0 && <span className="dot" style={{ width: 5, height: 5, verticalAlign: "middle" }} />}
                 {r.status === "blown" ? <span className="chip-status" data-testid="rekt-chip">Account closed</span> : r.status === "locked" ? <span className="chip-status">Daily limit</span> : r.funded ? <span className="chip-status lime">Funded</span> : r.target_hit ? <span className="chip-status lime">Target reached</span> : (r.resets_used ?? 0) > 0 && <span className="chip-status">Restarted</span>}</div>
               <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified === false ? `Qualifying · ${r.trading_days ?? 0}/5 days · ` : ""}{r.trades === 0 ? (r.open_positions > 0 ? "In a trade" : "No trades yet") : `${r.trades} ${r.trades === 1 ? "trade" : "trades"}${r.wins != null ? ` · ${r.wins}W–${r.losses ?? 0}L` : ""}`}</div>
             </div>

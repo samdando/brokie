@@ -5,7 +5,7 @@ import { Backend, BackendError } from "./api";
 import { haptic } from "./effects";
 import { isConfigured } from "./config";
 import { marketSessionOpen, sessionMarkets, weekendMode } from "./sessions";
-import { MARKETS, type Bubble, type Candle, type Position, type ChatMsg, type EventItem, type EventsFeed, type FeedEvent, type FeedbackKind, type Flash, type GlobalBoard, type LeaderRow, type Lifetime, type Market, type MyState, type Quote, type Side, type Squad, type Trade } from "./types";
+import { MARKETS, type Bubble, type Candle, type Position, type ChatMsg, type EventItem, type EventsFeed, type FeedEvent, type FeedbackKind, type Flash, type GlobalBoard, type LeaderRow, type Lifetime, type Market, type PoolInfo, type PoolRail, type MyState, type Quote, type Side, type Squad, type Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
 
@@ -27,6 +27,8 @@ export interface GameState {
   bubbles: Bubble[];
   bubbleScope: string | null;
   lifetime: Lifetime | null;
+  /** The $1 pool: config, your entry, standings. Loaded on the You page and with the squad board. */
+  pool: PoolInfo | null;
   global: GlobalBoard | null;
   chat: ChatMsg[];
   /** The newest squad message from someone else, popped over whatever screen you're on. */
@@ -101,7 +103,7 @@ export class Game {
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: read(MARKET_KEY) !== "prediction" && read(MARKET_KEY) && Object.prototype.hasOwnProperty.call(MARKETS, read(MARKET_KEY) ?? "") ? read(MARKET_KEY) as Market : weekendMode(Date.now()) ? "btc" : "nas",
-    clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null,
+    clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null, pool: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
     brackets: {}, bracketSaving: null, pending: null,
     opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
@@ -434,6 +436,7 @@ export class Game {
         this.api.rpc<FeedEvent[]>("squad_feed", { p_squad: squad.id, p_limit: 30 }),
       ]);
       if (this.squad?.id === squad.id) this.set({ leaderboard, feed });
+      if (this.beat % 9 === 0 || !this.state.pool) void this.refreshPool();
     } catch { /* keep last */ }
   }
 
@@ -454,6 +457,14 @@ export class Game {
   }
 
   async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }
+  async refreshPool() {
+    try { const pool = await this.api.rpc<PoolInfo>("my_pool"); if (pool?.config && pool.standings?.rows) this.set({ pool }); }
+    catch { /* older server without pool.sql */ }
+  }
+  async joinPool(rail: PoolRail, wallet?: string) { this.set({ pool: await this.api.rpc<PoolInfo>("join_pool", { p_rail: rail, p_wallet: wallet ?? null }) }); }
+  async leavePool() { this.set({ pool: await this.api.rpc<PoolInfo>("leave_pool") }); }
+  /** Handles with a paid pool entry this season, for the 💵 chip on leaderboards. */
+  get poolHandles(): Set<string> { return new Set((this.state.pool?.standings.rows ?? []).map((r) => r.handle)); }
   async refreshLifetime() { try { this.set({ lifetime: await this.api.rpc<Lifetime>("lifetime_stats") }); } catch { /* */ } }
   setCandleSeconds(s: number) { if (s === this.state.candleSeconds) return; write(FRAME_KEY, String(s)); this.set({ candleSeconds: s }); void this.refreshCandles(); }
   /** Walk down and back up the equipped frames, reversing at each end. */

@@ -34,6 +34,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   useEffect(() => { if (!settled) return; const timer=setTimeout(()=>setSettled(null),2800); return ()=>clearTimeout(timer); },[settled]);
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
   const [showHistory, setShowHistory] = useState(() => { try { return localStorage.getItem("brokie.chartHistory") === "on"; } catch { return false; } });
+  const toggleCrowd = () => { setCrowd(v => { try { localStorage.setItem("brokie.crowd", v ? "off" : "on"); } catch { /* */ } return !v; }); };
+  const toggleHistory = () => { setShowHistory(v => { try { localStorage.setItem("brokie.chartHistory", v ? "off" : "on"); } catch { /* */ } return !v; }); };
   const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
   const [closing, setClosing] = useState<string | null>(null);
   const closeInFlight = useRef(false);
@@ -203,7 +205,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     <div className={`stack trade-screen ${layout === "focus" ? "focus-mode" : ""}`} onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
 
       {layout === "focus" ? <FocusFloor toast={toast} indicators={indicators} onIndicators={() => setIndicatorsOpen(true)} onAccount={() => setAccountOpen(true)} onPositions={() => setPositionsOpen(true)} onClassic={() => pickLayout("classic")}
-        presence={<FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>} /> : <>
+        presence={<FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>}
+        crowd={crowd} onCrowd={toggleCrowd} showHistory={showHistory} onHistory={toggleHistory} /> : <>
       <div className="floor-toolbar">
         <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
         <button type="button" className="market-section-switch" onClick={()=>pickLayout("focus")} data-testid="focus-layout">Full chart<span aria-hidden="true">⤢</span></button><button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
@@ -230,13 +233,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           </div>
           <div className="chart-actions">
           <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>
-          <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => { const next = !showHistory; setShowHistory(next); try { localStorage.setItem("brokie.chartHistory", next ? "on" : "off"); } catch { /* */ } }} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
+          <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={toggleHistory} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
           <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
             aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
           </div>
         </div>
-        <FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
+        <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
         <BrokieChart fullscreen={big} height={big ? bigH : previewH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
           brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
@@ -386,6 +389,7 @@ function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; 
 
 function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: string) => void; goHistory: () => void }) {
   const [busy, setBusy] = useState(false);
+  const hard = useGame().pool?.tier === "pool";
   const now = useNow(1000) + game.state.clockOffset;
   const until = rules.unlock_at ? Date.parse(rules.unlock_at) - now : null;
   if (rules.status === "active") return null;
@@ -399,13 +403,13 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
     <div className="status-card" style={{ background: "#1b1b1b", border: "1px solid #444", flexDirection: "column", alignItems: "stretch" }} data-testid="status-blown">
       <div className="row"><span className="status-symbol" aria-hidden="true">↘</span>
         <div><b style={{ fontSize: 17 }}>Season max-loss limit reached.</b><div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight:1.7 }}>This is separate from the daily lock. A new trading day won't reset it.<br />Equity {money(rules.equity)} · season floor {money(rules.drawdown_floor)}.</div></div></div>
-      {rules.resets_used === 0 ? (
+      {hard ? <div className="muted" style={{ fontSize: 12, marginTop: 10 }} data-testid="hard-no-restart">Hard mode has no restart. Your pool run is over for this season; the free season is still yours next time.</div> : rules.resets_used === 0 ? (
         <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
           onClick={async () => { setBusy(true); try { await game.buyBack(); toast(`Back in. ${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily limit, and 5 new trading days to qualify.`); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
           {busy ? <span className="spinner" /> : "Use free restart"}
         </button>
       ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Your one restart has been used. Trading resumes next season.</div>}
-      {rules.resets_used === 0 && <small className="muted">Restarts at {money(rules.start_balance,0)} paper funds, with a {rules.daily_loss_amount ? money(rules.daily_loss_amount,0) : "4%"} daily limit and 5 new qualifying days. One restart per season.</small>}
+      {!hard && rules.resets_used === 0 && <small className="muted">Restarts at {money(rules.start_balance,0)} paper funds, with a {rules.daily_loss_amount ? money(rules.daily_loss_amount,0) : "4%"} daily limit and 5 new qualifying days. One restart per season.</small>}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { Button, Eyebrow, Sheet, countdown, money, px, signedMoney } from "./ui"
 import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
 import { RankCard } from "./rank";
-import { UsdcPlay } from "./UsdcPlay";
+import { PoolCard } from "./Pool";
 
 export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; onFeedback: () => void }) {
   const st = useGame();
@@ -50,6 +50,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
         {me.protection_credit > 0 && <div className="detail"><span>Liquidation credit</span><span>{money(me.protection_credit)}</span></div>}
       </div></details>
       </section>
+      <PoolCard />
       <RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} />
 
       </> : <LifetimeCard />}
@@ -72,7 +73,6 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <button className="profile-customize" onClick={() => setLook(true)}><Avatar handle={me.handle} /><span><b>Make it yours</b><small>Your face on the trading floor.</small></span><span aria-hidden="true">↗</span></button>
 
       <div className="you-quiet" data-testid="you-quiet">
-        <UsdcPlay />
         <button className="text-action settings-entry" onClick={onFeedback} data-testid="feedback-btn">Help shape Brokie <span>Send feedback ↗</span></button>
         <InstallTip />
       </div>

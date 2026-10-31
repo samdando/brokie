@@ -6,6 +6,7 @@ import { EMOJIS, game, useGame } from "./game";
 import type { ChatMsg, FeedbackKind } from "./types";
 import { Button, Eyebrow, Sheet, money } from "./ui";
 import { RankBadge } from "./rank";
+import { PoolChip } from "./Pool";
 
 // ---------- Global leaderboard ----------
 export function GlobalBoard() {
@@ -52,7 +53,7 @@ function GlobalLine({ r, last }: { r: import("./types").GlobalRow; last: boolean
         <span className="mono muted" style={{ width: 26, fontSize: 12, fontWeight: 600 }}>{String(r.rank).padStart(2, "0")}</span>
         <Avatar handle={r.handle} className={r.is_you ? "you" : ""} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}><PlayerLink handle={r.handle}>{r.is_you ? "You" : `@${r.handle}`}</PlayerLink> <RankBadge r={r} /> <TodayPnl value={r.today_pnl} />
+          <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis" }}><PlayerLink handle={r.handle}>{r.is_you ? "You" : `@${r.handle}`}</PlayerLink> <RankBadge r={r} /><PoolChip handle={r.handle} /> <TodayPnl value={r.today_pnl} />
             {r.status === "blown" ? <span className="chip-status">Account closed</span> : r.status === "locked" ? <span className="chip-status">Daily limit</span> : r.funded && <span className="chip-status lime">Funded</span>}</div>
           <div className="muted" style={{ fontSize: 10, marginTop: 3 }}>{r.qualified ? `${r.trades} ${r.trades === 1 ? "trade" : "trades"}` : `Qualifying · ${r.trading_days}/5 days · ${r.trades} ${r.trades === 1 ? "trade" : "trades"}`}</div>
         </div>

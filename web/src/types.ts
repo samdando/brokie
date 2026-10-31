@@ -76,3 +76,15 @@ export const direction = (s: Side) => (s === "long" ? 1 : -1);
 export const pnlOf = (p: Position, mark: number) => ((p.market === "prediction" ? p.mark_price ?? p.entry_price : mark) - p.entry_price) * MARKETS[p.market].pointValue * p.quantity * direction(p.side);
 
 export interface SharedReceipt { handle: string; trade: Trade; candles?: Candle[]; bucket_seconds?: number }
+
+// ---------- $1 pool (hard-mode accounts with a paid entry)
+export type PoolRail = "usdc" | "payid" | "cash";
+export interface PoolConfig {
+  open: boolean; entry_usd: number; house_pct: number; min_days: number; chain: "base"; usdc_contract: string;
+  usdc_treasury: string | null; payid: string | null;
+  rules: { daily_loss_pct: number; max_dd_pct: number; dd_mode: "trailing"; max_qty: number; buy_back: boolean; target_pct: number };
+}
+export interface PoolEntry { rail: PoolRail; wallet: string | null; status: "pending" | "paid" | "void"; amount: number | null; reference: string | null; paid_at: string | null }
+export interface PoolRow { handle: string; is_you: boolean; return_pct: number; status: "active" | "locked" | "blown"; trading_days: number; qualified: boolean; eligible: boolean; share_pct: number; payout: number }
+export interface PoolStandings { season: string; season_number: number; ends_at: string; entries: number; entry_usd: number; house_pct: number; pool: number; rollover: number; total: number; has_winner: boolean; min_days: number; rows: PoolRow[] }
+export interface PoolInfo { config: PoolConfig; entry: PoolEntry | null; tier: "free" | "pool"; max_qty: number | null; standings: PoolStandings }
