@@ -1,0 +1,67 @@
+/* ---------- Focus floor: Brokie's own full-screen chart (hold to trade) ---------- */
+.trade-screen.focus-mode { gap:0; padding-bottom:0; }
+.app:has(.focus-mode) { padding-bottom:0; }
+.focus-floor { position:relative; overflow:hidden; background:#0b0c10; border:1px solid #1d1f27; border-radius:12px; }
+.arcade-chart { position:absolute; inset:0; touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; cursor:crosshair; }
+.arcade-chart canvas { position:absolute; inset:0; display:block; }
+.arcade-overlay { position:absolute; left:0; top:0; pointer-events:none; }
+.arcade-overlay svg { position:absolute; inset:0; overflow:visible; }
+
+.hold-ring { position:absolute; width:74px; height:74px; margin:-37px 0 0 -37px; border-radius:50%; pointer-events:none; border:2px solid rgba(255,255,255,.25); animation:hold-grow .26s linear both; }
+.hold-ring i { position:absolute; inset:24px; border-radius:50%; background:rgba(255,255,255,.18); }
+.hold-ring.long { border-color:rgba(127,224,184,.7); }
+.hold-ring.short { border-color:rgba(255,111,121,.7); }
+.hold-ring.armed { animation:none; transform:scale(1.08); border-width:3px; box-shadow:0 0 30px currentColor; }
+.hold-ring.armed.long { color:rgba(127,224,184,.45); background:rgba(127,224,184,.12); }
+.hold-ring.armed.short { color:rgba(255,111,121,.45); background:rgba(255,111,121,.12); }
+@keyframes hold-grow { from { transform:scale(.35); opacity:.2; } to { transform:scale(1); opacity:1; } }
+.hold-label { position:absolute; left:50%; transform:translateX(-50%); display:grid; justify-items:center; gap:2px; padding:7px 12px; border-radius:8px; pointer-events:none; background:rgba(10,11,14,.88); border:1px solid currentColor; }
+.hold-label.long { color:#7FE0B8; } .hold-label.short { color:#FF6F79; }
+.hold-label b { font:900 italic 18px/1 var(--round); letter-spacing:.04em; }
+.hold-label span { font:600 10px var(--mono); color:#d9dce3; white-space:nowrap; }
+
+.focus-hud { position:absolute; left:10px; right:72px; display:flex; gap:10px; pointer-events:none; }
+.focus-hud > * { pointer-events:auto; }
+.focus-hud.top { top:10px; justify-content:space-between; align-items:flex-start; }
+.focus-hud.bottom { bottom:30px; align-items:flex-end; justify-content:space-between; }
+.pnl-box { display:grid; gap:2px; text-align:left; padding:7px 10px 8px; min-width:118px; border-radius:6px; background:rgba(10,11,14,.82); border:1.5px solid #3a3d48; backdrop-filter:blur(6px); }
+.pnl-box small { font:700 8px var(--mono); letter-spacing:.08em; color:#9a9eab; text-transform:uppercase; }
+.pnl-box b { font:800 21px/1.05 var(--mono); color:#e9ebef; }
+.pnl-box span { font:600 9px var(--mono); }
+.pnl-box.up { border-color:#7FE0B8; } .pnl-box.up b { color:#7FE0B8; }
+.pnl-box.down { border-color:#FF6F79; } .pnl-box.down b { color:#FF6F79; }
+.focus-controls { display:grid; gap:6px; justify-items:end; }
+.focus-chip-row { display:flex; gap:6px; }
+.focus-chip { min-height:32px; min-width:36px; padding:0 9px; border-radius:6px; background:rgba(10,11,14,.82); border:1px solid #30333d; font:700 11px var(--mono); color:#d6d9e0; backdrop-filter:blur(6px); }
+.market-chip { display:flex; align-items:center; gap:7px; border-color:color-mix(in srgb, var(--c) 45%, #30333d); }
+.market-chip b { color:var(--c); font:800 12px var(--mono); }
+.market-chip span { font:600 11px var(--mono); }
+.market-chip em { font-style:normal; font-size:9px; }
+.focus-banner { position:absolute; left:50%; top:92px; transform:translateX(-50%); padding:6px 12px; border-radius:6px; background:rgba(10,11,14,.88); border:1px solid #3a3d48; font:600 10px var(--mono); color:#c9ccd5; white-space:nowrap; pointer-events:none; }
+.pattern-callout { position:absolute; left:50%; top:78px; transform:translateX(-50%); display:grid; justify-items:center; gap:3px; pointer-events:none; animation:callout-in .35s cubic-bezier(.2,.8,.2,1) both; }
+.pattern-callout small { padding:2px 7px; border-radius:3px; font:800 8px var(--mono); letter-spacing:.1em; text-transform:uppercase; background:#FF6F79; color:#0b0c10; }
+.pattern-callout.bull small { background:#7FE0B8; }
+.pattern-callout b { font:900 italic 24px/1 var(--round); letter-spacing:.01em; text-transform:uppercase; color:#FF6F79; text-shadow:0 2px 18px rgba(0,0,0,.8); }
+.pattern-callout.bull b { color:#7FE0B8; } .pattern-callout.neutral b { color:#e9ebef; } .pattern-callout.neutral small { background:#e9ebef; }
+@keyframes callout-in { from { opacity:0; transform:translate(-50%,6px) scale(.96); } }
+.hold-hint { display:grid; white-space:nowrap; gap:3px; padding:8px 10px; border-radius:6px; background:rgba(10,11,14,.78); border:1px solid #2b2e37; font:700 10px var(--mono); pointer-events:none; }
+.hold-hint small { font:500 9px var(--mono); color:#8f93a0; }
+.cash-out { position:relative; overflow:hidden; display:grid; gap:1px; text-align:left; min-width:160px; padding:9px 14px; border-radius:8px; border:1.5px solid currentColor; background:rgba(10,11,14,.88); touch-action:none; -webkit-touch-callout:none; user-select:none; }
+.cash-out::before { content:""; position:absolute; inset:0; transform-origin:left; transform:scaleX(var(--hold,0)); background:currentColor; opacity:.22; }
+.cash-out.up { color:#7FE0B8; } .cash-out.down { color:#FF6F79; }
+.cash-out span { position:relative; font:700 9px var(--mono); letter-spacing:.06em; text-transform:uppercase; color:#d9dce3; }
+.cash-out b { position:relative; font:800 20px/1.1 var(--mono); }
+.focus-size { display:flex; padding:3px; gap:2px; border-radius:7px; background:rgba(10,11,14,.85); border:1px solid #30333d; }
+.focus-size button { min-width:34px; min-height:32px; border-radius:5px; font:700 12px var(--mono); color:#9a9eab; }
+.focus-size button[aria-pressed="true"] { background:#2a2c35; color:#fff; }
+.focus-market-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.focus-market-grid button { display:grid; gap:2px; text-align:left; padding:12px; border-radius:10px; background:#191b22; border:1px solid #2b2d37; }
+.focus-market-grid button.on { border-color:var(--c); }
+.focus-market-grid b { color:var(--c); font:800 14px var(--mono); }
+.focus-market-grid small { font-size:10px; color:#878b99; }
+.focus-market-grid span { font:600 12px var(--mono); margin-top:4px; }
+.drawer-row { display:flex; justify-content:space-between; align-items:center; padding:14px 2px; border-bottom:1px solid #2b2d37; font-size:14px; }
+.drawer-row span { color:#878b99; font-size:12px; }
+.focus-drawer .floor-presence, .focus-drawer > div:first-of-type + * { margin-bottom:4px; }
+@media (max-width:360px) { .pnl-box { min-width:100px; } .pnl-box b { font-size:17px; } .cash-out { min-width:128px; } .cash-out b { font-size:16px; } .focus-hud { right:66px; } }
+@media (prefers-reduced-motion: reduce) { .hold-ring, .pattern-callout { animation:none; } }

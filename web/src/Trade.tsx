@@ -15,6 +15,7 @@ import { frameLabel, game, stacksOf, useGame } from "./game";
 import { isCrypto, sessionCountdown, FUTURES, CRYPTOS } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
+import { FocusFloor } from "./FocusFloor";
 import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
@@ -26,6 +27,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const lastFuture = useRef<Market>("nas");
   const lastCrypto = useRef<Market>("btc");
   if (crypto) lastCrypto.current = st.market; else if (st.market !== "prediction") lastFuture.current = st.market;
+  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { return localStorage.getItem("brokie.layout") === "classic" ? "classic" : "focus"; } catch { return "focus"; } });
+  const pickLayout = (next: "focus" | "classic") => { setLayout(next); try { localStorage.setItem("brokie.layout", next); } catch { /* */ } };
   const [accountOpen, setAccountOpen] = useState(false);
   const [settled, setSettled] = useState<{ pnl: number; title: string } | null>(null);
   useEffect(() => { if (!settled) return; const timer=setTimeout(()=>setSettled(null),2800); return ()=>clearTimeout(timer); },[settled]);
@@ -151,7 +154,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const quick = here.length === 1 ? here[0] : null;
   const quickTitle = quick ? `${MARKETS[market].title} · ${quick.merged.side === "long" ? "Long" : "Short"} ${quick.merged.quantity}` : "Choose a position";
   const swipe = useTradeSwipe({
-    enabled: here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !indicatorsOpen && !st.chatOpen,
+    enabled: layout === "classic" && here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !indicatorsOpen && !st.chatOpen,
     fullscreen: big,
     revision: `${market}:${here.map(s=>`${s.ids.join(',')}:${s.merged.quantity}`).join('|')}`,
     onCommit: () => {
@@ -194,11 +197,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
 
   return (
-    <div className="stack trade-screen" onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
+    <div className={`stack trade-screen ${layout === "focus" ? "focus-mode" : ""}`} onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
 
+      {layout === "focus" ? <FocusFloor toast={toast} indicators={indicators} onIndicators={() => setIndicatorsOpen(true)} onAccount={() => setAccountOpen(true)} onPositions={() => setPositionsOpen(true)} onClassic={() => pickLayout("classic")}
+        presence={<FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>} /> : <>
       <div className="floor-toolbar">
         <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
-        <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
+        <button type="button" className="market-section-switch" onClick={()=>pickLayout("focus")} data-testid="focus-layout">Full chart<span aria-hidden="true">⤢</span></button><button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
       </div>
       {rules?.status === "blown" && <button className="account-restriction" onClick={()=>setAccountOpen(true)} data-testid="season-restriction"><b>Season max-loss limit reached</b><span>{rules.resets_used === 0 ? "Free restart available ↗" : "View account status ↗"}</span></button>}
       <div className="market-stage" data-testid="markets-section" data-section={crypto ? "crypto" : "futures"}>
@@ -256,6 +261,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
 
       </div>
+      </>}
       <Sheet open={accountOpen} onClose={()=>setAccountOpen(false)}><div className="account-detail stack" data-testid="account-sheet"><div className="row between"><h2 className="h2">Account & risk</h2><button type="button" className="text-action" onClick={()=>setAccountOpen(false)}>Done</button></div><p className="account-context">{money(base,0)} starting balance · Simulated funds</p>
       <section className={`account-hero account-compact ${rules?.status ?? "active"}`}>
         <div className="account-summary">

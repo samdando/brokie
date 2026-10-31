@@ -1,6 +1,6 @@
 // Brokie service worker: caches the app shell so it opens instantly and
 // installs as an app. Prices and accounts always come live from the server.
-const CACHE = "brokie-shell-v19";
+const CACHE = "brokie-shell-v20";
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest", "./icon-192.png"])));
   self.skipWaiting();

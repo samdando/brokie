@@ -1,3 +1,7 @@
+# Brokie focus floor · 31 October 2026
+
+The Trade page now defaults to Brokie's own full-screen chart (no TradingView library on this view): hold the top half to BUY or the bottom half to SELL, slide while holding to set TP/SL (1:1), lift to lock them on the server, drag a TP/SL line to move it, hold Cash out to close. Pinch zooms, double-tap resets. Squad, positions, account and the Classic layout are in the ⋯ drawer. Page swipes now use native touch events, so they work on iPhone (the old pointer version never started). Cache advances to `brokie-shell-v20`.
+
 # Brokie terminal and swipe pass · 31 October 2026
 
 Local changes bring the supplied Setup Rush chart references into Brokie: white/red candles, charcoal surfaces, configurable EMA/Bollinger/structure/FVG/candle reads, and a finger-following five-page deck with Chat as a page. Existing accounts, seasons, squad/voice features and server trading rules are retained. The P&L bar is the explicit close gesture; fullscreen keeps chart navigation. Full research, validation and preview instructions are in `docs/SETUP_RUSH_REFERENCE.md`. Cache advances to `brokie-shell-v19`. Also adds season rank tiers (Iron → Legend) on boards, profiles and the You page, and a paper-only "1 USDC play · Season 2 test" opt-in on the You page.

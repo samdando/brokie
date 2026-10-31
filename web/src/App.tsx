@@ -13,6 +13,7 @@ import { ChatCard, FeedbackSheet } from "./Social";
 
 import { useVoice, voice, ROOMS } from "./voice";
 import { Icon, useToast } from "./ui";
+import { usePageSwipe } from "./pageSwipe";
 
 type Tab = "trade" | "chat" | "squad" | "learn" | "you";
 const TAB_ORDER: Tab[] = ["trade", "chat", "squad", "learn", "you"];
@@ -23,11 +24,11 @@ export function App() {
   const [previous, setPrevious] = useState<Tab | null>(null);
   const [slide, setSlide] = useState(1);
   const current = useRef(tab);
-  const swipe = useRef<{ id: number; x: number; y: number; at: number; locked: boolean; width: number } | null>(null);
+  const [deck, setDeck] = useState<HTMLElement | null>(null);
+  const deckWidth = useRef(480);
   const [dragX, setDragX] = useState(0);
   const [peek, setPeek] = useState<Tab | null>(null);
   const [releaseX, setReleaseX] = useState(0);
-  const swallowClick = useRef(false);
   const navigate = (next: Tab) => {
     if (next === current.current) return;
     setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(current.current) ? 1 : -1);
@@ -35,11 +36,21 @@ export function App() {
     setPrevious(current.current); current.current = next; setTab(next);
   };
   useEffect(() => { if (!previous) return; const t = setTimeout(() => { setPrevious(null); setReleaseX(0); }, 300); return () => clearTimeout(t); }, [tab, previous]);
-  useEffect(() => {
-    const cancel = () => { swipe.current = null; setDragX(0); setPeek(null); };
-    window.addEventListener("blur", cancel); document.addEventListener("visibilitychange", cancel);
-    return () => { window.removeEventListener("blur", cancel); document.removeEventListener("visibilitychange", cancel); };
-  }, []);
+  const dragRef = useRef(0);
+  usePageSwipe(deck, {
+    onDrag: (dx, width) => {
+      deckWidth.current = width;
+      if (dx === null) { dragRef.current = 0; setDragX(0); setPeek(null); return; }
+      const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + (dx < 0 ? 1 : -1)];
+      const x = next ? Math.max(-width, Math.min(width, dx)) : dx * .16;
+      dragRef.current = x; setPeek(next ?? null); setDragX(x);
+    },
+    onCommit: (step) => {
+      const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + step];
+      if (!next) return;
+      setReleaseX(dragRef.current); setReviewHistory(false); navigate(next);
+    },
+  });
   useEffect(() => {
     const lock = () => {
       const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
@@ -82,43 +93,8 @@ export function App() {
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
         <div className="page-map" aria-label="App pages">{TAB_ORDER.map((t, i) => <button type="button" key={t} aria-label={`Go to ${t}`} aria-current={t === tab ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }}><i/>{t === tab ? <span>{t === "you" ? "You" : t[0].toUpperCase() + t.slice(1)}</span> : null}{i === TAB_ORDER.indexOf(tab) + 1 && <small aria-hidden="true">→</small>}</button>)}<span className="page-swipe-hint" aria-hidden="true">swipe to explore</span></div>
-        <main className={`page-stage swipe-deck ${peek ? "dragging" : ""}`} data-testid="page-deck" style={{ ["--slide" as string]: slide, ["--release-x" as string]: `${releaseX}px` }}
-          onPointerDown={e => {
-            swallowClick.current = false;
-            if (swipe.current) { swipe.current = null; setPeek(null); setDragX(0); return; }
-            const el = e.target as HTMLElement;
-            const card = el.closest(".lesson-card,.receipt-ticket,.profile-customize");
-            if (!e.isPrimary || e.button !== 0 || previous || document.querySelector('.sheet,.chart-fullscreen') || el.closest("a, input, textarea, select, [role='slider'], .trade-dock, .pos-card, .hscroll, .selection-wheel, .sheet, .tm, .bracket, .tc, .bub, .cluster") || el.closest("button") && !card) return;
-            swipe.current = { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now(), locked: false, width: e.currentTarget.clientWidth };
-          }}
-          onPointerMove={e => {
-            const from = swipe.current; if (!from || from.id !== e.pointerId) return;
-            const dx = e.clientX - from.x, dy = e.clientY - from.y;
-            if (!from.locked) {
-              if (Math.hypot(dx, dy) < 12) return;
-              if (Math.abs(dx) < Math.abs(dy) * 1.45) { swipe.current = null; return; }
-              from.locked = true; swallowClick.current = true;
-              e.currentTarget.setPointerCapture(e.pointerId);
-            }
-            e.preventDefault();
-            const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + (dx < 0 ? 1 : -1)];
-            setPeek(next ?? null); setDragX(next ? Math.max(-from.width, Math.min(from.width, dx)) : dx * .16);
-          }}
-          onPointerUp={e => {
-            const from = swipe.current; if (!from || from.id !== e.pointerId) return;
-            swipe.current = null;
-            const dx = e.clientX - from.x, velocity = Math.abs(dx) / Math.max(1, performance.now() - from.at);
-            const next = TAB_ORDER[TAB_ORDER.indexOf(current.current) + (dx < 0 ? 1 : -1)];
-            if (from.locked && next && (Math.abs(dx) > Math.min(100, from.width * .24) || Math.abs(dx) > 36 && velocity > .5)) {
-              setReleaseX(dragX); setReviewHistory(false); navigate(next);
-            }
-            setDragX(0); setPeek(null);
-            if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
-          }}
-          onPointerCancel={() => { swipe.current = null; setPeek(null); setDragX(0); }}
-          onLostPointerCapture={() => { swipe.current = null; setPeek(null); setDragX(0); }}
-          onClickCapture={e => { if (swallowClick.current) { swallowClick.current = false; e.preventDefault(); e.stopPropagation(); } }}>
-          {TAB_ORDER.filter(t => t === tab || t === previous || t === peek).map(t => <div key={t} className={`page-screen ${t === tab ? previous ? "entering" : "" : t === previous ? "leaving" : "peeking"}`} style={{ ["--page-shift" as string]: `${t === peek ? dragX + (TAB_ORDER.indexOf(t) > TAB_ORDER.indexOf(tab) ? 1 : -1) * (swipe.current?.width ?? 480) : t === tab ? dragX : 0}px` }} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
+        <main ref={setDeck} className={`page-stage swipe-deck ${peek ? "dragging" : ""}`} data-testid="page-deck" style={{ ["--slide" as string]: slide, ["--release-x" as string]: `${releaseX}px` }}>
+          {TAB_ORDER.filter(t => t === tab || t === previous || t === peek).map(t => <div key={t} className={`page-screen ${t === tab ? previous ? "entering" : "" : t === previous ? "leaving" : "peeking"}`} style={{ ["--page-shift" as string]: `${t === peek ? dragX + (TAB_ORDER.indexOf(t) > TAB_ORDER.indexOf(tab) ? 1 : -1) * deckWidth.current : t === tab ? dragX : 0}px` }} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
             {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
             {t === "chat" && <div className="chat-page secondary-screen" data-testid="chat-page">
               <div className="page-heading"><span className="eyebrow">Chat</span><h1>Your people.<br/>Your market.</h1></div>

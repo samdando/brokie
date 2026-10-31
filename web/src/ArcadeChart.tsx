@@ -1,0 +1,310 @@
+import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ToXY } from "./Chart";
+import type { Candle, Market, Position, Side } from "./types";
+import { MARKETS, digits, pnlOf } from "./types";
+import type { Bracket } from "./game";
+import { px, signedMoney } from "./ui";
+import { swipeGuard } from "./pageSwipe";
+
+/** Brokie's own chart: a full-bleed canvas fed by Brokie's candles (OANDA prices via the server).
+ *  Hold anywhere to trade (top half = BUY, bottom half = SELL), slide to set TP/SL, lift to lock.
+ *  Drag an existing TP/SL line to move it. Pinch to zoom, double-tap to reset. */
+
+const UP = "#F2F3F5", DOWN = "#FF5C67", GRID = "rgba(255,255,255,.045)", AXIS = "rgba(255,255,255,.42)";
+const LONG = "#7FE0B8", SHORT = "#FF6F79", TP = "#7FE0B8", SL = "#FF6F79";
+const AXIS_W = 62, TIME_H = 22, TOP_PAD = 84, BOTTOM_PAD = 74;   // price room kept clear of the HUD
+export const HOLD_MS = 260;
+const DEFAULT_SPAN = 64, MIN_SPAN = 16, MAX_SPAN = 240;
+
+export interface HoldPreview { side: Side; entry: number; tp: number | null; sl: number | null }
+export interface ArcadeTradeHandlers {
+  /** Why a hold can't trade right now (closed market, locked account…), or null when it can. */
+  blocked: string | null;
+  onArm: (side: Side) => void;
+  onSlide: (price: number | null) => void;
+  onRelease: () => void;
+  onBlocked: (reason: string) => void;
+}
+
+export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, brackets, preview, trade, onMoveLevel, overlay, height }: {
+  market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[];
+  brackets: Record<string, Bracket>; preview: HoldPreview | null; trade: ArcadeTradeHandlers;
+  onMoveLevel: (positionId: string, kind: "sl" | "tp", price: number) => void;
+  overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; height: number;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [width, setWidth] = useState(360);
+  const [span, setSpan] = useState(DEFAULT_SPAN);
+  const [finger, setFinger] = useState<{ x: number; y: number; armed: boolean; side: Side | null } | null>(null);
+  const [dragLine, setDragLine] = useState<{ id: string; kind: "sl" | "tp"; price: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = host.current; if (!el) return;
+    const fit = () => setWidth(Math.max(200, Math.floor(el.clientWidth)));
+    fit(); const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect();
+  }, []);
+
+  const plotW = Math.max(60, width - AXIS_W), plotH = Math.max(60, height - TIME_H);
+  const step = digits(market) === 0 ? MARKETS[market].tick : MARKETS[market].tick;
+  // Leave a little room on the right of the newest candle for the live price tag.
+  const slots = span + 4;
+  const visible = candles.slice(-span);
+  const lastIndex = candles.length ? candles[candles.length - 1].index : 0;
+  const firstSlotIndex = lastIndex - span + 1;
+  const xOfIndex = (i: number) => ((i - firstSlotIndex) + .5) / slots * plotW;
+  const candleW = Math.max(1, Math.min(14, plotW / slots * .64));
+
+  // Price range: what's visible, plus the live price and nearby trade levels.
+  const range = useMemo(() => {
+    let lo = Infinity, hi = -Infinity;
+    for (const c of visible) { lo = Math.min(lo, c.low); hi = Math.max(hi, c.high); }
+    if (quote != null) { lo = Math.min(lo, quote); hi = Math.max(hi, quote); }
+    if (!Number.isFinite(lo)) return null;
+    const base = Math.max(hi - lo, step * 8);
+    const extra: number[] = [];
+    for (const p of positions) { extra.push(p.entry_price); const b = brackets[p.id]; if (b?.sl != null) extra.push(b.sl); if (b?.tp != null) extra.push(b.tp); }
+    if (preview) { extra.push(preview.entry); if (preview.tp != null) extra.push(preview.tp); if (preview.sl != null) extra.push(preview.sl); }
+    if (dragLine) extra.push(dragLine.price);
+    for (const v of extra) if (Number.isFinite(v) && v > lo - base * 1.2 && v < hi + base * 1.2) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    const pad = Math.max(hi - lo, step * 8) * .08;
+    return { lo: lo - pad, hi: hi + pad };
+  }, [visible, quote, positions, brackets, preview, dragLine, step]);
+
+  const usable = Math.max(40, plotH - TOP_PAD - BOTTOM_PAD);
+  const yOf = (p: number) => range ? TOP_PAD + (range.hi - p) / (range.hi - range.lo) * usable : 0;
+  const priceAt = (y: number) => range ? range.hi - (y - TOP_PAD) / usable * (range.hi - range.lo) : null;
+  const snap = (p: number) => Math.round(p / step) * step;
+
+  const toXY: ToXY = (secs, price, unclipped = false) => {
+    if (!range || !Number.isFinite(secs) || !Number.isFinite(price) || !candles.length) return null;
+    const x = xOfIndex(Math.floor(secs / bucketSeconds)), y = yOf(price);
+    const clamped = x < 0 || x > plotW || y < 0 || y > plotH;
+    if (clamped && !unclipped) return null;
+    return { x, y, clamped };
+  };
+
+  // ---------- drawing ----------
+  useEffect(() => {
+    const c = canvas.current; if (!c) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.width = Math.round(width * dpr); c.height = Math.round(height * dpr);
+    c.style.width = `${width}px`; c.style.height = `${height}px`;
+    const g = c.getContext("2d"); if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, width, height);
+    if (!range) return;
+    const font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    g.font = font; g.textBaseline = "middle";
+    // grid + price axis
+    const ticks = niceTicks(range.lo - (range.hi - range.lo) * BOTTOM_PAD / usable, range.hi + (range.hi - range.lo) * TOP_PAD / usable, Math.max(3, Math.floor(plotH / 64)));
+    for (const t of ticks) {
+      const y = Math.round(yOf(t)) + .5; if (y < 6 || y > plotH - 4) continue;
+      g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke();
+      g.fillStyle = AXIS; g.textAlign = "left"; g.fillText(px(t, digits(market)), plotW + 8, y);
+    }
+    // time labels
+    g.textAlign = "center"; g.fillStyle = AXIS;
+    const every = Math.max(1, Math.round(span / 4));
+    for (const k of visible) {
+      if (k.index % every) continue;
+      const x = xOfIndex(k.index); if (x < 24 || x > plotW - 24) continue;
+      g.fillText(timeLabel(k.index * bucketSeconds, bucketSeconds), x, height - TIME_H / 2);
+    }
+    // candles
+    for (const k of visible) {
+      const x = Math.round(xOfIndex(k.index)) + .5;
+      const up = k.close >= k.open;
+      g.strokeStyle = g.fillStyle = up ? UP : DOWN;
+      g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, yOf(k.high)); g.lineTo(x, yOf(k.low)); g.stroke();
+      const top = yOf(Math.max(k.open, k.close)), bot = yOf(Math.min(k.open, k.close));
+      g.fillRect(x - candleW / 2, top, candleW, Math.max(1, bot - top));
+    }
+    // positions + their saved levels
+    const lines: { price: number; color: string; label: string; dash: number[]; strong?: boolean }[] = [];
+    for (const p of positions) {
+      const pnl = quote != null ? pnlOf(p, quote) : null;
+      lines.push({ price: p.entry_price, color: p.side === "long" ? LONG : SHORT, label: `${p.side === "long" ? "LONG" : "SHORT"} ${p.quantity}${pnl != null ? `  ${signedMoney(pnl)}` : ""}`, dash: [], strong: true });
+      const b = brackets[p.id] ?? {};
+      for (const kind of ["tp", "sl"] as const) {
+        const v = dragLine && dragLine.id === p.id && dragLine.kind === kind ? dragLine.price : b[kind];
+        if (v == null) continue;
+        const amount = pnlOf({ ...p }, v);
+        lines.push({ price: v, color: kind === "tp" ? TP : SL, label: `${kind.toUpperCase()} ${signedMoney(amount)}`, dash: [5, 4] });
+      }
+    }
+    if (preview) {
+      lines.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.side === "long" ? "BUYING" : "SELLING", dash: [2, 3], strong: true });
+      if (preview.tp != null) lines.push({ price: preview.tp, color: TP, label: "TP", dash: [5, 4] });
+      if (preview.sl != null) lines.push({ price: preview.sl, color: SL, label: "SL", dash: [5, 4] });
+    }
+    for (const l of lines) {
+      const y = Math.round(yOf(l.price)) + .5; if (y < 0 || y > plotH) continue;
+      g.setLineDash(l.dash); g.strokeStyle = l.color; g.lineWidth = l.strong ? 1.4 : 1.1;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+      g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
+      const w = g.measureText(l.label).width + 12;
+      g.fillStyle = l.strong ? l.color : "rgba(12,14,17,.9)"; roundRect(g, 8, y - 9, w, 18, 4); g.fill();
+      if (!l.strong) { g.strokeStyle = l.color; g.lineWidth = 1; roundRect(g, 8, y - 9, w, 18, 4); g.stroke(); }
+      g.fillStyle = l.strong ? "#0c0e11" : l.color; g.fillText(l.label, 14, y + .5);
+      g.font = font;
+    }
+    // live price
+    if (quote != null) {
+      const y = Math.round(yOf(quote)) + .5;
+      g.setLineDash([1, 3]); g.strokeStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+      g.fillStyle = "#F2F3F5"; roundRect(g, plotW + 2, y - 10, AXIS_W - 4, 20, 4); g.fill();
+      g.fillStyle = "#0c0e11"; g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
+      g.fillText(px(quote, digits(market)), plotW + 7, y + .5);
+    }
+  }, [width, height, range, candles, span, quote, positions, brackets, preview, dragLine, market, bucketSeconds]);
+
+  // ---------- gestures ----------
+  const g = useRef<{
+    id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null; armed: boolean; side: Side | null; armY: number;
+    line: { id: string; kind: "sl" | "tp" } | null; lastTap: number;
+  } | null>(null);
+  const pinch = useRef<{ pts: Map<number, { x: number; y: number }>; start: number; span: number } | null>(null);
+  const lastTap = useRef(0);
+  const live = useRef({ trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf });
+  live.current = { trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf };
+
+  const release = () => { swipeGuard.owned = false; };
+  useEffect(() => () => { release(); if (g.current?.timer) clearTimeout(g.current.timer); }, []);
+
+  const local = (e: React.PointerEvent) => { const r = host.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  function down(e: React.PointerEvent) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const p = local(e);
+    // Second finger: pinch zoom, and forget any hold.
+    if (g.current && g.current.id !== e.pointerId && e.pointerType === "touch") {
+      cancelHold();
+      pinch.current = { pts: new Map([[g.current.id, { x: g.current.x, y: g.current.y }], [e.pointerId, p]]), start: 0, span };
+      const [a, b] = [...pinch.current.pts.values()]; pinch.current.start = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      return;
+    }
+    // Grab a saved TP/SL line within reach.
+    const L = live.current;
+    for (const pos of L.positions) for (const kind of ["tp", "sl"] as const) {
+      const v = L.brackets[pos.id]?.[kind]; if (v == null) continue;
+      if (Math.abs(L.yOf(v) - p.y) < 16 && p.x < plotW) {
+        g.current = { id: e.pointerId, x: p.x, y: p.y, timer: null, armed: false, side: null, armY: p.y, line: { id: pos.id, kind }, lastTap: 0 };
+        swipeGuard.owned = true; host.current?.setPointerCapture(e.pointerId);
+        setDragLine({ id: pos.id, kind, price: v }); return;
+      }
+    }
+    const now = performance.now();
+    if (now - lastTap.current < 300) { setSpan(DEFAULT_SPAN); lastTap.current = 0; return; }
+    lastTap.current = now;
+    const state = { id: e.pointerId, x: p.x, y: p.y, timer: null as ReturnType<typeof setTimeout> | null, armed: false, side: null as Side | null, armY: p.y, line: null, lastTap: now };
+    g.current = state;
+    setFinger({ x: p.x, y: p.y, armed: false, side: null });
+    state.timer = setTimeout(() => {
+      if (g.current !== state) return;
+      state.timer = null;
+      const blocked = live.current.trade.blocked;
+      if (blocked) { live.current.trade.onBlocked(blocked); g.current = null; setFinger(null); return; }
+      state.armed = true; state.side = state.y < live.current.plotH / 2 ? "long" : "short"; state.armY = state.y;
+      swipeGuard.owned = true;
+      try { host.current?.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+      setFinger({ x: state.x, y: state.y, armed: true, side: state.side });
+      live.current.trade.onArm(state.side);
+    }, HOLD_MS);
+  }
+  function cancelHold() {
+    const s = g.current; if (!s) return;
+    if (s.timer) clearTimeout(s.timer);
+    g.current = null; setFinger(null);
+  }
+  function move(e: React.PointerEvent) {
+    const P = pinch.current;
+    if (P && P.pts.has(e.pointerId)) {
+      P.pts.set(e.pointerId, local(e));
+      const [a, b] = [...P.pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      setSpan(Math.round(Math.max(MIN_SPAN, Math.min(MAX_SPAN, P.span * P.start / d))));
+      return;
+    }
+    const s = g.current; if (!s || s.id !== e.pointerId) return;
+    const p = local(e);
+    if (s.line) {
+      const price = live.current.priceAt(p.y); if (price != null) setDragLine({ id: s.line.id, kind: s.line.kind, price: snap(price) });
+      return;
+    }
+    if (!s.armed) {
+      if (Math.hypot(p.x - s.x, p.y - s.y) > 10) cancelHold();   // a swipe or scroll, not a hold
+      return;
+    }
+    setFinger({ x: p.x, y: p.y, armed: true, side: s.side });
+    const price = live.current.priceAt(p.y);
+    live.current.trade.onSlide(Math.abs(p.y - s.armY) < 14 || price == null ? null : snap(price));
+  }
+  function up(e: React.PointerEvent) {
+    const P = pinch.current;
+    if (P && P.pts.has(e.pointerId)) { P.pts.delete(e.pointerId); if (P.pts.size < 2) pinch.current = null; g.current = null; setFinger(null); return; }
+    const s = g.current; if (!s || s.id !== e.pointerId) return;
+    g.current = null;
+    if (s.timer) clearTimeout(s.timer);
+    if (s.line) {
+      setDragLine(d => { if (d) live.current.onMoveLevel(d.id, d.kind, d.price); return null; });
+      release(); return;
+    }
+    setFinger(null);
+    if (s.armed) { live.current.trade.onRelease(); release(); }
+  }
+  function cancel(e: React.PointerEvent) {
+    if (pinch.current?.pts.has(e.pointerId)) { pinch.current = null; return; }
+    const s = g.current; if (!s || s.id !== e.pointerId) return;
+    if (s.armed) { live.current.trade.onRelease(); }
+    if (s.line) setDragLine(null);
+    cancelHold(); release();
+  }
+
+  const half = plotH / 2;
+  return (
+    <div ref={host} className="arcade-chart" data-testid="arcade-chart" style={{ height }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={e => e.preventDefault()}>
+      <canvas ref={canvas} aria-label={`${MARKETS[market].title} price chart`} role="img" />
+      {overlay && <div className="arcade-overlay" style={{ width: plotW, height: plotH }}>{overlay(toXY, plotW, plotH)}</div>}
+      {finger && <div className={`hold-ring ${finger.armed ? "armed" : ""} ${finger.side ?? (finger.y < half ? "long" : "short")}`} style={{ left: finger.x, top: finger.y }} aria-hidden="true"><i /></div>}
+      {finger?.armed && finger.side && <div className={`hold-label ${finger.side}`} style={{ top: Math.max(10, Math.min(plotH - 60, finger.y - 70)) }} data-testid="hold-label">
+        <b>{finger.side === "long" ? "BUYING" : "SELLING"}</b>
+        <span>{preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
+      </div>}
+      {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
+    </div>
+  );
+}
+
+function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+
+export function niceTicks(lo: number, hi: number, count: number): number[] {
+  const span = hi - lo; if (!(span > 0)) return [];
+  const raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const stepSize = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) ?? 10 * mag;
+  const out: number[] = [];
+  for (let v = Math.ceil(lo / stepSize) * stepSize; v <= hi; v += stepSize) out.push(Number(v.toFixed(8)));
+  return out;
+}
+
+function timeLabel(secs: number, bucket: number) {
+  const d = new Date(secs * 1000);
+  if (bucket >= 86400) return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  if (d.getHours() === 0 && d.getMinutes() === 0) return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+/** TP/SL from one slide: the side you drag to sets that level, the other mirrors it 1:1 from the entry. */
+export function levelsFromSlide(side: Side, entry: number, price: number | null, tick: number): { tp: number | null; sl: number | null } {
+  if (price == null || !Number.isFinite(price) || !Number.isFinite(entry)) return { tp: null, sl: null };
+  const d = Math.abs(price - entry);
+  if (d < tick) return { tp: null, sl: null };
+  const snapTo = (v: number) => Math.round(v / tick) * tick;
+  const profitUp = side === "long";
+  const towardProfit = profitUp ? price > entry : price < entry;
+  const tp = towardProfit ? price : profitUp ? entry + d : entry - d;
+  const sl = towardProfit ? (profitUp ? entry - d : entry + d) : price;
+  return { tp: snapTo(tp), sl: snapTo(sl) };
+}

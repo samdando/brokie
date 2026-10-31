@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH, headless: true } : { channel: 'chrome', headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 393, height: 852 } });
+    const page = await browser.newPage({ viewport: { width: 393, height: 852 } });await page.addInitScript(()=>{try{if(!localStorage.getItem("brokie.layout"))localStorage.setItem("brokie.layout","classic")}catch{}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());

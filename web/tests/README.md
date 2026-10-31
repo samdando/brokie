@@ -1,5 +1,7 @@
 # Trading floor verification
 
+The 31 October focus pass makes Brokie's own canvas chart (`src/ArcadeChart.tsx`, `src/FocusFloor.tsx`) the default Trade page. `node tests/focus-floor.cjs` covers full-screen fit at 320/393/430px, hold top = BUY / bottom = SELL, slide for 1:1 TP/SL saved to the server, taps never trading, hold to cash out, real CDP touch page swipes (chart, content, buttons, back) and vertical scrolls being ignored, and the classic-layout toggle. The older floor tests pin `brokie.layout=classic` with an init script.
+
 The 31 October terminal pass adds `npm run test:indicators` and a local-only `/tests/terminal-preview.html` route with synthetic accounts and mocked operations. Chat is now a page in Trade → Chat → Squad → Learn → You order. Page swipes work over the preview chart and content cards; swipe-to-close is confined to the P&L bar. See `docs/SETUP_RUSH_REFERENCE.md` for the verified browser matrix and remaining device checks.
 
 Start an isolated preview from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_ANON_KEY='' npm run dev -- --host 127.0.0.1`. Browser tests use synthetic accounts, block external requests and never execute live orders. They require Playwright and Chrome. Set `PLAYWRIGHT_MODULE` or `CHROME_PATH` when using a bundled runtime; `BASE_URL` selects a different local preview port. Restart the dev server after source edits before running fixtures, so Vite does not create differently versioned game-store imports.
