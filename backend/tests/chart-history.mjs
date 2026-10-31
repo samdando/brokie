@@ -21,7 +21,9 @@ try {
       (gen_random_uuid(),'${quiet.id}',current_season(),'nas','long',1,100,102,4,now()-interval '31 hours',now()-interval '30 hours','closed'),
       (gen_random_uuid(),'${outsider.id}',current_season(),'nas','long',1,100,102,4,now()-interval '4 hours',now()-interval '3 hours','closed'),
       (gen_random_uuid(),'${quiet.id}',current_season(),'gold','long',1,100,102,20,now()-interval '4 hours',now()-interval '3 hours','closed');
+    alter table positions disable trigger set_position_session; -- fixture must not depend on market hours (CI runs on weekends)
     insert into positions(user_id,season,market,side,quantity,entry_price,opened_at) values('${quiet.id}',current_season(),'nas','long',1,100,now()-interval '31 hours');
+    alter table positions enable trigger set_position_session;
     set role authenticated; set request.jwt.claim.sub='${viewer.id}';`);
   const rpc = async args => (await db.query(`select chart_bubbles(${args}) data`)).rows[0].data;
   const rows = await rpc(`'nas','${squad}'`);
