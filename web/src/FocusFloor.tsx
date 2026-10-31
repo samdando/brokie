@@ -146,7 +146,8 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
     if (!stack) { toast(`${label} · set TP/SL from your position`); return; }
     try {
       await game.setBracket(stack.merged.id, { tp: o.levels.tp, sl: o.levels.sl });
-      toast(`${label} · TP ${px(o.levels.tp, digits(market))} · SL ${px(o.levels.sl, digits(market))} locked`);
+      const first = !seen("brokie.coach.lines"); if (first) markSeen("brokie.coach.lines");
+      toast(first ? `${label} · TP/SL locked 1:1. Drag either line to move it on its own.` : `${label} · TP ${px(o.levels.tp, digits(market))} · SL ${px(o.levels.sl, digits(market))} locked`);
     } catch (e) { toast(`${label} · TP/SL not saved: ${(e as Error).message}`); }
   }
   async function moveLevel(id: string, kind: "sl" | "tp", price: number) {
@@ -261,7 +262,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onIndicators(); }}><b>Indicators</b><span>{Object.values(indicators).filter(Boolean).length} on ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onClassic(); }} data-testid="classic-layout"><b>Classic layout</b><span>Buttons + TradingView chart ›</span></button>
           <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.trades"); localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setCoachPop(null); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>
-          <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (1:1), lift to lock. Drag a TP/SL line to move it. Pinch to zoom, double-tap to reset.</small>
+          <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (they start 1:1), lift to lock. Then drag the TARGET or STOP line to move either one on its own. Pinch to zoom, double-tap to reset.</small>
         </div>
       </Sheet>
     </div>

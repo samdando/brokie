@@ -47,12 +47,26 @@ const br=await page.evaluate(()=>window.brackets[0]);assert.equal(br.id,'p1');as
 assert(Math.abs((br.tp-29700)-(29700-br.sl))<1,'1:1 mirror');
 assert.equal(await page.evaluate(()=>location.hash),'');
 await page.getByTestId('cash-out').waitFor();await page.screenshot({path:'/tmp/brokie-focus-position.png'});
+// Dragging the saved TP line to the top edge: the level moves, the chart scale doesn't jump under the finger.
+{const box=await page.evaluate(()=>{const r=document.querySelector('.arcade-chart').getBoundingClientRect();return {x:r.left+r.width*0.3,top:r.top,h:r.height};});
+ const pixels=async()=>page.evaluate(()=>document.querySelector('.arcade-chart').dataset.range);
+ const n0=await page.evaluate(()=>window.brackets.length);let grabY=null;
+ for(let y=box.top+12;y<box.top+box.h*0.8;y+=6){await page.mouse.move(box.x,y);await page.mouse.down();await page.mouse.move(box.x,y-3,{steps:2});await page.mouse.up();await page.waitForTimeout(120);if((await page.evaluate(()=>window.brackets.length))>n0){grabY=y;break;}}
+ assert(grabY!==null,'TP line can be grabbed');
+ const tp1=await page.evaluate(()=>window.brackets.at(-1).tp);
+ await page.mouse.move(box.x,grabY-3);await page.mouse.down();await page.mouse.move(box.x,grabY-40,{steps:4});await page.waitForTimeout(60);
+ const mid=await pixels();await page.mouse.move(box.x,box.top-80,{steps:6});await page.waitForTimeout(60);const edge=await pixels();
+ await page.mouse.up();await page.waitForTimeout(150);
+ const tp2=await page.evaluate(()=>window.brackets.at(-1).tp);assert(tp2>tp1,'TP moved up');
+ assert.equal(edge,mid,'price scale is frozen while a line is dragged past the edge');
+ assert.equal(await page.evaluate(()=>window.orders.length),1,'line drag never trades');globalThis.bracketsAfterDrag=await page.evaluate(()=>window.brackets.length);}
+
 // A quick tap does not trade.
 await page.mouse.click(cx,chart.y+chart.height*.7);await page.waitForTimeout(400);assert.equal(await page.evaluate(()=>window.orders.length),1);
 // Holding the other half while long takes it off instead of opening a hedge.
 await page.mouse.move(cx,chart.y+chart.height*.62);await page.mouse.down();await page.waitForTimeout(500);
 assert.match(await page.getByTestId('hold-label').innerText(),/CLOSING/);await page.mouse.move(cx,chart.y+chart.height*.75,{steps:4});await page.mouse.up();await page.waitForTimeout(150);
-assert.equal(await page.evaluate(()=>window.orders.length),1,'no hedge order');assert.deepEqual(await page.evaluate(()=>window.reduces),[{side:'long',q:1}]);assert.equal(await page.evaluate(()=>window.brackets.length),1,'closing never sets TP/SL');
+assert.equal(await page.evaluate(()=>window.orders.length),1,'no hedge order');assert.deepEqual(await page.evaluate(()=>window.reduces),[{side:'long',q:1}]);assert.equal(await page.evaluate(()=>window.brackets.length),globalThis.bracketsAfterDrag,'closing never sets TP/SL');
 // Hold cash-out to close.
 const co=await page.getByTestId('cash-out').boundingBox();await page.mouse.move(co.x+20,co.y+15);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
 await page.waitForFunction(()=>window.closes.length===1);

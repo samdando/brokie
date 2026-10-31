@@ -73,7 +73,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   const candleW = Math.max(1, Math.min(14, plotW / slots * .64));
 
   // Price range: what's visible, plus the live price and nearby trade levels.
-  const range = useMemo(() => {
+  const liveRange = useMemo(() => {
     let lo = Infinity, hi = -Infinity;
     for (const c of visible) { lo = Math.min(lo, c.low); hi = Math.max(hi, c.high); }
     if (quote != null && off === 0) { lo = Math.min(lo, quote); hi = Math.max(hi, quote); }
@@ -82,11 +82,14 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const extra: number[] = [];
     for (const p of positions) { extra.push(p.entry_price); const b = brackets[p.id]; if (b?.sl != null) extra.push(b.sl); if (b?.tp != null) extra.push(b.tp); }
     if (preview) { extra.push(preview.entry); if (preview.tp != null) extra.push(preview.tp); if (preview.sl != null) extra.push(preview.sl); }
-    if (dragLine) extra.push(dragLine.price);
     for (const v of extra) if (Number.isFinite(v) && v > lo - base * 1.2 && v < hi + base * 1.2) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     const pad = Math.max(hi - lo, step * 8) * .08;
     return { lo: lo - pad, hi: hi + pad };
-  }, [visible, quote, positions, brackets, preview, dragLine, step, off]);
+  }, [visible, quote, positions, brackets, preview, step, off]);
+  // While a TP/SL line is being dragged the scale stays put, so the line never chases the finger.
+  const frozen = useRef<typeof liveRange>(null);
+  if (dragLine) { if (!frozen.current) frozen.current = liveRange; } else frozen.current = null;
+  const range = frozen.current ?? liveRange;
 
   const usable = Math.max(40, plotH - TOP_PAD - BOTTOM_PAD);
   const yOf = (p: number) => range ? TOP_PAD + (range.hi - p) / (range.hi - range.lo) * usable : 0;
@@ -275,7 +278,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const s = g.current; if (!s || s.id !== e.pointerId) return;
     const p = local(e);
     if (s.line) {
-      const price = live.current.priceAt(p.y); if (price != null) setDragLine({ id: s.line.id, kind: s.line.kind, price: snap(price) });
+      const y = Math.max(TOP_PAD * .4, Math.min(live.current.plotH - BOTTOM_PAD * .4, p.y));
+      const price = live.current.priceAt(y); if (price != null) setDragLine({ id: s.line.id, kind: s.line.kind, price: snap(price) });
       return;
     }
     if (s.pan) {
@@ -327,7 +331,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
 
   const half = plotH / 2;
   return (
-    <div ref={host} className="arcade-chart" data-testid="arcade-chart" data-offset={off} style={{ height }}
+    <div ref={host} className="arcade-chart" data-testid="arcade-chart" data-offset={off} data-range={range ? `${range.lo.toFixed(2)}:${range.hi.toFixed(2)}` : ""} style={{ height }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={e => e.preventDefault()}>
       <canvas ref={canvas} aria-label={`${MARKETS[market].title} price chart`} role="img" />
       {overlay && <div className="arcade-overlay" style={{ width: plotW, height: plotH }}>{overlay(toXY, plotW, plotH)}</div>}
