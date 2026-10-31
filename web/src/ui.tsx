@@ -47,7 +47,7 @@ export function Button({ children, onClick, busy, disabled, variant = "lime", id
 
 export function Eyebrow({ children }: { children: ReactNode }) { return <div className="eyebrow">{children}</div>; }
 
-export function useToast(): [string | null, (m: string) => void] {
+export function useToast(): [string | null, (m: string | null) => void] {
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(null), 3000); return () => clearTimeout(t); }, [msg]);
   return [msg, setMsg];

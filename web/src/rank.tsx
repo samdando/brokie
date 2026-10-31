@@ -40,11 +40,12 @@ export function rankOf(r: RankInput): Rank {
 /** Small tier chip for leaderboard rows and profiles. Placing ranks are shown faded with the day count. */
 export function RankBadge({ r, compact }: { r: RankInput; compact?: boolean }) {
   const k = rankOf(r);
-  const label = k.placing ? `${k.tier.name} · placing ${k.days}/5` : k.tier.name;
+  const fresh = k.placing && k.days === 0;
+  const label = fresh ? "Unranked · placing 0/5" : k.placing ? `${k.tier.name} · placing ${k.days}/5` : k.tier.name;
   return (
     <span className={`rank-badge ${k.placing ? "placing" : ""} ${compact ? "compact" : ""}`} style={{ ["--tier" as string]: k.tier.color }}
       data-testid="rank-badge" data-tier={k.tier.id} title={`${label} rank`} aria-label={`${label} rank`}>
-      <i aria-hidden="true">{k.tier.icon}</i>{compact ? null : <span>{k.tier.name}</span>}
+      <i aria-hidden="true">{fresh ? "◇" : k.tier.icon}</i>{compact ? null : <span>{fresh ? "Unranked" : k.tier.name}</span>}
     </span>
   );
 }
@@ -52,21 +53,22 @@ export function RankBadge({ r, compact }: { r: RankInput; compact?: boolean }) {
 /** Your rank on the You page: tier, progress bar and what the next tier needs. */
 export function RankCard({ r }: { r: RankInput }) {
   const k = rankOf(r);
-  const need = k.next == null ? (k.tier.id === "legend" ? "Top tier. Hold it to the end of the season." : "Account closed. Use your restart to climb again.")
+  const fresh = k.placing && k.days === 0;
+  const need = fresh ? "Trade on 5 different days to get your first rank." : k.next == null ? (k.tier.id === "legend" ? "Top tier. Hold it to the end of the season." : "Account closed. Use your restart to climb again.")
     : k.next.id === "legend" ? `Get FUNDED for Legend · ${k.days}/5 trading days`
     : `+${(k.toNext ?? 0).toFixed(2)}% more for ${k.next.name}`;
   return (
     <section className="rank-card" style={{ ["--tier" as string]: k.tier.color }} data-testid="rank-card" data-tier={k.tier.id}>
       <div className="rank-card-top">
-        <span className="rank-card-icon" aria-hidden="true">{k.tier.icon}</span>
+        <span className="rank-card-icon" aria-hidden="true">{fresh ? "◇" : k.tier.icon}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="eyebrow">Season rank{k.placing ? ` · placing ${k.days}/5 days` : ""}</div>
-          <b>{k.tier.name}</b>
+          <b>{fresh ? "Unranked" : k.tier.name}</b>
         </div>
         {k.next && <span className="rank-card-next" style={{ ["--next" as string]: k.next.color }}>{k.next.icon} {k.next.name}</span>}
       </div>
       <div className="rank-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(k.progress * 100)} aria-label="Progress to next rank"><i style={{ width: `${Math.round(k.progress * 100)}%` }} /></div>
-      <small className="muted">{k.placing ? "Provisional until you've traded 5 days. " : ""}{need}</small>
+      <small className="muted">{k.placing && !fresh ? "Provisional until you've traded 5 days. " : ""}{need}</small>
       <div className="rank-ladder" aria-hidden="true">{TIERS.map((t) => <span key={t.id} className={t.id === k.tier.id ? "on" : ""} style={{ ["--t" as string]: t.color }} title={t.name}>{t.icon}</span>)}</div>
     </section>
   );

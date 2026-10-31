@@ -27,11 +27,12 @@ export function App() {
   const current = useRef(tab);
   const [deck, setDeck] = useState<HTMLElement | null>(null);
   const [peek, setPeek] = useState<Tab | null>(null);
+  const [toast, setToast] = useToast();
   const navigate = (next: Tab, instant = false) => {
     if (next === current.current) return;
     setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(current.current) ? 1 : -1);
     game.setChatOpen(next === "chat");
-    setPeek(null);
+    setPeek(null); setToast(null);
     setPrevious(instant ? null : current.current); current.current = next; setTab(next);
   };
   useEffect(() => { if (!previous) return; const t = setTimeout(() => setPrevious(null), 300); return () => clearTimeout(t); }, [tab, previous]);
@@ -49,7 +50,6 @@ export function App() {
     lock(); document.addEventListener("pointerdown", lock, { once: true });
     return () => document.removeEventListener("pointerdown", lock);
   }, []);
-  const [toast, setToast] = useToast();
   const [fb, setFb] = useState(false);
   const [reviewHistory, setReviewHistory] = useState(false);
   const sharedToken = new URLSearchParams(location.search).get("trade");

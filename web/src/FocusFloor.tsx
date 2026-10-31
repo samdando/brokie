@@ -10,6 +10,7 @@ import { Sheet, hintDone, money, px, signedMoney } from "./ui";
 import { celebrateEffect, haptic, orderEffect, readEffect, resultEffect } from "./effects";
 import { swipeGuard } from "./pageSwipe";
 import { GoalCelebration, ResultSplash, bestThisWeek, formatR, type TradeResult } from "./WinMoment";
+import { openRush } from "./Rush";
 
 const CASH_OUT_MS = 450;
 const seen = (key: string) => { try { return localStorage.getItem(key) === "done"; } catch { return true; } };
@@ -310,6 +311,7 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined} />
           </>} />
         {!open && <div className="focus-banner">{blocked}</div>}
+        {(!open || rules?.status === "locked" || rules?.status === "blown") && here.length === 0 && <button type="button" className="focus-rush" onClick={() => openRush()} data-testid="focus-rush"><b>⚡ Rush</b><span>{rules?.status === "locked" ? "Cooling off? Practise on real candles" : "Play a 2-minute round on real candles"}</span></button>}
         {pattern && open && !preview && !holdCoach && <div className={`pattern-callout ${pattern.side}`} data-testid="pattern-callout"><small>Pattern</small><b>{pattern.name}</b></div>}
         {active && holdCoach && open && here.length === 0 && <div className={`hold-coach ${coachPop ? `pop-${coachPop}` : ""} ${coachFading ? "fading" : ""}`} data-testid="hold-coach" aria-hidden="true">
           <div className="coach-zone long"><span className="coach-pill">▲ Hold the top half to buy</span></div>

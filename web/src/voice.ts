@@ -1,7 +1,7 @@
 // Live squad voice for the web app (LiveKit). Joins muted; mic only opens on
 // unmute or while holding push-to-talk; leaving the tab mutes you.
 import { useSyncExternalStore } from "react";
-import { Room, RoomEvent, Track, RemoteTrack, RemoteParticipant } from "livekit-client";
+import type { Room, RemoteTrack, RemoteParticipant } from "livekit-client";
 import { game } from "./game";
 
 export type VoiceRoomId = "squad" | "gold" | "indices";
@@ -35,6 +35,9 @@ class Voice {
     let lk: Room | null = null;
     try {
       const creds = await game.voiceCredentials(room);
+      if (token !== this.generation) return;
+      // Loaded on demand so the ~400 KB voice SDK stays out of the first page load.
+      const { Room, RoomEvent, Track } = await import("livekit-client");
       if (token !== this.generation) return;
       lk = new Room({ adaptiveStream: true, dynacast: true });
       lk.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {

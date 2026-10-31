@@ -193,3 +193,8 @@
   .gc-rays { animation:none; }
   .ride-tint, .focus-chart, .result-splash { transition:none; }
 }
+
+/* Rush entry while the market is closed or the account is cooling off. */
+.focus-rush { position:absolute; left:50%; bottom:18px; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:2px; padding:10px 18px; border-radius:14px; background:#ff5a1f; color:#111; border:0; box-shadow:0 8px 24px rgba(255,90,31,.25); z-index:3; white-space:nowrap; }
+.focus-rush b { font:800 14px var(--mono); letter-spacing:.06em; }
+.focus-rush span { font:600 10px var(--mono); opacity:.8; }
