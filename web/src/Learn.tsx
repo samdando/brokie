@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button, Eyebrow, Sheet } from "./ui";
+import { DailyRushCard } from "./Rush";
 
 const LESSONS = [
   { title: "Up, down, and in the game.", sub: "Long vs short · 1 minute",
@@ -24,6 +25,7 @@ export function LearnScreen({ goTrade }: { goTrade: () => void }) {
   return (
     <div className="stack learn-screen secondary-screen" style={{ gap: 24 }}>
       <div className="page-heading"><Eyebrow>Learn</Eyebrow><h1>A little more edge.</h1><p>Three minutes to get the basics.<br />A whole season to practise.</p></div>
+      <DailyRushCard />
       <section className="learn-progress" aria-label={`${done.length} of ${LESSONS.length} complete`}>
         <div className="row between"><b>{done.length === LESSONS.length ? "The essentials, understood." : "Small lessons. Better decisions."}</b><span>{done.length} / {LESSONS.length}</span></div>
         <div className="learn-progress-track" role="progressbar" aria-label="Lessons complete" aria-valuemin={0} aria-valuemax={LESSONS.length} aria-valuenow={done.length}>{LESSONS.map((_,i) => <i key={i} className={done.length > i ? "complete" : ""} />)}</div>

@@ -8,6 +8,7 @@ import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
 import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
+import { RushHost, RushPage } from "./Rush";
 import { FlashOverlay } from "./Events";
 import { ChatCard, FeedbackSheet } from "./Social";
 
@@ -52,7 +53,8 @@ export function App() {
   const [fb, setFb] = useState(false);
   const [reviewHistory, setReviewHistory] = useState(false);
   const sharedToken = new URLSearchParams(location.search).get("trade");
-  useEffect(() => { if (!sharedToken) void game.start(); }, [sharedToken]);
+  const rushSeed = new URLSearchParams(location.search).get("rush");
+  useEffect(() => { if (!sharedToken && !rushSeed) void game.start(); }, [sharedToken, rushSeed]);
   useEffect(() => {
     const onVis = () => game.setActive(!document.hidden);
     document.addEventListener("visibilitychange", onVis);
@@ -67,6 +69,7 @@ export function App() {
   }, [tab, reviewHistory]);
 
   if (sharedToken) return <SharedTradePage token={sharedToken} />;
+  if (rushSeed) return <RushPage seed={rushSeed} />;
 
   if (st.phase === "unconfigured") return <Centered title="Brokie isn't connected yet" body="This build has no server address. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY and rebuild." />;
   if (st.phase === "connecting" && !st.me) return <Centered title="" body="" spinner />;
@@ -111,6 +114,7 @@ export function App() {
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
+      <RushHost />
     </Profiles>
   );
 }
