@@ -30,4 +30,6 @@ The other historical UI scripts predate the current progressive-disclosure layou
 
 31 October playtest polish: `node tests/polish-floor.cjs` checks closed markets showing their reopening time (sheet tiles and chart banner, in the player's time zone), the price change with % and look-back span, the add/close tip living in the size line instead of over chart levels, and the Chat composer sitting just above the tab bar at 320/393px.
 
+Focus floor feel pass: `node tests/win-moment.cjs` checks the result splash after a close (signed dollars, R from the stop, best-this-week badge, calmer loss version, server TP/SL fills, tap-through so the next hold still trades, reduced motion), the riding tint, dollar risk/win in the hold label, 1R/2R slide targets, right-axis tag spacing, the season dollars + distance-to-target line, once-per-season target/funded moments, the Clean beginner chart and the default size of 10, at 393/430/320px. Saves `/tmp/brokie-win-*.png`, `/tmp/brokie-loss-splash.png`, `/tmp/brokie-2r-*.png`, `/tmp/brokie-goal-target.png` and `/tmp/brokie-320-*.png`.
+
 iOS shell: `node tests/native-shell.cjs` simulates the WKWebView flag (`window.brokieNative`) and checks the $1 pool and install tip stay hidden in the iOS app, touch feedback defaults on there, and the plain web stays unchanged.

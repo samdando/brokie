@@ -19,7 +19,10 @@ const DEFAULT_TOP_PAD = 84, DEFAULT_BOTTOM_PAD = 74;
 export const HOLD_MS = 340;
 const DEFAULT_SPAN = 64, MIN_SPAN = 16, MAX_SPAN = 240;
 
-export interface HoldPreview { side: Side; entry: number; tp: number | null; sl: number | null; /** Holding against your position takes micros off it instead of hedging. */ closing?: boolean }
+export interface HoldPreview {
+  side: Side; entry: number; tp: number | null; sl: number | null; /** Holding against your position takes micros off it instead of hedging. */ closing?: boolean;
+  /** Micros in the order, so the label can say what the levels are worth in dollars. */ qty?: number;
+}
 export interface ArcadeTradeHandlers {
   /** Why a hold can't trade right now (closed market, locked account…), or null when it can. */
   blocked: string | null;
@@ -118,19 +121,11 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     if (!range) return;
     const font = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
     g.font = font; g.textBaseline = "middle";
-    // grid + price axis
+    // grid (the price labels are drawn last, once the trade tags have been laid out)
     const ticks = niceTicks(range.lo - (range.hi - range.lo) * BOTTOM_PAD / usable, range.hi + (range.hi - range.lo) * TOP_PAD / usable, Math.max(3, Math.floor(plotH / 64)));
-    // Axis labels step aside for price tags (entry, target, stop, live price).
-    const busy: number[] = [quote, preview?.entry, preview?.tp, preview?.sl, ...positions.flatMap(p => [p.entry_price, brackets[p.id]?.tp, brackets[p.id]?.sl])]
-      .filter((v): v is number => v != null).map(yOf);
     for (const t of ticks) {
       const y = Math.round(yOf(t)) + .5; if (y < 6 || y > plotH - 4) continue;
-      if (busy.some(b => Math.abs(b - y) < 17)) {
-        g.setLineDash([1, 4]); g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
-        continue;
-      }
       g.setLineDash([1, 4]); g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
-      g.fillStyle = AXIS; g.textAlign = "right"; g.fillText(px(t, digits(market)), width - 6, y);
     }
     // time labels
     g.textAlign = "center"; g.fillStyle = AXIS;
@@ -189,30 +184,48 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       zone(preview.entry, preview.sl, SL, "sl", preview.tp, 0, preview.sl != null ? pnlOf(fake, preview.sl) : null);
       levels.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.closing ? "CLOSING" : preview.side === "long" ? "BUYING" : "SELLING", strong: true, axis: true });
     }
+    // While a hold is placing an order, its BUYING/SELLING tag speaks for the entry: a position tag right under it steps back.
+    const holdY = preview ? yOf(preview.entry) : null, holdLevel = preview ? levels[levels.length - 1] : null;
+    // live price line (under the entry tags, so a price sitting on the entry never strikes through them)
+    const liveY = quote != null ? Math.round(yOf(quote)) + .5 : null;
+    if (liveY != null) { g.setLineDash([1, 3]); g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, liveY); g.lineTo(plotW, liveY); g.stroke(); g.setLineDash([]); }
     for (const l of levels) {
       const y = Math.round(yOf(l.price)) + .5; if (y < 0 || y > plotH) continue;
       if (l.strong) {
         g.setLineDash([3, 3]); g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+        if (holdY != null && l !== holdLevel && Math.abs(holdY - y) < 21) continue;
         g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
         const w = g.measureText(l.label).width + 14;
         g.fillStyle = l.color; notched(g, 8, y - 10, w, 20); g.fill();
         g.fillStyle = "#0c0e11"; g.fillText(l.label, 15, y + .5);
       }
-      if (l.axis) {
-        g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "right";
-        g.fillStyle = l.color; notched(g, plotW + 2, y - 9, AXIS_W - 4, 18); g.fill();
-        g.fillStyle = "#0c0e11"; g.fillText(px(l.price, digits(market)), width - 6, y + .5);
-      }
       g.font = font;
     }
-    // live price
-    if (quote != null) {
-      const y = Math.round(yOf(quote)) + .5;
-      g.setLineDash([1, 3]); g.strokeStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
-      g.fillStyle = "#F2F3F5"; roundRect(g, plotW + 2, y - 10, AXIS_W - 4, 20, 4); g.fill();
-      g.fillStyle = "#0c0e11"; g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "right";
-      g.fillText(px(quote, digits(market)), width - 6, y + .5);
+    // Right-axis tags (entry, target, stop, live price): nudged apart when they'd overlap, so every price stays readable.
+    // The live price keeps its true height; the others step aside with a short leader back to their line.
+    const tags = [
+      ...levels.filter(l => l.axis).map(l => ({ price: l.price, color: l.color, live: false })),
+      ...(quote != null ? [{ price: quote, color: "#F2F3F5", live: true }] : []),
+    ].map(t => ({ ...t, y: Math.round(yOf(t.price)) + .5 })).filter(t => t.y >= 0 && t.y <= plotH);
+    const placed = spreadTags(tags.map(t => ({ y: t.y, h: t.live ? 20 : 18, anchor: t.live })), 1, plotH - 1);
+    // Axis labels step aside for the tags.
+    g.font = font; g.fillStyle = AXIS; g.textAlign = "right";
+    for (const t of ticks) {
+      const y = Math.round(yOf(t)) + .5; if (y < 6 || y > plotH - 4) continue;
+      if (!placed.some(b => Math.abs(b - y) < 17)) g.fillText(px(t, digits(market)), width - 6, y);
     }
+    g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "right";
+    tags.forEach((t, i) => { if (!t.live) drawTag(t, placed[i]); });
+    tags.forEach((t, i) => { if (t.live) drawTag(t, placed[i]); });
+    function drawTag(t: (typeof tags)[number], at: number) {
+      const y = Math.round(at) + .5;
+      if (Math.abs(y - t.y) > 1) { g!.strokeStyle = t.color; g!.lineWidth = 1; g!.beginPath(); g!.moveTo(plotW - 8, t.y); g!.lineTo(plotW + 2, y); g!.stroke(); }
+      g!.fillStyle = t.color;
+      if (t.live) roundRect(g!, plotW + 2, y - 10, AXIS_W - 4, 20, 4); else notched(g!, plotW + 2, y - 9, AXIS_W - 4, 18);
+      g!.fill();
+      g!.fillStyle = "#0c0e11"; g!.fillText(px(t.price, digits(market)), width - 6, y + .5);
+    }
+    canvas.current!.dataset.tags = tags.map((t, i) => `${t.live ? "live" : "level"}:${Math.round(placed[i])}`).join(",");
   }, [width, height, range, candles, span, off, quote, positions, brackets, preview, dragLine, market, bucketSeconds]);
 
   // ---------- gestures ----------
@@ -366,6 +379,10 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       {finger?.armed && finger.side && <div className={`hold-label ${finger.side}`} style={{ top: labelTop(finger.y, plotH) }} data-testid="hold-label">
         <b>{preview?.closing ? "CLOSING" : finger.side === "long" ? "BUYING" : "SELLING"}</b>
         <span>{preview?.closing ? "Taking it off · no hedge" : preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
+        {!preview?.closing && preview?.tp != null && preview.sl != null && preview.qty ? (() => {
+          const worth = (to: number) => Math.abs(to - preview.entry) * MARKETS[market].pointValue * preview.qty!;
+          return <em data-testid="hold-risk"><i className="risk">Risk {dollars(worth(preview.sl))}</i> → <i className="win">Win {dollars(worth(preview.tp))}</i></em>;
+        })() : null}
       </div>}
       {off > 0 && <button type="button" className="chart-live" data-testid="chart-live" onPointerDown={e => e.stopPropagation()} onClick={() => setOffset(0)} style={{ right: AXIS_W + 10 }}>Live ›</button>}
       {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
@@ -397,18 +414,49 @@ function timeLabel(secs: number, bucket: number) {
   return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** TP/SL from one slide: the side you drag to sets that level, the other mirrors it 1:1 from the entry. */
-export function levelsFromSlide(side: Side, entry: number, price: number | null, tick: number): { tp: number | null; sl: number | null } {
+/** TP/SL from one slide: the side you drag to sets that level, the other follows from the entry at
+ *  `rr` reward per unit of risk (1 = mirrored 1:1, 2 = the target sits twice as far as the stop). */
+export function levelsFromSlide(side: Side, entry: number, price: number | null, tick: number, rr = 1): { tp: number | null; sl: number | null } {
   if (price == null || !Number.isFinite(price) || !Number.isFinite(entry)) return { tp: null, sl: null };
   const d = Math.abs(price - entry);
   if (d < tick) return { tp: null, sl: null };
-  const snapTo = (v: number) => Math.round(v / tick) * tick;
-  const profitUp = side === "long";
-  const towardProfit = profitUp ? price > entry : price < entry;
-  const tp = towardProfit ? price : profitUp ? entry + d : entry - d;
-  const sl = towardProfit ? (profitUp ? entry - d : entry + d) : price;
-  return { tp: snapTo(tp), sl: snapTo(sl) };
+  const k = Number.isFinite(rr) && rr > 0 ? rr : 1;
+  const snapTo = (v: number) => Number((Math.round(v / tick) * tick).toFixed(8));
+  const up = side === "long" ? 1 : -1;
+  const towardProfit = (price - entry) * up > 0;
+  // The stop distance is snapped first and the target is exactly k times it, so the R is exact
+  // (sliding toward profit, the target can land up to a tick from the finger).
+  const risk = Math.max(tick, snapTo(towardProfit ? d / k : d));
+  return { tp: snapTo(entry + up * risk * k), sl: snapTo(entry - up * risk) };
 }
+
+/** Lay out right-axis tags of height `h` around their wanted centres `y`, inside [min, max], without overlaps.
+ *  Overlapping tags merge into a stack centred on where they want to be (or pinned on an `anchor`). */
+export function spreadTags(tags: { y: number; h: number; anchor?: boolean }[], min: number, max: number, gap = 2): number[] {
+  type Cluster = { idx: number[]; top: number; height: number };
+  const order = tags.map((_, i) => i).sort((a, b) => tags[a].y - tags[b].y);
+  const place = (idx: number[]): Cluster => {
+    const height = idx.reduce((s, i) => s + tags[i].h, 0) + gap * (idx.length - 1);
+    let offset = 0; const centres: number[] = [];
+    for (const i of idx) { centres.push(offset + tags[i].h / 2); offset += tags[i].h + gap; }
+    const pinned = idx.findIndex(i => tags[i].anchor);
+    let top = pinned >= 0 ? tags[idx[pinned]].y - centres[pinned] : idx.reduce((s, i, k) => s + tags[i].y - centres[k], 0) / idx.length;
+    top = Math.max(min, Math.min(max - height, top));
+    return { idx, top, height };
+  };
+  const stack: Cluster[] = [];
+  for (const i of order) {
+    let c = place([i]);
+    while (stack.length && stack[stack.length - 1].top + stack[stack.length - 1].height + gap > c.top) c = place([...stack.pop()!.idx, ...c.idx]);
+    stack.push(c);
+  }
+  const out = new Array<number>(tags.length);
+  for (const c of stack) { let y = c.top; for (const i of c.idx) { out[i] = y + tags[i].h / 2; y += tags[i].h + gap; } }
+  return out;
+}
+
+/** Whole dollars from $10 up, cents below. */
+function dollars(n: number) { const a = Math.abs(n); return a >= 10 ? `$${Math.round(a).toLocaleString("en-US")}` : `$${a.toFixed(2)}`; }
 
 /** Keep the BUYING/SELLING read clear of the thumb: well above the touch, or docked at the
  *  bottom of the plot when the finger is too close to the top for that. */

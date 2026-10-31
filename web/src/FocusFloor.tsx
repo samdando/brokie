@@ -2,17 +2,38 @@ import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArcadeChart, HoldPreview, levelsFromSlide } from "./ArcadeChart";
 import { ChartIndicators } from "./ChartIndicators";
 import { BubbleLayer } from "./Bubbles";
-import { candleRead, IndicatorOptions } from "./indicators";
-import { frameLabel, game, stacksOf, useGame } from "./game";
+import { candleRead, IndicatorOptions, setBeginnerCheck } from "./indicators";
+import { frameLabel, game, stacksOf, useGame, type Bracket, type GameState, type Stack } from "./game";
 import { isCrypto, FUTURES, CRYPTOS, opensLabel } from "./sessions";
-import { MARKETS, Market, Side, digits, pnlOf, type Bubble } from "./types";
+import { MARKETS, Market, Side, digits, pnlOf, type Bubble, type Position, type Trade } from "./types";
 import { Sheet, hintDone, money, px, signedMoney } from "./ui";
-import { haptic, orderEffect, readEffect } from "./effects";
+import { celebrateEffect, haptic, orderEffect, readEffect, resultEffect } from "./effects";
 import { swipeGuard } from "./pageSwipe";
+import { GoalCelebration, ResultSplash, bestThisWeek, formatR, type TradeResult } from "./WinMoment";
 
 const CASH_OUT_MS = 450;
 const seen = (key: string) => { try { return localStorage.getItem(key) === "done"; } catch { return true; } };
 const markSeen = (key: string) => { try { localStorage.setItem(key, "done"); } catch { /* */ } };
+const RR_KEY = "brokie.rr";
+const readRr = () => { try { return localStorage.getItem(RR_KEY) === "2" ? 2 : 1; } catch { return 1; } };
+
+/** Fewer than 10 closed trades (this season and lifetime): the chart starts Clean until they pick indicators. */
+export function isBeginner(st: Pick<GameState, "me" | "lifetime">) {
+  return Math.max(st.me?.trades.length ?? 0, st.lifetime?.total_trades ?? 0) < 10;
+}
+setBeginnerCheck(() => isBeginner(game.state));
+
+/** Dollars lost if each stack's stop fills (for `qty` micros of it), or null when any stack has no stop. */
+function stopRisk(stacks: Stack[], brackets: Record<string, Bracket>, qty?: number) {
+  if (!stacks.length) return null;
+  let risk = 0;
+  for (const s of stacks) {
+    const sl = brackets[s.merged.id]?.sl ?? s.merged.stop_loss;
+    if (sl == null) return null;
+    risk += Math.abs(s.merged.entry_price - sl) * MARKETS[s.merged.market].pointValue * (qty ?? s.merged.quantity);
+  }
+  return risk > 0 ? risk : null;
+}
 
 /** The default Trade page: Brokie's own chart fills the screen. Hold to trade, slide for TP/SL,
  *  hold "Cash out" to close. Everything else lives in the drawer. */
@@ -63,8 +84,53 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
   const coachTrade = (side: Side) => {
     if (holdCoach) setCoachPop(side);
   };
-  const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null }; closing?: { closed?: number; pnl?: number } } | null>(null);
+  const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null }; closing?: { closed?: number; pnl?: number; risk: (qty: number) => number | null; before: Trade[] } } | null>(null);
   useEffect(() => { order.current = null; setPreview(null); }, [market, st.candleSeconds]);
+  // 1R mirrors the stop; 2R puts the target twice as far from the entry as the stop.
+  const [rr, setRr] = useState(readRr);
+  const pickRr = (v: 1 | 2) => { setRr(v); try { localStorage.setItem(RR_KEY, String(v)); } catch { /* */ } haptic(8); };
+
+  // ---- The result splash: every close from this floor, plus server TP/SL fills it hears about. ----
+  const [result, setResult] = useState<TradeResult | null>(null);
+  const resultSeq = useRef(0);
+  function showResult(r: Omit<TradeResult, "id" | "best" | "r"> & { risk: number | null }, before: Trade[]) {
+    const { risk, ...rest } = r;
+    setResult({ ...rest, id: ++resultSeq.current, r: risk != null && risk > 0 ? r.pnl / risk : null, best: bestThisWeek(r.pnl, before, game.now()) });
+    haptic(r.pnl > 0 ? [10, 40, 18] : [40, 30, 40]);
+    resultEffect(r.pnl);
+  }
+  const knownTrades = useRef<Set<string> | null>(null);
+  const lastPositions = useRef<{ positions: Position[]; brackets: Record<string, Bracket> }>({ positions: [], brackets: {} });
+  useEffect(() => {
+    const prev = knownTrades.current;
+    knownTrades.current = new Set(me.trades.map(t => t.id));
+    if (!prev || !active) return;
+    const fills = me.trades.filter(t => !prev.has(t.id) && (t.reason === "stop_loss" || t.reason === "take_profit"));
+    if (!fills.length) return;
+    const was = lastPositions.current;
+    let risk: number | null = 0;
+    for (const t of fills) {
+      const p = was.positions.find(x => x.id === t.id);
+      const sl = (p && (was.brackets[p.id]?.sl ?? p.stop_loss)) ?? (t.reason === "stop_loss" ? t.trigger_price ?? t.exit_price : null);
+      risk = risk == null || sl == null ? null : risk + Math.abs(t.entry_price - sl) * MARKETS[t.market].pointValue * t.quantity;
+    }
+    const first = fills[0];
+    showResult({ pnl: fills.reduce((s, t) => s + t.pnl, 0), market: first.market, side: first.side, qty: fills.reduce((n, t) => n + t.quantity, 0), how: fills.some(t => t.reason === "stop_loss") ? "sl" : "tp", risk },
+      me.trades.filter(t => prev.has(t.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me.trades]);
+  useEffect(() => { lastPositions.current = { positions: me.positions, brackets: st.brackets }; }, [me.positions, st.brackets]);
+
+  // ---- Target hit / funded: one full-screen moment per season each. ----
+  const [goal, setGoal] = useState<"target" | "funded" | null>(null);
+  useEffect(() => {
+    const r = me.rules; if (!active || !r) return;
+    const kind = r.funded ? "funded" : r.target_hit ? "target" : null;
+    const key = (k: string) => `brokie.goal.${me.season}.${k}`;
+    if (!kind || seen(key(kind))) return;
+    markSeen(key(kind)); if (kind === "funded") markSeen(key("target"));
+    setGoal(kind); celebrateEffect(); haptic([12, 50, 12, 50, 30]);
+  }, [active, me.rules?.funded, me.rules?.target_hit, me.season]);
 
   // Fill the space between the page header and the tab bar.
   useLayoutEffect(() => {
@@ -121,17 +187,18 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
     const opposite: Side = side === "long" ? "short" : "long";
     const against = here.filter(x => x.merged.side === opposite).reduce((n, x) => n + x.merged.quantity, 0);
     if (against > 0) {
-      const result: { closed?: number; pnl?: number } = {};
+      const taken = here.filter(x => x.merged.side === opposite), brackets = st.brackets;
+      const result: NonNullable<NonNullable<typeof order.current>["closing"]> = { risk: (n) => stopRisk(taken, brackets, n), before: me.trades };
       order.current = { side, entry: quote, levels, closing: result, done: game.reduce(opposite, Math.min(qty, against)).then(r => { result.closed = r.closed; result.pnl = r.pnl; return r.error ?? null; }) };
       setPreview({ side, entry: quote, tp: null, sl: null, closing: true });
       return;
     }
     order.current = { side, entry: quote, levels, done: game.open(side, qty) };
-    setPreview({ side, entry: quote, tp: null, sl: null });
+    setPreview({ side, entry: quote, tp: null, sl: null, qty });
   }
   function onSlide(price: number | null) {
     const o = order.current; if (!o || o.closing) return;
-    const l = levelsFromSlide(o.side, o.entry, price, tick);
+    const l = levelsFromSlide(o.side, o.entry, price, tick, rr);
     o.levels = l;
     setPreview(p => p ? { ...p, ...l } : p);
   }
@@ -142,8 +209,9 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
     const err = await o.done;
     if (o.closing) {
       if (err) { toast(err); haptic([40, 30, 40]); return; }
-      haptic((o.closing.pnl ?? 0) >= 0 ? [10, 40, 18] : [40, 30, 40]);
-      toast(`Closed ${o.closing.closed ?? ""} ${MARKETS[market].title} · ${signedMoney(o.closing.pnl ?? 0)}`); return;
+      const closed = o.closing.closed ?? 0, pnl = o.closing.pnl ?? 0;
+      showResult({ pnl, market, side: o.side === "long" ? "short" : "long", qty: closed, how: "close", risk: o.closing.risk(closed) }, o.closing.before);
+      return;
     }
     const label = `${o.side === "long" ? "Bought" : "Sold"} ${game.state.qty} ${MARKETS[market].title}`;
     if (err) { toast(err); haptic([40, 30, 40]); return; }
@@ -153,7 +221,7 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
     try {
       await game.setBracket(stack.merged.id, { tp: o.levels.tp, sl: o.levels.sl });
       const first = !seen("brokie.coach.lines"); if (first) markSeen("brokie.coach.lines");
-      toast(first ? `${label} · TP/SL locked 1:1. Drag either line to move it on its own.` : `${label} · TP ${px(o.levels.tp, digits(market))} · SL ${px(o.levels.sl, digits(market))} locked`);
+      toast(first ? `${label} · TP/SL locked ${rr}:1. Drag either line to move it on its own.` : `${label} · TP ${px(o.levels.tp, digits(market))} · SL ${px(o.levels.sl, digits(market))} locked`);
     } catch (e) { toast(`${label} · TP/SL not saved: ${(e as Error).message}`); }
   }
   async function moveLevel(id: string, kind: "sl" | "tp", price: number) {
@@ -180,11 +248,12 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
   function cashUp() { if (cashTimer.current) cancelAnimationFrame(cashTimer.current.raf); cashTimer.current = null; setCash(0); swipeGuard.owned = false; }
   async function cashOut() {
     setClosing(true); swipeGuard.owned = false;
+    const stacksNow = here, before = me.trades, risk = stopRisk(stacksNow, st.brackets);
     let total = 0, error: string | undefined;
-    for (const s of here) { const r = await game.closeStack([...s.ids]); total += r.pnl ?? 0; if (r.error) { error = r.error; break; } }
+    for (const s of stacksNow) { const r = await game.closeStack([...s.ids]); total += r.pnl ?? 0; if (r.error) { error = r.error; break; } }
     setClosing(false); setCash(0);
-    haptic(total >= 0 ? [10, 40, 18] : [40, 30, 40]);
-    toast(error ?? `Cashed out ${MARKETS[market].title} · ${signedMoney(total)}`);
+    if (error) { haptic([40, 30, 40]); toast(error); return; }
+    showResult({ pnl: total, market, side: stacksNow[0].merged.side, qty: stacksNow.reduce((n, s) => n + s.merged.quantity, 0), how: "cash", risk }, before);
   }
   useEffect(() => () => { if (cashTimer.current) cancelAnimationFrame(cashTimer.current.raf); }, []);
 
@@ -192,8 +261,18 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
   const small = h < 520;
   const pnlTone = herePnl == null || here.length === 0 ? "flat" : herePnl >= 0 ? "up" : "down";
   const side = here[0]?.merged.side, held = here.reduce((n, x) => n + x.merged.quantity, 0);
+  const hereRisk = stopRisk(here, st.brackets);
+  const rNow = herePnl != null && hereRisk != null ? herePnl / hereRisk : null;
+  // Riding: the whole floor glows with the open trade's colour, a bit stronger while a finger is trading.
+  const ride = here.length && herePnl != null ? (herePnl >= 0 ? "up" : "down") : preview ? (preview.side === "long" ? "up" : "down") : null;
+  const pressing = !!preview || cash > 0;
+  // The season line moves with every trade: dollars, and how far the target is.
+  const equity = me.cash + unrealized, seasonUsd = equity - base;
+  const toTarget = rules ? rules.target - equity : null;
+  const seasonGoal = rules?.funded ? "Funded 🏆" : rules?.target_hit ? "Target hit 🎯" : toTarget == null ? null : toTarget > 0 ? `${money0(toTarget)} to target` : "At target";
   return (
-    <div ref={root} className={`focus-floor ${small ? "small" : ""}`} data-testid="focus-floor" style={{ height: h }}>
+    <div ref={root} className={`focus-floor ${small ? "small" : ""} ${ride ? `riding ride-${ride}` : ""} ${ride && pressing ? "ride-press" : ""}`} data-testid="focus-floor" data-ride={ride ?? "none"} style={{ height: h }}>
+      {active && <div className={`ride-tint ${ride ? `on ${ride}` : ""} ${pressing ? "press" : ""}`} data-testid="ride-tint" aria-hidden="true" />}
       <div className="focus-hud top">
         <div className="focus-hud-row">
           <button type="button" className="focus-chip market-chip" onClick={() => setMarkets(true)} data-testid="focus-market" style={{ ["--c" as string]: MARKETS[market].color }} aria-label={`Market: ${MARKETS[market].title}. Change market`}>
@@ -211,9 +290,11 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
             <span className={change >= 0 ? "lime" : "red"} data-testid="focus-change">{change >= 0 ? "▲" : "▼"} {px(Math.abs(change), digits(market))} <em>{changePct >= 0 ? "+" : "−"}{Math.abs(changePct).toFixed(2)}%{span && <i> · {span}</i>}</em></span>
           </div>
           <button type="button" className={`pnl-box ${pnlTone}`} onClick={here.length ? onPositions : onAccount} data-testid="focus-pnl" aria-label={here.length ? `Manage ${MARKETS[market].title} positions` : "Account and P&L"}>
-            <small>{here.length ? `${side === "long" ? "Long" : "Short"} ${held} · P&L` : "Flat · P&L"}</small>
+            <small>{here.length ? `${side === "long" ? "Long" : "Short"} ${held} · P&L` : "Flat · P&L"}{rNow != null && here.length > 0 && <em className={rNow >= 0 ? "up" : "down"} data-testid="focus-r">{formatR(rNow)}</em>}</small>
             <b>{here.length && herePnl != null ? signedMoney(herePnl) : "$0.00"}</b>
-            <span className={seasonPct >= 0 ? "lime" : "red"}>Season {seasonPct >= 0 ? "+" : ""}{seasonPct.toFixed(2)}%</span>
+            <span className="season-line" data-testid="focus-season" title={`Season ${seasonPct >= 0 ? "+" : ""}${seasonPct.toFixed(2)}%`}>
+              <i className={seasonUsd >= 0 ? "lime" : "red"}>Season {seasonMoney(seasonUsd)}</i>{seasonGoal && <i className="goal">{seasonGoal}</i>}
+            </span>
           </button>
         </div>
       </div>
@@ -271,15 +352,22 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onAccount(); }}><b>Account &amp; risk</b><span>{money0(me.cash + unrealized)} ›</span></button>
           <button type="button" className="drawer-row" onClick={onCrowd} aria-pressed={crowd} data-testid="focus-crowd"><b>Friends' trades on chart</b><span>{crowd ? `On${mates ? ` · ${mates} in right now` : ""}` : "Off"} ›</span></button>
           <button type="button" className="drawer-row" onClick={onHistory} aria-pressed={showHistory} data-testid="focus-history"><b>Closed trades on chart</b><span>{showHistory ? "On" : "Off"} ›</span></button>
+          <div className="drawer-row" data-testid="focus-rr"><b>Slide target</b>
+            <span className="rr-pick" role="group" aria-label="Target distance when you slide">{([1, 2] as const).map(v => <button type="button" key={v} aria-pressed={rr === v} onClick={() => pickRr(v)} data-testid={`focus-rr-${v}`}>{v}R</button>)}</span></div>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onIndicators(); }}><b>Indicators</b><span>{Object.values(indicators).filter(Boolean).length} on ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onClassic(); }} data-testid="classic-layout"><b>Classic layout</b><span>Buttons + TradingView chart ›</span></button>
           <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setCoachFading(false); setCoachVisit(v => v + 1); setCoachPop(null); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>
-          <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (they start 1:1), lift to lock. Then drag the TARGET or STOP line to move either one on its own. Pinch to zoom, double-tap to reset.</small>
+          <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL ({rr === 2 ? "the target sits twice as far as the stop" : "they start 1:1"}), lift to lock. Then drag the TARGET or STOP line to move either one on its own. Pinch to zoom, double-tap to reset.</small>
         </div>
       </Sheet>
+      <ResultSplash result={result} onDone={() => setResult(null)} />
+      {!result && <GoalCelebration kind={goal} gain={equity - base} qualifyDays={rules?.qualify_days ?? 0} tradingDays={rules?.trading_days ?? 0} onDone={() => setGoal(null)} />}
     </div>
   );
 }
+
+/** Season P&L: cents while it's small, whole dollars once it's into the thousands. */
+function seasonMoney(n: number) { return Math.abs(n) >= 1000 ? `${n >= 0 ? "+" : "−"}${money0(Math.abs(n))}` : signedMoney(n); }
 
 /** Closed-market copy that says when trading comes back, in the player's own time. */
 function closedNote(market: Market, now: number) {

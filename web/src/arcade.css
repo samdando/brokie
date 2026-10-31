@@ -105,3 +105,91 @@
 
 /* Confirmations use the header space so candles and execution controls stay visible. */
 .app:has(.focus-mode) ~ .toast { top:calc(8px + var(--safe-t)); bottom:auto; max-width:min(300px,calc(100vw - 104px)); padding:8px 12px; font-size:10px; line-height:1.4; }
+
+/* ---------- Feel pass: riding tint, money in the HUD, result splash, season moments ---------- */
+/* Riding: a whisper of the trade's colour around the whole screen; stronger while a finger is trading. */
+.ride-tint { position:fixed; inset:0; z-index:30; pointer-events:none; opacity:0; transition:opacity .4s ease; --rc:127,224,184;
+  background:radial-gradient(130% 95% at 50% 45%, transparent 58%, rgba(var(--rc),.10) 100%), rgba(var(--rc),.03);
+  box-shadow:inset 0 0 0 1.5px rgba(var(--rc),.2), inset 0 0 64px rgba(var(--rc),.11); }
+.ride-tint.down { --rc:255,111,121; }
+.ride-tint.on { opacity:1; }
+.ride-tint.on.press { background:radial-gradient(130% 95% at 50% 45%, transparent 48%, rgba(var(--rc),.16) 100%), rgba(var(--rc),.055);
+  box-shadow:inset 0 0 0 2px rgba(var(--rc),.34), inset 0 0 90px rgba(var(--rc),.2); }
+.focus-floor.ride-up .focus-chart { border-color:rgba(127,224,184,.28); }
+.focus-floor.ride-down .focus-chart { border-color:rgba(255,111,121,.28); }
+.focus-chart { transition:border-color .4s ease; }
+
+/* Dollars in the HUD: R next to open P&L, and a season line that moves with every trade. */
+.focus-price { flex:none; }
+.pnl-box { flex:1 1 auto; max-width:100%; }
+.pnl-box small em { display:inline-block; font:800 9px/1 var(--mono); letter-spacing:.02em; font-style:normal; margin:-3px 0 -3px 6px; padding:2px 5px; border-radius:4px; color:#0b0c10; background:#7FE0B8; }
+.pnl-box small em.down { background:#FF6F79; }
+/* Season dollars, then the distance to the target; the second half drops to its own line when the phone is narrow. */
+.pnl-box .season-line { display:flex; flex-wrap:wrap; justify-content:flex-end; column-gap:7px; row-gap:4px; white-space:normal; color:#8d93a3; opacity:1; max-width:100%; }
+.season-line i { font-style:normal; white-space:nowrap; }
+
+/* Hold label: what the levels are worth, not just where they are. */
+.hold-label em { font:750 11px/1.2 var(--mono); font-style:normal; color:#d9dce3; white-space:nowrap; margin-top:1px; }
+.hold-label em i { font-style:normal; }
+.hold-label em .risk { color:#FF8D95; } .hold-label em .win { color:#7FE0B8; }
+
+/* 1R / 2R in the drawer. */
+.rr-pick { display:flex; gap:4px; padding:3px; border-radius:10px; background:#14151b; border:1px solid #24262f; }
+.drawer-row .rr-pick button { min-width:48px; min-height:36px; border-radius:8px; font:700 12px var(--mono); color:#8a8e9a; }
+.drawer-row .rr-pick button[aria-pressed="true"] { background:#2a2c36; color:#fff; box-shadow:inset 0 0 0 1px #3a3d49; }
+
+/* Result splash: big money after a close. Never takes a touch; any touch dismisses it and still reaches the chart. */
+.result-splash { position:absolute; inset:0; z-index:35; display:grid; place-items:center; pointer-events:none; --rc:127,224,184; transition:opacity .18s ease; }
+.result-splash * { pointer-events:none; }
+.result-splash.loss { --rc:255,111,121; } .result-splash.flat { --rc:200,204,214; }
+.result-splash.leaving { opacity:0; }
+.result-splash.win::before { content:""; position:absolute; inset:0; background:radial-gradient(closest-side, rgba(var(--rc),.26), transparent 80%); animation:rs-glow 1.8s ease-out both; }
+.rs-card { position:relative; display:grid; justify-items:center; gap:8px; min-width:min(240px, calc(100% - 40px)); max-width:calc(100% - 32px); padding:22px 28px 20px; border-radius:24px; text-align:center;
+  background:rgba(11,12,16,.92); border:1.5px solid rgba(var(--rc),.6); box-shadow:0 0 70px rgba(var(--rc),.32), 0 22px 50px #000b; animation:rs-pop .5s cubic-bezier(.2,1.5,.4,1) both; }
+.rs-kicker { font:750 10px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:rgba(var(--rc),.9); }
+/* Sized to the figure: as big as fits the phone, up to 64px. */
+.rs-amount { font:850 min(64px, calc((100vw - 96px) / (var(--n, 8) * .6)))/1 var(--mono); letter-spacing:-2px; color:rgb(var(--rc)); text-shadow:0 0 30px rgba(var(--rc),.45); white-space:nowrap; }
+.rs-meta { display:flex; align-items:center; gap:8px; font:650 12px/1 var(--mono); color:#c3c6cf; white-space:nowrap; }
+.rs-meta em { font:800 12px/1 var(--mono); font-style:normal; color:#0b0c10; background:rgb(var(--rc)); padding:4px 7px; border-radius:6px; }
+.rs-badge { font:850 10px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:#1a1405; background:linear-gradient(180deg,#FFE29A,#F2CA73); padding:6px 10px; border-radius:99px; box-shadow:0 0 22px rgba(242,202,115,.55); animation:rs-badge .6s .15s cubic-bezier(.2,1.6,.4,1) both; }
+.rs-note { font:500 11px/1.3 system-ui,-apple-system,sans-serif; color:#a4a7b1; }
+/* Losses: smaller, quieter, no glow or burst. */
+.result-splash.loss .rs-card, .result-splash.flat .rs-card { gap:6px; padding:14px 22px; min-width:0; border-color:rgba(var(--rc),.32); box-shadow:0 14px 34px #0009; animation:rs-fade .22s ease-out both; }
+.result-splash.loss .rs-amount, .result-splash.flat .rs-amount { font-size:min(36px, calc((100vw - 96px) / (var(--n, 8) * .6))); letter-spacing:-1px; text-shadow:none; }
+.result-splash.loss .rs-meta em { background:rgba(var(--rc),.18); color:rgb(var(--rc)); }
+.rs-burst { position:absolute; left:50%; top:50%; width:0; height:0; }
+.rs-burst i { position:absolute; left:-3px; top:-3px; width:6px; height:6px; border-radius:2px; background:rgb(var(--rc)); opacity:0; animation:rs-burst .95s .05s cubic-bezier(.1,.7,.2,1) both; }
+.rs-burst i:nth-child(3n) { background:#F2CA73; } .rs-burst i:nth-child(4n) { background:#F2F3F5; width:4px; height:4px; }
+@keyframes rs-pop { 0% { opacity:0; transform:scale(.6); } 60% { opacity:1; } 100% { transform:scale(1); } }
+@keyframes rs-fade { from { opacity:0; transform:translateY(6px); } }
+@keyframes rs-glow { 0% { opacity:0; } 15% { opacity:1; } 100% { opacity:.35; } }
+@keyframes rs-badge { from { opacity:0; transform:scale(.4) rotate(-6deg); } }
+@keyframes rs-burst { 0% { opacity:1; transform:rotate(var(--a)) translateY(-40px) scale(1); } 100% { opacity:0; transform:rotate(var(--a)) translateY(calc(-60px - var(--d))) scale(.5); } }
+
+/* Target hit / funded: once per season, the whole screen. */
+.goal-celebration { position:fixed; inset:0; z-index:240; display:grid; place-items:center; padding:24px; overflow:hidden; background:rgba(5,6,9,.88); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); animation:rs-fade .3s ease-out both; }
+.gc-rays { position:absolute; left:50%; top:50%; width:160vmax; height:160vmax; margin:-80vmax 0 0 -80vmax; opacity:.5; pointer-events:none;
+  background:repeating-conic-gradient(from 0deg, rgba(214,254,89,.10) 0 8deg, transparent 8deg 22deg); -webkit-mask:radial-gradient(closest-side, #000 10%, transparent 70%); mask:radial-gradient(closest-side, #000 10%, transparent 70%); animation:gc-spin 18s linear infinite; }
+.goal-celebration.funded .gc-rays { background:repeating-conic-gradient(from 0deg, rgba(242,202,115,.13) 0 8deg, transparent 8deg 22deg); }
+.gc-confetti { position:absolute; inset:0; pointer-events:none; }
+.gc-confetti i { position:absolute; top:-12px; left:var(--x); width:7px; height:11px; border-radius:2px; background:var(--c); animation:gc-fall 2.6s var(--t) cubic-bezier(.3,.6,.5,1) both; }
+.gc-card { position:relative; display:grid; justify-items:center; gap:10px; max-width:340px; padding:30px 26px 24px; border-radius:28px; text-align:center; background:#0d0f14; border:1.5px solid rgba(214,254,89,.55); box-shadow:0 0 90px rgba(214,254,89,.25), 0 30px 60px #000c; animation:rs-pop .6s cubic-bezier(.2,1.5,.4,1) both; }
+.goal-celebration.funded .gc-card { border-color:rgba(242,202,115,.7); box-shadow:0 0 90px rgba(242,202,115,.3), 0 30px 60px #000c; }
+.gc-icon { font-size:46px; line-height:1; }
+.gc-kicker { font:750 10px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:#a4a7b1; }
+.gc-title { font:900 italic clamp(36px,12vw,48px)/1 var(--round); letter-spacing:.02em; color:#D6FE59; text-shadow:0 0 30px rgba(214,254,89,.45); }
+.goal-celebration.funded .gc-title { color:#F2CA73; text-shadow:0 0 30px rgba(242,202,115,.5); }
+.gc-amount { font:800 18px/1 var(--mono); color:#7FE0B8; }
+.gc-copy { margin:0; font:500 13px/1.45 system-ui,-apple-system,sans-serif; color:#c3c6cf; }
+.gc-fine { font:500 10px var(--mono); color:#6f7380; }
+.gc-go { margin-top:6px; min-height:48px; padding:0 26px; border-radius:14px; background:#D6FE59; color:#0b0c10; font:800 14px system-ui,-apple-system,sans-serif; }
+.goal-celebration.funded .gc-go { background:#F2CA73; }
+@keyframes gc-spin { to { transform:rotate(360deg); } }
+@keyframes gc-fall { 0% { transform:translateY(0) rotate(0); opacity:1; } 100% { transform:translateY(105vh) rotate(540deg); opacity:.2; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-card, .rs-badge, .result-splash.win::before, .goal-celebration, .gc-card { animation:none; }
+  .rs-burst, .gc-confetti { display:none; }
+  .gc-rays { animation:none; }
+  .ride-tint, .focus-chart, .result-splash { transition:none; }
+}

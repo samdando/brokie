@@ -104,7 +104,7 @@ export class Game {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: read(MARKET_KEY) !== "prediction" && read(MARKET_KEY) && Object.prototype.hasOwnProperty.call(MARKETS, read(MARKET_KEY) ?? "") ? read(MARKET_KEY) as Market : weekendMode(Date.now()) ? "btc" : "nas",
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null, pool: null,
-    global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 1),
+    global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 10),
     brackets: {}, bracketSaving: null, pending: null,
     opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
   };

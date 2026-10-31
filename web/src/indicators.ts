@@ -2,8 +2,18 @@ import type { Candle } from "./types";
 
 export interface IndicatorOptions { ema: boolean; bands: boolean; structure: boolean; gaps: boolean; patterns: boolean }
 export const DEFAULT_INDICATORS: IndicatorOptions = { ema: true, bands: false, structure: true, gaps: true, patterns: true };
+/** What a brand-new player sees: candles and the EMA, no structure/gap/pattern labels before their first trades. */
+export const CLEAN_INDICATORS: IndicatorOptions = { ema: true, bands: false, structure: false, gaps: false, patterns: false };
 export const INDICATOR_KEY = "brokie.indicators.v1";
+/** True once the player has picked indicators themselves (a preset or a toggle). */
+export function hasSavedIndicators() { try { return localStorage.getItem(INDICATOR_KEY) != null; } catch { return true; } }
+let beginner: (() => boolean) | null = null;
+/** The app tells this module how to recognise a beginner (fewer than 10 closed trades) without importing the game store. */
+export function setBeginnerCheck(check: (() => boolean) | null) { beginner = check; }
+/** Clean chart for beginners who have never saved a choice; otherwise their saved choice over the defaults. */
+export function beginnerIndicators() { try { return !hasSavedIndicators() && !!beginner?.(); } catch { return false; } }
 export function readIndicators(): IndicatorOptions {
+  if (beginnerIndicators()) return { ...CLEAN_INDICATORS };
   try {
     const value = JSON.parse(localStorage.getItem(INDICATOR_KEY) ?? "{}");
     return Object.fromEntries(Object.entries(DEFAULT_INDICATORS).map(([key, fallback]) => [key, typeof value?.[key] === "boolean" ? value[key] : fallback])) as unknown as IndicatorOptions;
