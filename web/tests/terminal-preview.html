@@ -1,6 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>Brokie · local simulated preview</title></head><body><div id="root"></div><script type="module">
 // Local QA only. No credentials, network accounts, messages or orders.
 import { game } from '/src/game.ts';
+import { MARKETS, pnlOf } from '/src/types.ts';
 const now=Date.parse('2026-10-31T04:00:00Z'),stamp=new Date(now).toISOString(),start=Math.floor(now/60000)-160;
 for(const n of ['setActive','start','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles'])game[n]=async()=>{};
 game.now=()=>now;game.checkBrackets=async()=>[];
@@ -34,10 +35,21 @@ game.api.rpc=async(n,a)=>{
  if(n==='lifetime_stats')return {...lifetime,handle:a?.p_handle??'sam'};
  if(n==='review_trade')return {trade,candles:candles.btc.slice(-40),bucket_seconds:60,note:''};
  if(n==='chart_bubbles')return [];
+ if(n==='set_position_bracket'){
+  const p=game.state.me.positions.find(p=>p.id===a.p_position);
+  if(!p)throw new Error('This position is already closed.');
+  const q=game.quote(p.market).price,tick=MARKETS[p.market].tick;
+  const level=a.p_price==null?null:Math.round(a.p_price/tick)*tick;
+  const below=(a.p_kind==='tp'&&p.side==='short')||(a.p_kind==='sl'&&p.side==='long');
+  if(level!=null&&(!Number.isFinite(level)||level<=0))throw new Error('Choose a valid price.');
+  if(level!=null&&(below?level>=q:level<=q))throw new Error('Price has already crossed that level. Stop was not saved.');
+  const key=a.p_kind==='tp'?'take_profit':'stop_loss';
+  return {positions:game.state.me.positions.filter(x=>x.market===p.market&&x.side===p.side).map(x=>({id:x.id,stop_loss:x.stop_loss??null,take_profit:x.take_profit??null,[key]:level}))};
+ }
  throw new Error('Not available in the local preview.');
 };
 game.open=async(side,quantity)=>{const p={...position,id:'demo-'+Date.now(),side,quantity,entry_price:game.quote(game.state.market).price,market:game.state.market,opened_at:stamp};game.set({me:{...game.state.me,positions:[...game.state.me.positions,p]}});return null;};
-game.closeStack=async(ids)=>{const positions=game.state.me.positions;let pnl=0;for(const p of positions.filter(p=>ids.includes(p.id)))pnl+=(game.quote(p.market).price-p.entry_price)*.01*p.quantity*(p.side==='long'?1:-1);game.set({me:{...game.state.me,cash:game.state.me.cash+pnl,positions:positions.filter(p=>!ids.includes(p.id))}});return {pnl};};
+game.closeStack=async(ids)=>{const positions=game.state.me.positions;let pnl=0;for(const p of positions.filter(p=>ids.includes(p.id)))pnl+=pnlOf(p,game.quote(p.market).price);game.set({me:{...game.state.me,cash:game.state.me.cash+pnl,positions:positions.filter(p=>!ids.includes(p.id))}});return {pnl};};
 game.sendMessage=async(body,kind)=>{game.set({chat:[...game.state.chat,{id:Date.now(),handle:'sam',is_you:true,kind,body,at:stamp}]});return null;};
 game.set({phase:'ready',market:'btc',candleSeconds:60,clockOffset:now-Date.now(),me:{handle:'sam',season:'2026-10-26',season_number:2,season_ends_at:'2026-11-02T00:00:00Z',server_time:stamp,cash:102480,rules,protection_credit:0,liquidations:0,has_backup_code:true,positions:[position],trades:[trade],quotes:Object.entries(prices).map(([market,price])=>({market,price,quoted_at:stamp}))},squads:[{id:'s',name:'The rent money club',member_count:4,invite_code:'DEMO00',owner_id:'sam'}],squadId:'s',candles,bubbleScope:'btc:s',bubbles:[{...position,id:'bum-entry',handle:'bum',is_you:false,state:'open',quantity:10,entry_price:prices.btc-80,exit_price:null,pnl:null,reason:null,at:new Date(now-5*60000).toISOString(),opened_at:new Date(now-5*60000).toISOString(),size_pct:3,dd_floor:92000,equity:100729}],leaderboard:rows,feed:[{id:'activity',kind:'closed',handle:'bum',is_you:false,market:'btc',side:'long',quantity:10,price:prices.btc,pnl:180,reason:'closed',at:stamp}],chat:[{id:1,handle:'bum',is_you:false,kind:'text',body:'That sweep was clean 👀',at:new Date(now-120000).toISOString()},{id:2,handle:'sam',is_you:true,kind:'text',body:'Watching the next close',at:new Date(now-60000).toISOString()},{id:3,handle:'ankits',is_you:false,kind:'emoji',body:'🔥',at:stamp}],global:{rows:rows.map((r,i)=>({...r,rank:i+1,status:'active',funded:false})),me:null,players:4,season:'2026-10-26'},lifetime});
 await import('/src/main.tsx');

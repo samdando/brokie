@@ -6,20 +6,18 @@ import { candleRead, IndicatorOptions } from "./indicators";
 import { frameLabel, game, stacksOf, useGame } from "./game";
 import { isCrypto, FUTURES, CRYPTOS } from "./sessions";
 import { MARKETS, Market, Side, digits, pnlOf, type Bubble } from "./types";
-import { Sheet, hintDone, px, signedMoney } from "./ui";
+import { Sheet, hintDone, money, px, signedMoney } from "./ui";
 import { haptic, orderEffect, readEffect } from "./effects";
 import { swipeGuard } from "./pageSwipe";
 
 const CASH_OUT_MS = 450;
 const seen = (key: string) => { try { return localStorage.getItem(key) === "done"; } catch { return true; } };
 const markSeen = (key: string) => { try { localStorage.setItem(key, "done"); } catch { /* */ } };
-const COACH_TRADES = 3;
-const coachTrades = () => { try { return Number(localStorage.getItem("brokie.coach.trades")) || 0; } catch { return COACH_TRADES; } };
 
 /** The default Trade page: Brokie's own chart fills the screen. Hold to trade, slide for TP/SL,
  *  hold "Cash out" to close. Everything else lives in the drawer. */
-export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPositions, onClassic, presence, crowd, onCrowd, showHistory, onHistory }: {
-  toast: (m: string) => void; indicators: IndicatorOptions; onIndicators: () => void; onAccount: () => void; onPositions: () => void;
+export function FocusFloor({ active, toast, indicators, onIndicators, onAccount, onPositions, onClassic, presence, crowd, onCrowd, showHistory, onHistory }: {
+  active: boolean; toast: (m: string) => void; indicators: IndicatorOptions; onIndicators: () => void; onAccount: () => void; onPositions: () => void;
   onClassic: () => void; presence: ReactNode;
   /** Friends' trades on the chart (the 👥 toggle) and whether closed trades show too. */
   crowd: boolean; onCrowd: () => void; showHistory: boolean; onHistory: () => void;
@@ -40,27 +38,33 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
     const fit = () => setChartH(Math.max(140, Math.floor(el.clientHeight)));
     fit(); const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect();
   }, []);
-  // First-use coach marks: shown until dismissed (or until you trade), never as permanent copy.
-  // Hold tutorial: the top half is washed white for your first few opens; it pops when you trade, then steps aside.
-  const [holdCoach, setHoldCoach] = useState(() => coachTrades() < COACH_TRADES);
+  // Brief hints on each visit; a hold pops the visible hint before it steps aside.
+  const [holdCoach, setHoldCoach] = useState(true);
+  const [coachVisit, setCoachVisit] = useState(0);
   const [coachPop, setCoachPop] = useState<Side | null>(null);
   // The hints fade on their own after a few seconds, or the moment you touch the chart.
   const [coachFading, setCoachFading] = useState(false);
   useEffect(() => {
+    const show = () => {
+      if (!active || document.hidden) return;
+      setHoldCoach(true); setCoachFading(false); setCoachPop(null); setCoachVisit(v => v + 1);
+    };
+    show(); document.addEventListener("visibilitychange", show);
+    return () => document.removeEventListener("visibilitychange", show);
+  }, [active]);
+  useEffect(() => {
     if (!holdCoach) return;
     setCoachFading(false);
-    const fade = setTimeout(() => setCoachFading(true), 6000);
-    const gone = setTimeout(() => setHoldCoach(false), 6700);
+    const fade = setTimeout(() => setCoachFading(true), 5000);
+    const gone = setTimeout(() => { setHoldCoach(false); setCoachPop(null); }, 5600);
     return () => { clearTimeout(fade); clearTimeout(gone); };
-  }, [holdCoach]);
-  useEffect(() => { if (preview && holdCoach) setHoldCoach(false); }, [preview]); // eslint-disable-line
+  }, [holdCoach, coachVisit]);
   const [positionCoach, setPositionCoach] = useState(() => !seen("brokie.coach.position"));
   const coachTrade = (side: Side) => {
-    if (!holdCoach) return;
-    setCoachPop(side);
-    try { localStorage.setItem("brokie.coach.trades", String(coachTrades() + 1)); } catch { /* */ }
+    if (holdCoach) setCoachPop(side);
   };
   const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null }; closing?: { closed?: number; pnl?: number } } | null>(null);
+  useEffect(() => { order.current = null; setPreview(null); }, [market, st.candleSeconds]);
 
   // Fill the space between the page header and the tab bar.
   useLayoutEffect(() => {
@@ -131,7 +135,6 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   async function onRelease() {
     const o = order.current; order.current = null;
     setPreview(null);
-    if (coachPop) setTimeout(() => { setHoldCoach(false); setCoachPop(null); }, 700);
     if (!o) return;
     const err = await o.done;
     if (o.closing) {
@@ -204,7 +207,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
             <b>{quote != null ? px(quote, digits(market)) : "—"}</b>
             <span className={change >= 0 ? "lime" : "red"}>{change >= 0 ? "▲" : "▼"} {px(Math.abs(change), digits(market))}</span>
           </div>
-          <button type="button" className={`pnl-box ${pnlTone}`} onClick={onAccount} data-testid="focus-pnl" aria-label="Account and P&L">
+          <button type="button" className={`pnl-box ${pnlTone}`} onClick={here.length ? onPositions : onAccount} data-testid="focus-pnl" aria-label={here.length ? `Manage ${MARKETS[market].title} positions` : "Account and P&L"}>
             <small>{here.length ? `${side === "long" ? "Long" : "Short"} ${held} · P&L` : "Flat · P&L"}</small>
             <b>{here.length && herePnl != null ? signedMoney(herePnl) : "$0.00"}</b>
             <span className={seasonPct >= 0 ? "lime" : "red"}>Season {seasonPct >= 0 ? "+" : ""}{seasonPct.toFixed(2)}%</span>
@@ -213,7 +216,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
       </div>
 
       <div ref={chartBox} className="focus-chart">
-        <ArcadeChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={here.map(s => s.merged)} brackets={st.brackets}
+        <ArcadeChart key={`${market}:${st.candleSeconds}`} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={here.map(s => s.merged)} brackets={st.brackets}
           preview={preview} onMoveLevel={moveLevel} height={chartH} topPad={small ? 18 : 26} bottomPad={small ? 14 : 20}
           trade={{ blocked, onArm, onSlide, onRelease, onBlocked: (r) => { toast(r); haptic(10); } }}
           overlay={(toXY, w, hh) => <>
@@ -224,7 +227,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
           </>} />
         {!open && <div className="focus-banner">{blocked}</div>}
         {pattern && open && !preview && !holdCoach && <div className={`pattern-callout ${pattern.side}`} data-testid="pattern-callout"><small>Pattern</small><b>{pattern.name}</b></div>}
-        {holdCoach && open && here.length === 0 && <div className={`hold-coach ${coachPop ? `pop-${coachPop}` : ""} ${coachFading ? "fading" : ""}`} data-testid="hold-coach" aria-hidden="true">
+        {active && holdCoach && open && here.length === 0 && <div className={`hold-coach ${coachPop ? `pop-${coachPop}` : ""} ${coachFading ? "fading" : ""}`} data-testid="hold-coach" aria-hidden="true">
           <div className="coach-zone long"><span className="coach-pill">▲ Hold the top half to buy</span></div>
           <div className="coach-zone short"><span className="coach-pill">▼ Hold the bottom half to sell</span></div>
         </div>}
@@ -232,6 +235,10 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
       </div>
 
       <div className="focus-hud bottom">
+        <div className="focus-size-block">
+          <small className="focus-size-context" data-testid="focus-size-context" aria-live="polite">{st.qty} {st.qty === 1 ? "micro" : "micros"} · {money(st.qty * MARKETS[market].pointValue)} / point</small>
+          <div className="focus-size" role="group" aria-label="Order size in micros">{[1, 10, 100].map(q => <button type="button" key={q} aria-pressed={st.qty === q} onClick={() => { game.setQty(q); haptic(8); }} data-testid={`focus-size-${q}`}>{q}</button>)}</div>
+        </div>
         {here.length ? (
           <button type="button" className={`cash-out ${herePnl != null && herePnl >= 0 ? "up" : "down"}`} disabled={closing} data-testid="cash-out"
             onPointerDown={cashDown} onPointerUp={cashUp} onPointerCancel={cashUp} onPointerLeave={cashUp} style={{ ["--hold" as string]: cash }}>
@@ -240,7 +247,6 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
         ) : (
           <div className="focus-size-label" aria-hidden="true"><b>Size</b><small>micros per hold</small></div>
         )}
-        <div className="focus-size" role="group" aria-label="Order size in micros">{[1, 10, 100].map(q => <button type="button" key={q} aria-pressed={st.qty === q} onClick={() => { game.setQty(q); haptic(8); }} data-testid={`focus-size-${q}`}>{q}</button>)}</div>
       </div>
 
       <Sheet open={markets} onClose={() => setMarkets(false)}>
@@ -261,7 +267,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
           <button type="button" className="drawer-row" onClick={onHistory} aria-pressed={showHistory} data-testid="focus-history"><b>Closed trades on chart</b><span>{showHistory ? "On" : "Off"} ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onIndicators(); }}><b>Indicators</b><span>{Object.values(indicators).filter(Boolean).length} on ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onClassic(); }} data-testid="classic-layout"><b>Classic layout</b><span>Buttons + TradingView chart ›</span></button>
-          <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.trades"); localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setCoachPop(null); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>
+          <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setCoachFading(false); setCoachVisit(v => v + 1); setCoachPop(null); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>
           <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (they start 1:1), lift to lock. Then drag the TARGET or STOP line to move either one on its own. Pinch to zoom, double-tap to reset.</small>
         </div>
       </Sheet>

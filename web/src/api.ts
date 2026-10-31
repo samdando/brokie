@@ -81,13 +81,16 @@ export class Backend {
     const headers: Record<string, string> = { apikey: this.anon, "Content-Type": "application/json" };
     if (authorized) headers.Authorization = `Bearer ${(await this.ensureSession()).access_token}`;
     else if (this.anon.startsWith("eyJ")) headers.Authorization = `Bearer ${this.anon}`;
-    let res: Response;
+    let res: Response, text: string;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      res = await fetch(`${this.base}/${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+      res = await fetch(`${this.base}/${path}`, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+      text = await res.text();
     } catch {
+      if (controller.signal.aborted) throw new BackendError("Server response timed out. Check your account before retrying.", "timeout");
       throw new BackendError("Can't reach the Brokie server. Check your connection.", "network");
-    }
-    const text = await res.text();
+    } finally { clearTimeout(timeout); }
     const json = text ? safeJSON(text) : null;
     if (res.ok) return json;
     if (res.status === 401 && authorized && retry && this.session) {

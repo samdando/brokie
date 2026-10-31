@@ -32,7 +32,7 @@ export interface ArcadeTradeHandlers {
 export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, brackets, preview, trade, onMoveLevel, overlay, height, topPad = DEFAULT_TOP_PAD, bottomPad = DEFAULT_BOTTOM_PAD }: {
   market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[];
   brackets: Record<string, Bracket>; preview: HoldPreview | null; trade: ArcadeTradeHandlers;
-  onMoveLevel: (positionId: string, kind: "sl" | "tp", price: number) => void;
+  onMoveLevel: (positionId: string, kind: "sl" | "tp", price: number) => void | Promise<void>;
   overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; height: number; topPad?: number; bottomPad?: number;
 }) {
   const TOP_PAD = topPad, BOTTOM_PAD = bottomPad;
@@ -54,6 +54,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   useEffect(() => { setOffset(0); }, [market, bucketSeconds]);
   const [finger, setFinger] = useState<{ x: number; y: number; armed: boolean; side: Side | null } | null>(null);
   const [dragLine, setDragLine] = useState<{ id: string; kind: "sl" | "tp"; price: number } | null>(null);
+  const dragged = useRef<typeof dragLine>(null);
+  const [savingLevel, setSavingLevel] = useState(false);
 
   useLayoutEffect(() => {
     const el = host.current; if (!el) return;
@@ -86,10 +88,10 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const pad = Math.max(hi - lo, step * 8) * .08;
     return { lo: lo - pad, hi: hi + pad };
   }, [visible, quote, positions, brackets, preview, step, off]);
-  // While a TP/SL line is being dragged the scale stays put, so the line never chases the finger.
-  const frozen = useRef<typeof liveRange>(null);
-  if (dragLine) { if (!frozen.current) frozen.current = liveRange; } else frozen.current = null;
-  const range = frozen.current ?? liveRange;
+  // Freeze before either kind of bracket gesture changes a level. A held order's
+  // mirrored preview must not feed back into its own pixel-to-price conversion.
+  const [frozenRange, setFrozenRange] = useState<typeof liveRange>(null);
+  const range = frozenRange ?? liveRange;
 
   const usable = Math.max(40, plotH - TOP_PAD - BOTTOM_PAD);
   const yOf = (p: number) => range ? TOP_PAD + (range.hi - p) / (range.hi - range.lo) * usable : 0;
@@ -157,13 +159,17 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       const y0 = yOf(entry), y1 = yOf(level);
       const top = Math.max(0, Math.min(y0, y1)), bot = Math.min(plotH, Math.max(y0, y1));
       g.fillStyle = color === TP ? "rgba(127,224,184,.10)" : "rgba(255,111,121,.10)";
-      g.fillRect(fromX, top, plotW - fromX, bot - top);
+      if (bot > top) g.fillRect(fromX, top, plotW - fromX, bot - top);
       const yl = Math.round(y1) + .5;
-      if (yl >= 0 && yl <= plotH) { g.strokeStyle = color; g.lineWidth = 1; g.beginPath(); g.moveTo(fromX, yl); g.lineTo(plotW, yl); g.stroke(); }
+      if (yl >= 0 && yl <= plotH) { g.strokeStyle = color; g.lineWidth = 1; g.beginPath(); g.moveTo(0, yl); g.lineTo(plotW, yl); g.stroke(); }
       const r = other != null && Math.abs(other - entry) > 0 ? Math.abs(level - entry) / Math.abs(other - entry) : null;
       const label = `${kind === "tp" ? "TARGET" : "STOP"}${r != null ? ` ${(kind === "tp" ? r : 1).toFixed(1)}R` : textPnl != null ? ` ${signedMoney(textPnl)}` : ""}`;
       g.font = "700 9px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left"; g.fillStyle = color;
-      g.fillText(label, Math.min(fromX, plotW - 90) + 6, kind === "tp" ? yl - 8 : yl + 9);
+      if (yl >= 0 && yl <= plotH) {
+        const labelY = Math.max(10, Math.min(plotH - 8, kind === "tp" ? yl - 8 : yl + 9));
+        g.fillStyle = "#0b0c10"; g.fillRect(4, labelY - 7, g.measureText(label).width + 8, 14);
+        g.fillStyle = color; g.fillText(label, 8, labelY);
+      }
       levels.push({ price: level, color, label: "", axis: true });
     };
     const entryX = (opened?: string) => { if (!opened) return 0; const at = toXY(Date.parse(opened) / 1000, 0, true); return at ? Math.max(0, Math.min(plotW, at.x)) : 0; };
@@ -217,8 +223,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   } | null>(null);
   const pinch = useRef<{ pts: Map<number, { x: number; y: number }>; start: number; span: number } | null>(null);
   const lastTap = useRef(0);
-  const live = useRef({ trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots });
-  live.current = { trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots };
+  const live = useRef({ trade, onMoveLevel, priceAt, range, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots });
+  live.current = { trade, onMoveLevel, priceAt, range, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots };
 
   const release = () => { swipeGuard.owned = false; };
   useEffect(() => () => { release(); if (g.current?.timer) clearTimeout(g.current.timer); }, []);
@@ -226,23 +232,32 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   const local = (e: React.PointerEvent) => { const r = host.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   function down(e: React.PointerEvent) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (savingLevel) return;
     const p = local(e);
     // Second finger: pinch zoom, and forget any hold.
     if (g.current && g.current.id !== e.pointerId && e.pointerType === "touch") {
+      const first = g.current;
+      if (first.armed) { live.current.trade.onSlide(null); live.current.trade.onRelease(); }
       cancelHold();
-      pinch.current = { pts: new Map([[g.current.id, { x: g.current.x, y: g.current.y }], [e.pointerId, p]]), start: 0, span };
+      dragged.current = null; setDragLine(null); setFrozenRange(null); release();
+      pinch.current = { pts: new Map([[first.id, { x: first.x, y: first.y }], [e.pointerId, p]]), start: 0, span };
       const [a, b] = [...pinch.current.pts.values()]; pinch.current.start = Math.hypot(a.x - b.x, a.y - b.y) || 1;
       return;
     }
     // Grab a saved TP/SL line within reach.
     const L = live.current;
-    for (const pos of L.positions) for (const kind of ["tp", "sl"] as const) {
-      const v = L.brackets[pos.id]?.[kind]; if (v == null) continue;
-      if (Math.abs(L.yOf(v) - p.y) < 16 && p.x < plotW) {
-        g.current = { id: e.pointerId, x: p.x, y: p.y, timer: null, armed: false, side: null, armY: p.y, line: { id: pos.id, kind }, lastTap: 0 };
-        swipeGuard.owned = true; host.current?.setPointerCapture(e.pointerId);
-        setDragLine({ id: pos.id, kind, price: v }); return;
-      }
+    const nearest = L.positions.flatMap(pos => (["tp", "sl"] as const).flatMap(kind => {
+      const price = L.brackets[pos.id]?.[kind]; if (price == null) return [];
+      const y = L.yOf(price), distance = Math.abs(y - p.y);
+      return y >= 0 && y <= L.plotH && distance <= 24 ? [{ id: pos.id, kind, price, distance }] : [];
+    })).sort((a, b) => a.distance - b.distance)[0];
+    if (nearest) {
+      const { id, kind, price } = nearest;
+      g.current = { id: e.pointerId, x: p.x, y: p.y, timer: null, armed: false, side: null, armY: p.y, line: { id, kind }, lastTap: 0 };
+      swipeGuard.owned = true; host.current?.setPointerCapture(e.pointerId);
+      setFrozenRange(L.range);
+      dragged.current = { id, kind, price };
+      setDragLine(dragged.current); return;
     }
     const now = performance.now();
     if (now - lastTap.current < 300) { setSpan(DEFAULT_SPAN); setOffset(0); lastTap.current = 0; return; }
@@ -256,6 +271,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       const blocked = live.current.trade.blocked;
       if (blocked) { live.current.trade.onBlocked(blocked); g.current = null; setFinger(null); return; }
       state.armed = true; state.side = state.y < live.current.plotH / 2 ? "long" : "short"; state.armY = state.y;
+      setFrozenRange(live.current.range);
       swipeGuard.owned = true;
       try { host.current?.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
       setFinger({ x: state.x, y: state.y, armed: true, side: state.side });
@@ -278,8 +294,9 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const s = g.current; if (!s || s.id !== e.pointerId) return;
     const p = local(e);
     if (s.line) {
-      const y = Math.max(TOP_PAD * .4, Math.min(live.current.plotH - BOTTOM_PAD * .4, p.y));
-      const price = live.current.priceAt(y); if (price != null) setDragLine({ id: s.line.id, kind: s.line.kind, price: snap(price) });
+      const y = Math.max(24, Math.min(live.current.plotH - 24, p.y));
+      const price = live.current.priceAt(y);
+      if (price != null) { dragged.current = { id: s.line.id, kind: s.line.kind, price: snap(price) }; setDragLine(dragged.current); }
       return;
     }
     if (s.pan) {
@@ -303,7 +320,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       return;
     }
     setFinger({ x: p.x, y: p.y, armed: true, side: s.side });
-    const price = live.current.priceAt(p.y);
+    const y = Math.max(24, Math.min(live.current.plotH - 24, p.y));
+    const price = live.current.priceAt(y);
     live.current.trade.onSlide(Math.abs(p.y - s.armY) < 14 || price == null ? null : snap(price));
   }
   function up(e: React.PointerEvent) {
@@ -314,17 +332,26 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     if (s.timer) clearTimeout(s.timer);
     if (s.pan) { release(); return; }
     if (s.line) {
-      setDragLine(d => { if (d) live.current.onMoveLevel(d.id, d.kind, d.price); return null; });
+      const d = dragged.current; dragged.current = null;
+      if (d && d.price !== live.current.brackets[d.id]?.[d.kind]) {
+        setSavingLevel(true);
+        // Keep the preview and its scale until the server confirms or rejects it.
+        // Save outside a React updater: StrictMode may run updaters twice.
+        void Promise.resolve().then(() => live.current.onMoveLevel(d.id, d.kind, d.price)).catch(() => undefined).finally(() => {
+          setSavingLevel(false); setDragLine(null); setFrozenRange(null);
+        });
+      } else { setDragLine(null); setFrozenRange(null); }
       release(); return;
     }
     setFinger(null);
-    if (s.armed) { live.current.trade.onRelease(); release(); }
+    if (s.armed) { live.current.trade.onRelease(); setFrozenRange(null); release(); }
   }
   function cancel(e: React.PointerEvent) {
     if (pinch.current?.pts.has(e.pointerId)) { pinch.current = null; return; }
     const s = g.current; if (!s || s.id !== e.pointerId) return;
-    if (s.armed) { live.current.trade.onRelease(); }
-    if (s.line) setDragLine(null);
+    if (s.armed) { live.current.trade.onSlide(null); live.current.trade.onRelease(); }
+    if (s.line) { dragged.current = null; setDragLine(null); }
+    setFrozenRange(null);
     if (s.pan) { g.current = null; release(); return; }
     cancelHold(); release();
   }

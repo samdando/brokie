@@ -50,7 +50,9 @@
 @keyframes callout-in { from { opacity:0; transform:translateY(-6px); } }
 
 .focus-hud.bottom { align-items:center; justify-content:space-between; padding:16px 2px 2px; flex:none; }
-.focus-size-label { display:grid; gap:4px; }
+.focus-size-label { display:grid; gap:4px; text-align:right; }
+.focus-size-block { display:grid; gap:6px; min-width:0; }
+.focus-size-context { font:500 9px/1.4 var(--mono); color:#a4a7b1; white-space:nowrap; padding-left:4px; }
 .focus-size-label b { font:650 13px system-ui,-apple-system,sans-serif; color:#d5d7de; }
 .focus-size-label small { font:500 10px system-ui,-apple-system,sans-serif; color:#737783; }
 .cash-out { position:relative; overflow:hidden; flex:1; max-width:220px; display:grid; gap:4px; text-align:left; min-height:56px; padding:10px 16px; border-radius:14px; border:1.5px solid currentColor; background:#121318; touch-action:none; -webkit-touch-callout:none; user-select:none; }
@@ -94,3 +96,6 @@
 .arcade-overlay .trade-connectors { position:absolute; left:0; top:0; pointer-events:none; overflow:hidden; }
 .arcade-overlay .tm, .arcade-overlay .trade-card, .arcade-overlay .trade-group, .arcade-overlay .earlier-pill { pointer-events:auto; }
 .arcade-overlay .trade-card { max-height:calc(100% - 12px); overflow-y:auto; overscroll-behavior:contain; }
+
+/* Confirmations use the header space so candles and execution controls stay visible. */
+.app:has(.focus-mode) ~ .toast { top:calc(8px + var(--safe-t)); bottom:auto; max-width:min(300px,calc(100vw - 104px)); padding:8px 12px; font-size:10px; line-height:1.4; }

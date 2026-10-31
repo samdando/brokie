@@ -1,3 +1,15 @@
+# Brokie hands-on usability pass · 31 October 2026
+
+A manual phone-size pass covered Trade, position protection, Squad, Chat, Learn and You. Tapping an open market's P&L now opens positions directly; flat P&L still opens the account. The size selector displays micros and dollars per price point, updating with quantity and market. Focus-mode confirmations use the header space instead of covering candles. TARGET/STOP labels share a fixed left-side position and an opaque backing, with full-width level lines, so recent entry markers do not cover them. The local preview now supports simulated bracket edits with the same crossed-level direction checks as the server, enabling a real UI walkthrough from closing the demo long to opening a short and saving TP below market. Publication uses the existing GitHub Pages workflow on `main`.
+
+# Brokie hold and bracket repair · 31 October 2026
+
+Local changes fix bracket previews feeding back into the chart scale while holding, and saved TP/SL lines snapping back before server acknowledgement. The scale stays fixed during the gesture and while a moved level saves. Both drag paths stop inside the plot; axis tags can be grabbed and the nearest nearby level wins. Taps without movement send no save. Interrupted holds discard unconfirmed levels, and a second finger can pinch without crashing. Changing market or timeframe resets gesture state. RPC requests now abort after 15 seconds, including stalled response bodies, so a lost response cannot leave the chart waiting indefinitely; a timeout asks the player to check their account before retrying.
+
+Order size is now on the left and hold-to-cash-out on the right. Hold hints start fading after five seconds and return when Trade becomes active or the app returns to the foreground. Experienced accounts see the same brief hint on a new visit. Cache advances to `brokie-shell-v24`. Publication uses the existing GitHub Pages workflow on `main`.
+
+Validation: production build; focus-floor browser regression checks including real touch events and delayed/failed saves; focus-bubbles and secondary-page browser checks; bracket synchronization, request timeouts, indicators and rank tests. Browser checks use synthetic accounts with external requests blocked. Physical iPhone edge/system gestures still need device verification.
+
 # Brokie focus floor · 31 October 2026
 
 The Trade page now defaults to Brokie's own full-screen chart (no TradingView library on this view): hold the top half to BUY or the bottom half to SELL, slide while holding to set TP/SL (1:1), lift to lock them on the server, drag a TP/SL line to move it, hold Cash out to close. Pinch zooms, double-tap resets. Squad, positions, account and the Classic layout are in the ⋯ drawer. Page swipes now use native touch events, so they work on iPhone (the old pointer version never started). Cache advances to `brokie-shell-v20`.

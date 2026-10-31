@@ -20,7 +20,7 @@ import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, session
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
-export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
+export function TradeScreen({ active = true, toast, goSquad, goHistory }: { active?: boolean; toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
   const me = st.me!;
   const crypto = isCrypto(st.market);
@@ -204,7 +204,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   return (
     <div className={`stack trade-screen ${layout === "focus" ? "focus-mode" : ""}`} onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
 
-      {layout === "focus" ? <FocusFloor toast={toast} indicators={indicators} onIndicators={() => setIndicatorsOpen(true)} onAccount={() => setAccountOpen(true)} onPositions={() => setPositionsOpen(true)} onClassic={() => pickLayout("classic")}
+      {layout === "focus" ? <FocusFloor active={active} toast={toast} indicators={indicators} onIndicators={() => setIndicatorsOpen(true)} onAccount={() => setAccountOpen(true)} onPositions={() => setPositionsOpen(true)} onClassic={() => pickLayout("classic")}
         presence={<FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>}
         crowd={crowd} onCrowd={toggleCrowd} showHistory={showHistory} onHistory={toggleHistory} /> : <>
       <div className="floor-toolbar">
