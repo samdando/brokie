@@ -62,17 +62,19 @@
 .focus-size button { min-width:50px; min-height:48px; border-radius:10px; font:700 14px var(--mono); color:#8a8e9a; }
 .focus-size button[aria-pressed="true"] { background:#2a2c36; color:#fff; box-shadow:inset 0 0 0 1px #3a3d49; }
 
-/* First-use coach mark: tinted zones over the chart, never in the way of a hold. */
-.hold-coach { position:absolute; inset:0 62px 22px 0; display:grid; grid-template-rows:1fr auto 1fr; pointer-events:none; animation:coach-in .4s ease both; }
-.coach-zone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font:600 10px var(--mono); }
-.coach-zone b { font:850 italic 17px/1 var(--round); letter-spacing:.03em; }
-.coach-zone span { color:#8a8e9a; text-transform:uppercase; letter-spacing:.1em; font-size:8px; }
-.coach-zone.long { color:#7FE0B8; background:linear-gradient(#7FE0B812,#7FE0B805); border-bottom:1px dashed #7FE0B830; }
-.coach-zone.short { color:#FF6F79; background:linear-gradient(#FF6F7905,#FF6F7912); border-top:1px dashed #FF6F7930; }
-.coach-card { justify-self:center; max-width:calc(100% - 24px); display:flex; align-items:center; gap:14px; margin:-24px 0; padding:10px 10px 10px 16px; border-radius:14px; background:#1b1c23f2; border:1px solid #33353f; box-shadow:0 12px 30px #0008; z-index:1; }
-.coach-card p { margin:0; font:600 12px/1.45 system-ui,-apple-system,sans-serif; color:#e6e6ea; }
-.coach-card small { font-weight:450; font-size:10px; color:#8f93a0; }
-.coach-card button { flex:none; white-space:nowrap; pointer-events:auto; min-height:40px; padding:0 14px; border-radius:10px; background:#2b2d37; color:#fff; font:650 12px system-ui,-apple-system,sans-serif; }
+/* Hold tutorial: the top half is washed white for your first few opens and pops when you trade. Never blocks a hold. */
+.hold-coach { position:absolute; inset:0 62px 22px 0; display:grid; grid-template-rows:1fr 1fr; pointer-events:none; animation:coach-in .5s ease both; transition:opacity .5s ease .25s; }
+.coach-zone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; transition:transform .22s cubic-bezier(.2,1.6,.4,1), background-color .22s ease, box-shadow .22s ease; }
+.coach-zone b { font:850 italic 19px/1 var(--round); letter-spacing:.03em; }
+.coach-zone span { font:650 9px var(--mono); text-transform:uppercase; letter-spacing:.12em; opacity:.75; }
+.coach-zone { position:relative; isolation:auto; }
+.coach-zone::before { content:""; position:absolute; inset:0; border-radius:inherit; background:#fff; opacity:0; transition:opacity .22s ease; }
+.coach-zone > * { position:relative; }
+.coach-zone.long { color:#fff; border-radius:14px 14px 0 0; text-shadow:0 1px 10px rgba(0,0,0,.6); }
+.coach-zone.long::before { opacity:.16; }
+.coach-zone.short { color:#c9ccd5; }
+.hold-coach.pop-long .coach-zone.long, .hold-coach.pop-short .coach-zone.short { transform:scale(1.03); border-radius:14px; box-shadow:0 12px 34px rgba(0,0,0,.4); z-index:1; color:#fff; }
+.hold-coach.pop-long .coach-zone.long::before, .hold-coach.pop-short .coach-zone.short::before { opacity:.3; }
 @keyframes coach-in { from { opacity:0; } }
 .focus-market-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .focus-market-grid button { display:grid; gap:2px; text-align:left; padding:12px; border-radius:10px; background:#191b22; border:1px solid #2b2d37; }
@@ -90,3 +92,5 @@
 .focus-floor.small .focus-hud.bottom { padding-top:12px; } .focus-floor.small .focus-size button { min-height:44px; } .focus-floor.small .cash-out { min-height:50px; padding:8px 14px; }
 @media (prefers-reduced-motion: reduce) { .hold-ring, .pattern-callout, .hold-coach, .focus-tip { animation:none; } }
 .focus-tip { position:absolute; left:50%; top:14px; transform:translateX(-50%); white-space:nowrap; font:600 10px var(--mono); color:#c3c6cf; padding:8px 12px; border-radius:99px; background:#1b1c23ee; border:1px solid #33353f; pointer-events:none; animation:coach-in .4s ease both; }
+.chart-live { position:absolute; bottom:30px; min-height:36px; padding:0 14px; border-radius:99px; background:#1b1c23ee; border:1px solid #3a3d48; color:#e9ebef; font:650 11px var(--mono); box-shadow:0 6px 18px #0007; }
+.hold-coach[class*="pop-"] .coach-zone > * { opacity:0; transition:opacity .12s ease; }

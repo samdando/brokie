@@ -8,7 +8,8 @@ import { swipeGuard } from "./pageSwipe";
 
 /** Brokie's own chart: a full-bleed canvas fed by Brokie's candles (OANDA prices via the server).
  *  Hold anywhere to trade (top half = BUY, bottom half = SELL), slide to set TP/SL, lift to lock.
- *  Drag an existing TP/SL line to move it. Pinch to zoom, double-tap to reset. */
+ *  Drag an existing TP/SL line to move it. Drag sideways to scroll back through history (at the live
+ *  edge a leftward drag is left to the page swipe). Pinch to zoom, double-tap to reset. */
 
 const UP = "#F2F3F5", DOWN = "#FF5C67", GRID = "rgba(255,255,255,.045)", AXIS = "rgba(255,255,255,.42)";
 const LONG = "#7FE0B8", SHORT = "#FF6F79", TP = "#7FE0B8", SL = "#FF6F79";
@@ -39,6 +40,18 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   const canvas = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(360);
   const [span, setSpan] = useState(DEFAULT_SPAN);
+  /** How many candles back from the newest the view is scrolled (0 = live edge). */
+  const [offset, setOffset] = useState(0);
+  const maxOffset = Math.max(0, candles.length - Math.min(span, candles.length));
+  const off = Math.min(offset, maxOffset);
+  // While scrolled back, keep the same candles in view as new ones arrive.
+  const seenLast = useRef<number | null>(null);
+  const newest = candles.length ? candles[candles.length - 1].index : null;
+  useEffect(() => {
+    const prev = seenLast.current; seenLast.current = newest;
+    if (prev != null && newest != null && newest > prev) setOffset(o => o > 0 ? o + (newest - prev) : 0);
+  }, [newest]);
+  useEffect(() => { setOffset(0); }, [market, bucketSeconds]);
   const [finger, setFinger] = useState<{ x: number; y: number; armed: boolean; side: Side | null } | null>(null);
   const [dragLine, setDragLine] = useState<{ id: string; kind: "sl" | "tp"; price: number } | null>(null);
 
@@ -52,8 +65,9 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   const step = digits(market) === 0 ? MARKETS[market].tick : MARKETS[market].tick;
   // Leave a little room on the right of the newest candle for the live price tag.
   const slots = span + 4;
-  const visible = candles.slice(-span);
-  const lastIndex = candles.length ? candles[candles.length - 1].index : 0;
+  const end = candles.length - off;
+  const visible = candles.slice(Math.max(0, end - span), end);
+  const lastIndex = visible.length ? visible[visible.length - 1].index : 0;
   const firstSlotIndex = lastIndex - span + 1;
   const xOfIndex = (i: number) => ((i - firstSlotIndex) + .5) / slots * plotW;
   const candleW = Math.max(1, Math.min(14, plotW / slots * .64));
@@ -62,7 +76,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   const range = useMemo(() => {
     let lo = Infinity, hi = -Infinity;
     for (const c of visible) { lo = Math.min(lo, c.low); hi = Math.max(hi, c.high); }
-    if (quote != null) { lo = Math.min(lo, quote); hi = Math.max(hi, quote); }
+    if (quote != null && off === 0) { lo = Math.min(lo, quote); hi = Math.max(hi, quote); }
     if (!Number.isFinite(lo)) return null;
     const base = Math.max(hi - lo, step * 8);
     const extra: number[] = [];
@@ -72,7 +86,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     for (const v of extra) if (Number.isFinite(v) && v > lo - base * 1.2 && v < hi + base * 1.2) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
     const pad = Math.max(hi - lo, step * 8) * .08;
     return { lo: lo - pad, hi: hi + pad };
-  }, [visible, quote, positions, brackets, preview, dragLine, step]);
+  }, [visible, quote, positions, brackets, preview, dragLine, step, off]);
 
   const usable = Math.max(40, plotH - TOP_PAD - BOTTOM_PAD);
   const yOf = (p: number) => range ? TOP_PAD + (range.hi - p) / (range.hi - range.lo) * usable : 0;
@@ -161,17 +175,18 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       g.fillStyle = "#0c0e11"; g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
       g.fillText(px(quote, digits(market)), plotW + 7, y + .5);
     }
-  }, [width, height, range, candles, span, quote, positions, brackets, preview, dragLine, market, bucketSeconds]);
+  }, [width, height, range, candles, span, off, quote, positions, brackets, preview, dragLine, market, bucketSeconds]);
 
   // ---------- gestures ----------
   const g = useRef<{
     id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null; armed: boolean; side: Side | null; armY: number;
     line: { id: string; kind: "sl" | "tp" } | null; lastTap: number;
+    pan?: { from: number; slotW: number };
   } | null>(null);
   const pinch = useRef<{ pts: Map<number, { x: number; y: number }>; start: number; span: number } | null>(null);
   const lastTap = useRef(0);
-  const live = useRef({ trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf });
-  live.current = { trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf };
+  const live = useRef({ trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots });
+  live.current = { trade, onMoveLevel, priceAt, plotH, positions, brackets, yOf, off, maxOffset, plotW, slots };
 
   const release = () => { swipeGuard.owned = false; };
   useEffect(() => () => { release(); if (g.current?.timer) clearTimeout(g.current.timer); }, []);
@@ -198,7 +213,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       }
     }
     const now = performance.now();
-    if (now - lastTap.current < 300) { setSpan(DEFAULT_SPAN); lastTap.current = 0; return; }
+    if (now - lastTap.current < 300) { setSpan(DEFAULT_SPAN); setOffset(0); lastTap.current = 0; return; }
     lastTap.current = now;
     const state = { id: e.pointerId, x: p.x, y: p.y, timer: null as ReturnType<typeof setTimeout> | null, armed: false, side: null as Side | null, armY: p.y, line: null, lastTap: now };
     g.current = state;
@@ -234,8 +249,24 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       const price = live.current.priceAt(p.y); if (price != null) setDragLine({ id: s.line.id, kind: s.line.kind, price: snap(price) });
       return;
     }
+    if (s.pan) {
+      const back = Math.round((p.x - s.x) / s.pan.slotW);
+      setOffset(Math.max(0, Math.min(live.current.maxOffset, s.pan.from + back)));
+      return;
+    }
     if (!s.armed) {
-      if (Math.hypot(p.x - s.x, p.y - s.y) > 8) cancelHold();   // a swipe or scroll, not a hold
+      const dx = p.x - s.x, dy = p.y - s.y;
+      if (Math.hypot(dx, dy) <= 8) return;
+      // Sideways drag scrolls history: rightward always, leftward only once scrolled back.
+      // At the live edge a leftward drag stays a page swipe (Trade is the first page, so rightward has no page to go to).
+      if (Math.abs(dx) > Math.abs(dy) && (dx > 0 || live.current.off > 0)) {
+        if (s.timer) clearTimeout(s.timer);
+        s.timer = null; s.x = p.x; s.pan = { from: live.current.off, slotW: Math.max(1, live.current.plotW / live.current.slots) };
+        swipeGuard.owned = true; setFinger(null);
+        try { host.current?.setPointerCapture(e.pointerId); } catch { /* */ }
+        return;
+      }
+      cancelHold();   // a page swipe or scroll, not a hold
       return;
     }
     setFinger({ x: p.x, y: p.y, armed: true, side: s.side });
@@ -248,6 +279,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const s = g.current; if (!s || s.id !== e.pointerId) return;
     g.current = null;
     if (s.timer) clearTimeout(s.timer);
+    if (s.pan) { release(); return; }
     if (s.line) {
       setDragLine(d => { if (d) live.current.onMoveLevel(d.id, d.kind, d.price); return null; });
       release(); return;
@@ -260,12 +292,13 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     const s = g.current; if (!s || s.id !== e.pointerId) return;
     if (s.armed) { live.current.trade.onRelease(); }
     if (s.line) setDragLine(null);
+    if (s.pan) { g.current = null; release(); return; }
     cancelHold(); release();
   }
 
   const half = plotH / 2;
   return (
-    <div ref={host} className="arcade-chart" data-testid="arcade-chart" style={{ height }}
+    <div ref={host} className="arcade-chart" data-testid="arcade-chart" data-offset={off} style={{ height }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={e => e.preventDefault()}>
       <canvas ref={canvas} aria-label={`${MARKETS[market].title} price chart`} role="img" />
       {overlay && <div className="arcade-overlay" style={{ width: plotW, height: plotH }}>{overlay(toXY, plotW, plotH)}</div>}
@@ -274,6 +307,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
         <b>{preview?.closing ? "CLOSING" : finger.side === "long" ? "BUYING" : "SELLING"}</b>
         <span>{preview?.closing ? "Taking it off · no hedge" : preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
       </div>}
+      {off > 0 && <button type="button" className="chart-live" data-testid="chart-live" onPointerDown={e => e.stopPropagation()} onClick={() => setOffset(0)} style={{ right: AXIS_W + 10 }}>Live ›</button>}
       {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
     </div>
   );

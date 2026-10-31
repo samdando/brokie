@@ -60,6 +60,11 @@ await page.waitForFunction(()=>window.closes.length===1);
 const cdp=await page.context().newCDPSession(page);
 const swipe=async(x0,y,x1)=>{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x0,y}]});for(let i=1;i<=8;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x0+(x1-x0)*i/8,y}]});await page.waitForTimeout(16);}await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(450);};
 const current=()=>page.evaluate(()=>document.querySelector('.page-map [aria-current="page"]')?.getAttribute('aria-label'));
+// Dragging right scrolls back through history (never trades, never flips the page); Live returns; at the live edge a left drag is still a page swipe.
+{const y=chart.y+chart.height*.5;await swipe(60,y,300);assert.equal(await current(),'Go to trade','history drag keeps the page');assert.equal(await page.evaluate(()=>window.orders.length),1,'history drag never trades');
+ await page.getByTestId('chart-live').waitFor();await page.screenshot({path:'/tmp/brokie-focus-history.png'});
+ const before=+(await page.getByTestId('arcade-chart').getAttribute('data-offset'));await swipe(300,y,260);assert.equal(await current(),'Go to trade','left drag while scrolled back scrolls toward live');assert(+(await page.getByTestId('arcade-chart').getAttribute('data-offset'))<before,'moved toward live');
+ await page.getByTestId('chart-live').click();await page.waitForTimeout(150);assert.equal(await page.getByTestId('chart-live').count(),0,'Live jumps back');}
 {const y=chart.y+chart.height*.5;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:330,y}]});for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:330-i*30,y}]});await page.waitForTimeout(16);}
  const t=await page.evaluate(()=>[...document.querySelectorAll('.page-screen')].map(e=>[e.dataset.pageRole,Math.round(e.getBoundingClientRect().left)]));
  assert.deepEqual(t.map(x=>x[0]).sort(),['current','peek']);const cur=t.find(x=>x[0]==='current')[1],pk=t.find(x=>x[0]==='peek')[1];assert(cur<-150&&cur>-200,'page follows the finger 1:1 ('+cur+')');assert(Math.abs(pk-cur-(await page.evaluate(()=>document.querySelector('.swipe-deck').clientWidth)))<2,'next page sits flush beside it');
@@ -77,6 +82,6 @@ assert.equal(await current(),'Go to squad');
 await page.getByTestId('tab-trade').click();await page.getByTestId('focus-more').click();await page.getByTestId('classic-layout').click();await page.getByTestId('go-long').waitFor();
 await page.getByTestId('focus-layout').click();await page.getByTestId('focus-floor').waitFor();
 assert.deepEqual(errors,[]);
-console.log('PASS focus floor: full-screen fit at 320/393/430, hold top = BUY, slide = 1:1 TP/SL saved, taps never trade, hold to cash out, touch page swipes on chart/content/buttons, vertical scroll ignored, classic layout toggle');
+console.log('PASS focus floor: history drag + Live, full-screen fit at 320/393/430, hold top = BUY, slide = 1:1 TP/SL saved, taps never trade, hold to cash out, touch page swipes on chart/content/buttons, vertical scroll ignored, classic layout toggle');
 await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
