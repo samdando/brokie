@@ -115,10 +115,17 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
     g.font = font; g.textBaseline = "middle";
     // grid + price axis
     const ticks = niceTicks(range.lo - (range.hi - range.lo) * BOTTOM_PAD / usable, range.hi + (range.hi - range.lo) * TOP_PAD / usable, Math.max(3, Math.floor(plotH / 64)));
+    // Axis labels step aside for price tags (entry, target, stop, live price).
+    const busy: number[] = [quote, preview?.entry, preview?.tp, preview?.sl, ...positions.flatMap(p => [p.entry_price, brackets[p.id]?.tp, brackets[p.id]?.sl])]
+      .filter((v): v is number => v != null).map(yOf);
     for (const t of ticks) {
       const y = Math.round(yOf(t)) + .5; if (y < 6 || y > plotH - 4) continue;
-      g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke();
-      g.fillStyle = AXIS; g.textAlign = "left"; g.fillText(px(t, digits(market)), plotW + 8, y);
+      if (busy.some(b => Math.abs(b - y) < 17)) {
+        g.setLineDash([1, 4]); g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+        continue;
+      }
+      g.setLineDash([1, 4]); g.strokeStyle = GRID; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+      g.fillStyle = AXIS; g.textAlign = "right"; g.fillText(px(t, digits(market)), width - 6, y);
     }
     // time labels
     g.textAlign = "center"; g.fillStyle = AXIS;
@@ -138,33 +145,55 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       const top = yOf(Math.max(k.open, k.close)), bot = yOf(Math.min(k.open, k.close));
       g.fillRect(x - candleW / 2, top, candleW, Math.max(1, bot - top));
     }
-    // positions + their saved levels
-    const lines: { price: number; color: string; label: string; dash: number[]; strong?: boolean }[] = [];
+    // Positions: the entry as a dashed line with a notched tag, target and stop as shaded zones
+    // (Setup Cards style), each level priced on the axis.
+    type Level = { price: number; color: string; label: string; strong?: boolean; axis?: boolean };
+    const levels: Level[] = [];
+    const zone = (entry: number, level: number | null | undefined, color: string, kind: "tp" | "sl", other: number | null | undefined, fromX: number, textPnl: number | null) => {
+      if (level == null) return;
+      const y0 = yOf(entry), y1 = yOf(level);
+      const top = Math.max(0, Math.min(y0, y1)), bot = Math.min(plotH, Math.max(y0, y1));
+      g.fillStyle = color === TP ? "rgba(127,224,184,.10)" : "rgba(255,111,121,.10)";
+      g.fillRect(fromX, top, plotW - fromX, bot - top);
+      const yl = Math.round(y1) + .5;
+      if (yl >= 0 && yl <= plotH) { g.strokeStyle = color; g.lineWidth = 1; g.beginPath(); g.moveTo(fromX, yl); g.lineTo(plotW, yl); g.stroke(); }
+      const r = other != null && Math.abs(other - entry) > 0 ? Math.abs(level - entry) / Math.abs(other - entry) : null;
+      const label = `${kind === "tp" ? "TARGET" : "STOP"}${r != null ? ` ${(kind === "tp" ? r : 1).toFixed(1)}R` : textPnl != null ? ` ${signedMoney(textPnl)}` : ""}`;
+      g.font = "700 9px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left"; g.fillStyle = color;
+      g.fillText(label, Math.min(fromX, plotW - 90) + 6, kind === "tp" ? yl - 8 : yl + 9);
+      levels.push({ price: level, color, label: "", axis: true });
+    };
+    const entryX = (opened?: string) => { if (!opened) return 0; const at = toXY(Date.parse(opened) / 1000, 0, true); return at ? Math.max(0, Math.min(plotW, at.x)) : 0; };
     for (const p of positions) {
       const pnl = quote != null ? pnlOf(p, quote) : null;
-      lines.push({ price: p.entry_price, color: p.side === "long" ? LONG : SHORT, label: `${p.side === "long" ? "LONG" : "SHORT"} ${p.quantity}${pnl != null ? `  ${signedMoney(pnl)}` : ""}`, dash: [], strong: true });
       const b = brackets[p.id] ?? {};
-      for (const kind of ["tp", "sl"] as const) {
-        const v = dragLine && dragLine.id === p.id && dragLine.kind === kind ? dragLine.price : b[kind];
-        if (v == null) continue;
-        const amount = pnlOf({ ...p }, v);
-        lines.push({ price: v, color: kind === "tp" ? TP : SL, label: `${kind.toUpperCase()} ${signedMoney(amount)}`, dash: [5, 4] });
-      }
+      const tp = dragLine && dragLine.id === p.id && dragLine.kind === "tp" ? dragLine.price : b.tp;
+      const sl = dragLine && dragLine.id === p.id && dragLine.kind === "sl" ? dragLine.price : b.sl;
+      const x0 = entryX(p.opened_at);
+      zone(p.entry_price, tp, TP, "tp", sl, x0, tp != null ? pnlOf(p, tp) : null);
+      zone(p.entry_price, sl, SL, "sl", tp, x0, sl != null ? pnlOf(p, sl) : null);
+      levels.push({ price: p.entry_price, color: p.side === "long" ? LONG : SHORT, label: `${p.side === "long" ? "LONG" : "SHORT"} ${p.quantity}${pnl != null ? `  ${signedMoney(pnl)}` : ""}`, strong: true, axis: true });
     }
     if (preview) {
-      lines.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.closing ? "CLOSING" : preview.side === "long" ? "BUYING" : "SELLING", dash: [2, 3], strong: true });
-      if (preview.tp != null) lines.push({ price: preview.tp, color: TP, label: "TP", dash: [5, 4] });
-      if (preview.sl != null) lines.push({ price: preview.sl, color: SL, label: "SL", dash: [5, 4] });
+      const fake = { ...positions[0], market, side: preview.side, quantity: 1, entry_price: preview.entry } as Position;
+      zone(preview.entry, preview.tp, TP, "tp", preview.sl, 0, preview.tp != null ? pnlOf(fake, preview.tp) : null);
+      zone(preview.entry, preview.sl, SL, "sl", preview.tp, 0, preview.sl != null ? pnlOf(fake, preview.sl) : null);
+      levels.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.closing ? "CLOSING" : preview.side === "long" ? "BUYING" : "SELLING", strong: true, axis: true });
     }
-    for (const l of lines) {
+    for (const l of levels) {
       const y = Math.round(yOf(l.price)) + .5; if (y < 0 || y > plotH) continue;
-      g.setLineDash(l.dash); g.strokeStyle = l.color; g.lineWidth = l.strong ? 1.4 : 1.1;
-      g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
-      g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
-      const w = g.measureText(l.label).width + 12;
-      g.fillStyle = l.strong ? l.color : "rgba(12,14,17,.9)"; roundRect(g, 8, y - 9, w, 18, 4); g.fill();
-      if (!l.strong) { g.strokeStyle = l.color; g.lineWidth = 1; roundRect(g, 8, y - 9, w, 18, 4); g.stroke(); }
-      g.fillStyle = l.strong ? "#0c0e11" : l.color; g.fillText(l.label, 14, y + .5);
+      if (l.strong) {
+        g.setLineDash([3, 3]); g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
+        g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
+        const w = g.measureText(l.label).width + 14;
+        g.fillStyle = l.color; notched(g, 8, y - 10, w, 20); g.fill();
+        g.fillStyle = "#0c0e11"; g.fillText(l.label, 15, y + .5);
+      }
+      if (l.axis) {
+        g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "right";
+        g.fillStyle = l.color; notched(g, plotW + 2, y - 9, AXIS_W - 4, 18); g.fill();
+        g.fillStyle = "#0c0e11"; g.fillText(px(l.price, digits(market)), width - 6, y + .5);
+      }
       g.font = font;
     }
     // live price
@@ -172,8 +201,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       const y = Math.round(yOf(quote)) + .5;
       g.setLineDash([1, 3]); g.strokeStyle = "rgba(255,255,255,.55)"; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
       g.fillStyle = "#F2F3F5"; roundRect(g, plotW + 2, y - 10, AXIS_W - 4, 20, 4); g.fill();
-      g.fillStyle = "#0c0e11"; g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "left";
-      g.fillText(px(quote, digits(market)), plotW + 7, y + .5);
+      g.fillStyle = "#0c0e11"; g.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace"; g.textAlign = "right";
+      g.fillText(px(quote, digits(market)), width - 6, y + .5);
     }
   }, [width, height, range, candles, span, off, quote, positions, brackets, preview, dragLine, market, bucketSeconds]);
 
@@ -313,6 +342,10 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
   );
 }
 
+/** A tag with two clipped corners, like a ticket stub. */
+function notched(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, n = 4) {
+  g.beginPath(); g.moveTo(x + n, y); g.lineTo(x + w, y); g.lineTo(x + w, y + h - n); g.lineTo(x + w - n, y + h); g.lineTo(x, y + h); g.lineTo(x, y + n); g.closePath();
+}
 function roundRect(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
