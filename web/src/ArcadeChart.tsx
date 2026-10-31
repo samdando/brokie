@@ -12,7 +12,9 @@ import { swipeGuard } from "./pageSwipe";
 
 const UP = "#F2F3F5", DOWN = "#FF5C67", GRID = "rgba(255,255,255,.045)", AXIS = "rgba(255,255,255,.42)";
 const LONG = "#7FE0B8", SHORT = "#FF6F79", TP = "#7FE0B8", SL = "#FF6F79";
-const AXIS_W = 62, TIME_H = 22, TOP_PAD = 84, BOTTOM_PAD = 74;   // price room kept clear of the HUD
+const AXIS_W = 62, TIME_H = 22;
+// Price room above/below the candles. The focus floor keeps its HUD outside the chart, so it only needs a little air.
+const DEFAULT_TOP_PAD = 84, DEFAULT_BOTTOM_PAD = 74;
 export const HOLD_MS = 340;
 const DEFAULT_SPAN = 64, MIN_SPAN = 16, MAX_SPAN = 240;
 
@@ -26,12 +28,13 @@ export interface ArcadeTradeHandlers {
   onBlocked: (reason: string) => void;
 }
 
-export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, brackets, preview, trade, onMoveLevel, overlay, height }: {
+export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, brackets, preview, trade, onMoveLevel, overlay, height, topPad = DEFAULT_TOP_PAD, bottomPad = DEFAULT_BOTTOM_PAD }: {
   market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[];
   brackets: Record<string, Bracket>; preview: HoldPreview | null; trade: ArcadeTradeHandlers;
   onMoveLevel: (positionId: string, kind: "sl" | "tp", price: number) => void;
-  overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; height: number;
+  overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; height: number; topPad?: number; bottomPad?: number;
 }) {
+  const TOP_PAD = topPad, BOTTOM_PAD = bottomPad;
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(360);

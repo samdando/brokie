@@ -1,0 +1,156 @@
+/* ---------- Breathing room (1 Nov 2026) ----------
+   Loaded last. One spacing scale, a calmer vertical rhythm, and a clear hierarchy:
+   price, P&L and the trade buttons lead; everything else steps back. */
+:root {
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:44px;
+  --card-pad:20px;            /* was 14–16px */
+  --card-radius:18px;
+  --card-bg:#15161c;
+  --card-line:#23252e;
+  --quiet:#6f7380;
+}
+
+/* Header: wordmark, page dots and avatar share one slim row. */
+.app { padding-top:calc(8px + var(--safe-t)); padding-left:20px; padding-right:20px; }
+.app .header,.app:has(.trade-screen) .header { height:44px; min-height:44px; margin:0 0 var(--s3); gap:var(--s4); }
+.app .header .wordmark { font-size:23px; margin-right:0; }
+.app .header .page-map { position:static; flex:1; justify-content:center; min-height:44px; margin:0; gap:var(--s2); }
+.app .header .page-map > button { min-height:44px; }
+.app .header .page-map span { font:600 10px var(--mono); letter-spacing:.02em; }
+.app .header .page-map small { display:none; }
+.app .header .avatar-btn { margin-left:0; width:34px; height:34px; }
+.app .header + .page-map, .page-map .page-swipe-hint { display:none; }
+
+/* Bottom navigation: same footprint, lighter feel. */
+.tabs { padding:6px 16px calc(6px + var(--safe-b)); background:#111217f2; border-top:1px solid #1f2128; }
+.tab { height:46px; gap:4px; font:500 10px/1 system-ui,-apple-system,sans-serif; letter-spacing:.01em; }
+.tab svg { width:20px; height:20px; stroke-width:1.5; }
+.tab.on::before { top:-6px; }
+
+/* ---------- Secondary pages: more air between sections, tighter inside cards ---------- */
+.secondary-screen { padding-top:var(--s2); }
+.secondary-screen.stack,.squad-screen,.learn-screen { gap:var(--s6) !important; }
+.page-heading h1 { margin:var(--s3) 0 var(--s2); }
+.page-heading p { line-height:1.65; }
+.panel { padding:var(--card-pad); border-radius:var(--card-radius); }
+.seg { min-height:48px; }
+.seg button { min-height:40px; }
+.quiet-disclosure > summary { min-height:64px; }
+.quiet-disclosure > :not(summary) { margin-bottom:var(--s5); }
+.lb-row { padding:var(--s4) 0; column-gap:var(--s3); }
+.lb-row > :last-child > :last-child { margin-top:var(--s1); }
+.sheet .stack { gap:var(--s4); }
+
+/* ---------- You ---------- */
+.you-screen .you-identity { gap:var(--s4) !important; padding-top:var(--s1); }
+.you-card { display:grid; gap:0; padding:var(--s5) var(--card-pad) var(--s1); border-radius:var(--card-radius); background:var(--card-bg); border:1px solid var(--card-line); }
+.you-card .season-score { border:0; padding:0 0 var(--s5); }
+.you-card .season-score strong { margin:var(--s4) 0 var(--s1); font-size:clamp(44px,13vw,56px); }
+.you-card .season-score-money { margin-bottom:var(--s2); }
+.you-card .season-score > .muted { font-size:12px; }
+.you-card .profile-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; padding:var(--s4) 0; border-top:1px solid var(--card-line); }
+.profile-stat { display:grid; gap:var(--s2); min-width:0; padding:0 var(--s3); border-left:1px solid var(--card-line); }
+.profile-stat:first-child { padding-left:0; border:0; }
+.profile-stat:last-child { padding-right:0; }
+.profile-stat span { font:500 11px/1.3 system-ui,-apple-system,sans-serif; color:#a4a7b1; }
+.profile-stat small { display:block; margin-top:2px; color:var(--quiet); font-size:10px; }
+.profile-stat b { font:550 17px/1.2 var(--mono); letter-spacing:-.5px; white-space:nowrap; color:#ecebea; }
+.profile-stat.lime b { color:var(--lime); } .profile-stat.red b { color:var(--red); }
+.you-card .quiet-disclosure { border:0; border-top:1px solid var(--card-line); }
+.you-card .quiet-disclosure > summary { min-height:56px; }
+.you-screen .rank-card { padding:var(--card-pad); gap:var(--s3); border-radius:var(--card-radius); }
+.you-screen .rank-card small { line-height:1.55; }
+.you-receipts > .row:first-child { margin-bottom:var(--s1); }
+.you-screen .receipt-ticket { padding:var(--s4) 0 !important; gap:var(--s3); }
+.you-screen .receipt-ticket .receipt-meta { margin-top:var(--s1); }
+.profile-customize { padding:var(--s4) var(--card-pad); border-radius:var(--card-radius); border-color:var(--card-line); gap:var(--s4); }
+/* Secondary items: smaller, muted, grouped at the end. */
+.you-quiet { display:grid; gap:0; padding-top:var(--s2); border-top:1px solid #1d1f26; opacity:.85; }
+.you-quiet .quiet-disclosure { border:0; }
+.you-quiet .quiet-disclosure > summary { min-height:52px; font-size:12px; color:#9a9da7; }
+.you-quiet .settings-entry { display:flex; justify-content:space-between; align-items:center; min-height:52px; padding:0; font-size:12px; color:#9a9da7; }
+.you-quiet .settings-entry span { color:var(--quiet); }
+.you-quiet .install-tip { padding:var(--s3) 0 var(--s2); font-size:11px; line-height:1.7; color:var(--quiet); }
+.you-quiet .install-tip b[style] { color:#9a9da7 !important; }
+
+/* ---------- Classic trade layout ---------- */
+.trade-screen:not(.focus-mode) { gap:var(--s4); }
+.trade-screen .floor-toolbar { min-height:44px; padding:0; }
+.trade-screen .account-disclosure { min-height:40px; padding:0 var(--s3); border-radius:10px; }
+.trade-screen .market-stage { display:flex; flex-direction:column; gap:var(--s4); }
+.trade-screen .markets { gap:var(--s2); padding-bottom:var(--s3); }
+.trade-screen .markets .market { min-height:40px; height:40px; border-radius:10px; }
+.trade-screen .chart-card { display:flex; flex-direction:column; gap:var(--s3); }
+.trade-screen .chart-utilities { min-height:40px; }
+.trade-screen .chart-utility,.trade-screen .chart-corner-toggle { width:40px; min-width:40px; height:40px; border-radius:10px; }
+.chart-actions { gap:var(--s1); }
+.trade-screen .chart-card .market-heading { padding-bottom:0; align-items:center !important; }
+.trade-screen .chart-card .quote { font-size:clamp(30px,9vw,38px); letter-spacing:-1.6px; line-height:1.05; }
+.trade-screen .market-heading .row { margin-top:0 !important; }
+.candle-read { padding:var(--s1) 0 var(--s1) var(--s3); gap:var(--s1); }
+.candle-read small { font-size:7px; text-transform:uppercase; }
+.trade-screen .floor-presence,.trade-screen .floor-invite { margin-bottom:0; }
+.floor-invite { min-height:40px; gap:var(--s3); padding:0 var(--s3); border-radius:10px; }
+.floor-invite b { font-size:12px; font-weight:500; }
+.floor-invite small { display:none; }
+/* The order dock: P&L first, then size, then two big buttons. */
+.trade-screen .trade-dock { gap:var(--s4); padding:var(--s4) 20px var(--s4); }
+.trade-screen .dock-status { min-height:48px; }
+.trade-screen .dock-status .dock-pnl > b { font-size:30px; letter-spacing:-1.2px; }
+.trade-screen .dock-status small { font-size:10px; }
+.trade-screen .trade-dock .execution-options { height:48px; gap:var(--s2); }
+.quantity-selector { height:48px; gap:var(--s1); padding:var(--s1); border-radius:12px; }
+.quantity-selector > span { font-size:10px; padding:0 var(--s2) 0 var(--s1); }
+.quantity-selector button { width:48px; min-height:38px; border-radius:9px; font-size:13px; }
+.trade-screen .spam-pad { gap:var(--s3); margin-top:var(--s1); }
+.trade-screen .trade-dock .spam-btn { height:62px; min-height:62px; border-radius:14px; }
+.trade-screen .trade-dock .spam-label { font-size:17px; letter-spacing:1.5px; }
+
+/* Short phones: keep the rhythm, just tighter, so the chart keeps its room. */
+@media (max-height:700px) {
+  .app .header,.app:has(.trade-screen) .header { height:40px; min-height:40px; margin-bottom:var(--s2); }
+  .app .header .page-map > button { min-height:40px; }
+  .trade-screen:not(.focus-mode),.trade-screen .market-stage { gap:var(--s2); }
+  .trade-screen .chart-card { gap:var(--s2); }
+  .trade-screen .floor-toolbar { min-height:34px; }
+  .trade-screen .account-disclosure { min-height:32px; }
+  .trade-screen .markets { padding-bottom:var(--s2); }
+  .trade-screen .markets .market { min-height:32px; height:32px; }
+  .trade-screen .quote-block { gap:4px; }
+  .trade-screen .quote-block .instrument-title { display:none; }
+  .trade-screen .quote-block .quote { font-size:26px; }
+  .trade-screen .chart-utility,.trade-screen .chart-corner-toggle { min-height:36px; height:36px; }
+  .trade-screen .floor-presence,.trade-screen .floor-invite { height:32px; min-height:32px; }
+  .trade-screen .trade-dock { gap:var(--s2); padding-top:var(--s3); padding-bottom:var(--s3); }
+  .trade-screen .dock-status { min-height:40px; }
+  .trade-screen .dock-status .dock-pnl > b { font-size:22px; }
+  .trade-screen .dock-status .quick-close-hint { display:none; }
+  .trade-screen .trade-dock .execution-options,.quantity-selector { height:42px; }
+  .quantity-selector button { min-height:34px; }
+  .trade-screen .spam-pad { margin-top:0; }
+  .trade-screen .trade-dock .spam-btn { height:50px; min-height:50px; }
+}
+@media (max-width:360px) {
+  .app { padding-left:14px; padding-right:14px; }
+  .trade-screen .account-disclosure > span:nth-child(2) { font-size:0; } .trade-screen .account-disclosure b { font-size:11px; }
+  .trade-screen .chart-utility,.trade-screen .chart-corner-toggle { width:34px; min-width:34px; }
+  .chart-actions { gap:0; }
+  .trade-screen .quote-block .quote { font-size:24px; letter-spacing:-1px; }
+  .app .header { gap:var(--s2); }
+  .app .header .page-map { gap:var(--s1); }
+  .quantity-selector button { width:40px; }
+  .trade-screen .trade-dock { padding-left:14px; padding-right:14px; }
+  .profile-stat { padding:0 var(--s2); }
+  .profile-stat b { font-size:14px; }
+}
+
+/* Classic: quote and chart tools share one row; the pattern read rides under the price. */
+.trade-screen .quote-heading { align-items:center; min-height:0; }
+.quote-block { display:grid; gap:6px; min-width:0; flex:1; }
+.trade-screen .quote-block .instrument-title { font:500 10px/1.2 var(--mono); color:#8a8e9a; }
+.trade-screen .quote-block .quote { font:700 clamp(26px,8.4vw,36px)/1 var(--mono); letter-spacing:-1.5px; color:#f5f3ef; white-space:nowrap; }
+.quote-sub { display:flex; align-items:center; gap:10px; min-width:0; font-size:11px; font-weight:600; }
+.quote-sub .candle-read { display:inline-flex; flex-direction:row; align-items:center; gap:6px; max-width:none; padding:0 0 0 10px; border-left:1px solid #2e3039; text-align:left; }
+.quote-sub .candle-read small { font-size:7px; }
+.quote-sub .candle-read b { font-size:10px; white-space:nowrap; }
+.trade-screen .quote-heading .chart-actions { align-self:center; }

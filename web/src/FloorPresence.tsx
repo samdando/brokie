@@ -29,7 +29,7 @@ export function FloorPresence({ market, showMarkers, onMarkers, onSquad, toast }
     if (error) { toast(error); return; }
     haptic(8); setSent(symbol); setReactions(false);
   }
-  if (!squad) return <button type="button" className="floor-invite" onClick={onSquad} data-testid="floor-invite"><span className="floor-invite-symbol" aria-hidden="true">＋</span><span><b>Better with your mates</b><small>Create a squad or join theirs</small></span><span aria-hidden="true">↗</span></button>;
+  if (!squad) return <button type="button" className="floor-invite" onClick={onSquad} data-testid="floor-invite"><span className="floor-invite-symbol" aria-hidden="true">＋</span><span><b>Better with your mates</b></span><span aria-hidden="true">↗</span></button>;
   return <>
     <div className="floor-presence" data-testid="floor-presence">
       <button type="button" className="floor-mates" onClick={() => setOpen(true)} aria-label={`Open ${squad.name} activity`} data-testid="floor-activity-open">

@@ -10,6 +10,8 @@ import { haptic, orderEffect, readEffect } from "./effects";
 import { swipeGuard } from "./pageSwipe";
 
 const CASH_OUT_MS = 450;
+const seen = (key: string) => { try { return localStorage.getItem(key) === "done"; } catch { return true; } };
+const markSeen = (key: string) => { try { localStorage.setItem(key, "done"); } catch { /* */ } };
 
 /** The default Trade page: Brokie's own chart fills the screen. Hold to trade, slide for TP/SL,
  *  hold "Cash out" to close. Everything else lives in the drawer. */
@@ -25,6 +27,18 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   const [drawer, setDrawer] = useState(false);
   const [markets, setMarkets] = useState(false);
   const [preview, setPreview] = useState<HoldPreview | null>(null);
+  // The chart takes whatever the HUD rows above and below leave over.
+  const chartBox = useRef<HTMLDivElement>(null);
+  const [chartH, setChartH] = useState(360);
+  useLayoutEffect(() => {
+    const el = chartBox.current; if (!el) return;
+    const fit = () => setChartH(Math.max(140, Math.floor(el.clientHeight)));
+    fit(); const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect();
+  }, []);
+  // First-use coach marks: shown until dismissed (or until you trade), never as permanent copy.
+  const [holdCoach, setHoldCoach] = useState(() => !seen("brokie.coach.hold"));
+  const [positionCoach, setPositionCoach] = useState(() => !seen("brokie.coach.position"));
+  const dismissHoldCoach = () => { if (!holdCoach) return; setHoldCoach(false); markSeen("brokie.coach.hold"); };
   const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null }; closing?: { closed?: number; pnl?: number } } | null>(null);
 
   // Fill the space between the page header and the tab bar.
@@ -34,7 +48,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
       const top = el.getBoundingClientRect().top + window.scrollY;
       const tabs = document.querySelector<HTMLElement>(".tabs")?.offsetHeight ?? 72;
       const vh = window.visualViewport?.height ?? innerHeight;
-      setH(Math.max(320, Math.floor(vh - top - tabs - 8)));
+      setH(Math.max(320, Math.floor(vh - top - tabs - 10)));
     };
     fit(); addEventListener("resize", fit); window.visualViewport?.addEventListener("resize", fit);
     return () => { removeEventListener("resize", fit); window.visualViewport?.removeEventListener("resize", fit); };
@@ -47,6 +61,12 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   const stacks = stacksOf(me.positions);
   const here = stacks.filter(s => s.merged.market === market);
   const herePnl = quote == null ? null : here.reduce((s, x) => s + pnlOf(x.merged, quote), 0);
+  const showPositionCoach = positionCoach && here.length > 0;
+  useEffect(() => {
+    if (!showPositionCoach) return;
+    const t = setTimeout(() => { setPositionCoach(false); markSeen("brokie.coach.position"); }, 7000);
+    return () => clearTimeout(t);
+  }, [showPositionCoach]);
   const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (q ? pnlOf(p, q) : 0); }, 0);
   const base = rules?.start_balance ?? 100000;
   const seasonPct = (me.cash + unrealized - base) / base * 100;
@@ -61,6 +81,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
 
   function onArm(side: Side) {
     if (quote == null) return;
+    dismissHoldCoach();
     haptic([12]); orderEffect(readEffect());
     const qty = st.qty;
     const levels = { tp: null as number | null, sl: null as number | null };
@@ -135,22 +156,15 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   useEffect(() => () => { if (cashTimer.current) cancelAnimationFrame(cashTimer.current.raf); }, []);
 
   const shown = isCrypto(market) ? CRYPTOS : FUTURES;
+  const small = h < 520;
+  const pnlTone = herePnl == null || here.length === 0 ? "flat" : herePnl >= 0 ? "up" : "down";
+  const side = here[0]?.merged.side, held = here.reduce((n, x) => n + x.merged.quantity, 0);
   return (
-    <div ref={root} className="focus-floor" data-testid="focus-floor" style={{ height: h }}>
-      <ArcadeChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={here.map(s => s.merged)} brackets={st.brackets}
-        preview={preview} onMoveLevel={moveLevel} height={h}
-        trade={{ blocked, onArm, onSlide, onRelease, onBlocked: (r) => { toast(r); haptic(10); } }}
-        overlay={(toXY, w, hh) => <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={w} height={hh} />} />
-
+    <div ref={root} className={`focus-floor ${small ? "small" : ""}`} data-testid="focus-floor" style={{ height: h }}>
       <div className="focus-hud top">
-        <button type="button" className={`pnl-box ${herePnl == null || here.length === 0 ? "flat" : herePnl >= 0 ? "up" : "down"}`} onClick={onAccount} data-testid="focus-pnl" aria-label="Account and P&L">
-          <small>P&amp;L · {MARKETS[market].title}</small>
-          <b>{here.length && herePnl != null ? signedMoney(herePnl) : "$0.00"}</b>
-          <span className={seasonPct >= 0 ? "lime" : "red"}>Season {seasonPct >= 0 ? "+" : ""}{seasonPct.toFixed(2)}%</span>
-        </button>
-        <div className="focus-controls">
-          <button type="button" className="focus-chip market-chip" onClick={() => setMarkets(true)} data-testid="focus-market" style={{ ["--c" as string]: MARKETS[market].color }}>
-            <b>{MARKETS[market].title}</b><span>{quote != null ? px(quote, digits(market)) : "—"}</span><em className={change >= 0 ? "lime" : "red"}>{change >= 0 ? "▲" : "▼"}</em>
+        <div className="focus-hud-row">
+          <button type="button" className="focus-chip market-chip" onClick={() => setMarkets(true)} data-testid="focus-market" style={{ ["--c" as string]: MARKETS[market].color }} aria-label={`Market: ${MARKETS[market].title}. Change market`}>
+            <i aria-hidden="true" /><b>{MARKETS[market].title}</b><span aria-hidden="true">⌄</span>
           </button>
           <div className="focus-chip-row">
             <button type="button" className="focus-chip" onClick={() => game.nextFrame()} data-testid="focus-frame" aria-label="Change timeframe">{frameLabel(st.candleSeconds)}</button>
@@ -158,19 +172,42 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
             <button type="button" className="focus-chip" onClick={() => setDrawer(true)} data-testid="focus-more" aria-label="Squad, positions and settings">⋯</button>
           </div>
         </div>
+        <div className="focus-figures">
+          <div className="focus-price" data-testid="focus-price">
+            <b>{quote != null ? px(quote, digits(market)) : "—"}</b>
+            <span className={change >= 0 ? "lime" : "red"}>{change >= 0 ? "▲" : "▼"} {px(Math.abs(change), digits(market))}</span>
+          </div>
+          <button type="button" className={`pnl-box ${pnlTone}`} onClick={onAccount} data-testid="focus-pnl" aria-label="Account and P&L">
+            <small>{here.length ? `${side === "long" ? "Long" : "Short"} ${held} · P&L` : "Flat · P&L"}</small>
+            <b>{here.length && herePnl != null ? signedMoney(herePnl) : "$0.00"}</b>
+            <span className={seasonPct >= 0 ? "lime" : "red"}>Season {seasonPct >= 0 ? "+" : ""}{seasonPct.toFixed(2)}%</span>
+          </button>
+        </div>
       </div>
-      {!open && <div className="focus-banner">{blocked}</div>}
-      {pattern && <div className={`pattern-callout ${pattern.side}`} data-testid="pattern-callout"><small>Pattern locked</small><b>{pattern.name}</b></div>}
+
+      <div ref={chartBox} className="focus-chart">
+        <ArcadeChart market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={here.map(s => s.merged)} brackets={st.brackets}
+          preview={preview} onMoveLevel={moveLevel} height={chartH} topPad={small ? 18 : 26} bottomPad={small ? 14 : 20}
+          trade={{ blocked, onArm, onSlide, onRelease, onBlocked: (r) => { toast(r); haptic(10); } }}
+          overlay={(toXY, w, hh) => <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={w} height={hh} />} />
+        {!open && <div className="focus-banner">{blocked}</div>}
+        {pattern && open && !preview && !holdCoach && <div className={`pattern-callout ${pattern.side}`} data-testid="pattern-callout"><small>Pattern</small><b>{pattern.name}</b></div>}
+        {holdCoach && open && !preview && <div className="hold-coach" data-testid="hold-coach">
+          <div className="coach-zone long"><b>▲ Hold to BUY</b><span>top half</span></div>
+          <div className="coach-card" role="note"><p>Hold the chart to trade.<br/><small>Slide while holding to set TP/SL · lift to lock</small></p><button type="button" onClick={dismissHoldCoach} data-testid="hold-coach-ok">Got it</button></div>
+          <div className="coach-zone short"><span>bottom half</span><b>▼ Hold to SELL</b></div>
+        </div>}
+        {showPositionCoach && !preview && <small className="focus-tip" data-testid="focus-tip" role="note">Hold the same half to add · the other half to close</small>}
+      </div>
 
       <div className="focus-hud bottom">
         {here.length ? (
-          <div className="cash-stack"><small className="focus-tip" data-testid="focus-tip">Hold same half to add · other half to close</small>
           <button type="button" className={`cash-out ${herePnl != null && herePnl >= 0 ? "up" : "down"}`} disabled={closing} data-testid="cash-out"
             onPointerDown={cashDown} onPointerUp={cashUp} onPointerCancel={cashUp} onPointerLeave={cashUp} style={{ ["--hold" as string]: cash }}>
             <span>{closing ? "Cashing out…" : "Hold to cash out"}</span><b>{herePnl != null ? signedMoney(herePnl) : "—"}</b>
-          </button></div>
+          </button>
         ) : (
-          <div className="hold-hint" aria-hidden={!!preview}><span className="lime">▲ Hold top half to BUY</span><span className="red">▼ Hold bottom half to SELL</span><small>Slide for TP/SL · lift to lock</small></div>
+          <div className="focus-size-label" aria-hidden="true"><b>Size</b><small>micros per hold</small></div>
         )}
         <div className="focus-size" role="group" aria-label="Order size in micros">{[1, 10, 100].map(q => <button type="button" key={q} aria-pressed={st.qty === q} onClick={() => { game.setQty(q); haptic(8); }} data-testid={`focus-size-${q}`}>{q}</button>)}</div>
       </div>
@@ -191,7 +228,8 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onAccount(); }}><b>Account &amp; risk</b><span>{money0(me.cash + unrealized)} ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onIndicators(); }}><b>Indicators</b><span>{Object.values(indicators).filter(Boolean).length} on ›</span></button>
           <button type="button" className="drawer-row" onClick={() => { setDrawer(false); onClassic(); }} data-testid="classic-layout"><b>Classic layout</b><span>Buttons + TradingView chart ›</span></button>
-          <small className="muted">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (1:1), lift to lock. Drag a TP/SL line to move it. Pinch to zoom, double-tap to reset.</small>
+          <button type="button" className="drawer-row quiet" onClick={() => { try { localStorage.removeItem("brokie.coach.hold"); localStorage.removeItem("brokie.coach.position"); } catch { /* */ } setHoldCoach(true); setPositionCoach(true); setDrawer(false); }} data-testid="show-tips"><b>Show trading tips</b><span>›</span></button>
+          <small className="muted drawer-note">Hold anywhere on the chart to trade. Top half buys, bottom half sells. Slide up or down while holding to set TP and SL (1:1), lift to lock. Drag a TP/SL line to move it. Pinch to zoom, double-tap to reset.</small>
         </div>
       </Sheet>
     </div>

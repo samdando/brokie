@@ -126,8 +126,11 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         return sum+(child as HTMLElement).offsetHeight+parseFloat(style.marginTop||"0")+parseFloat(style.marginBottom||"0");
       },0);
       const padding=parseFloat(css.paddingTop)+parseFloat(css.paddingBottom);
-      if(big) setBigH(Math.max(80,Math.floor(card.clientHeight-padding-used-2)));
-      else if(dock) setPreviewH(Math.max(96,Math.min(640,Math.floor(dock.getBoundingClientRect().top-card.getBoundingClientRect().top-window.scrollY-padding-used-12))));
+      // Flex gaps between the card's rows count as used space too.
+      const flow=Array.from(card.children).filter(child=>!['fixed','absolute'].includes(getComputedStyle(child).position)).length;
+      const gaps=(parseFloat(css.rowGap)||0)*Math.max(0,flow-1);
+      if(big) setBigH(Math.max(80,Math.floor(card.clientHeight-padding-used-gaps-2)));
+      else if(dock) setPreviewH(Math.max(96,Math.min(640,Math.floor(dock.getBoundingClientRect().top-card.getBoundingClientRect().top-window.scrollY-padding-used-gaps-12))));
     };
     fit();const ro=new ResizeObserver(fit);ro.observe(card);if(dock)ro.observe(dock);
     for(const child of Array.from(card.children))if(!child.querySelector(".chart-host"))ro.observe(child);
@@ -218,8 +221,13 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
       <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
-        <div className="chart-utilities">
-          <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+        <div className="chart-utilities quote-heading">
+          <div className="quote-block">
+            <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+            <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
+            <span className="quote-sub"><span className={`mono ${change >= 0 ? "lime" : "red"}`}>{change >= 0 ? "▲ " : "▼ "}{px(Math.abs(change), digits(market))}</span>
+              {pattern && <span className={`candle-read ${pattern.side}`} data-testid="candle-read"><small>Pattern</small><b>{pattern.name}</b></span>}</span>
+          </div>
           <div className="chart-actions">
           <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>
           <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={() => { const next = !showHistory; setShowHistory(next); try { localStorage.setItem("brokie.chartHistory", next ? "on" : "off"); } catch { /* */ } }} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
@@ -227,16 +235,6 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
             aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
           </div>
-        </div>
-        <div className="row between market-heading" style={{ alignItems: "flex-start" }}>
-          <div>
-
-            <div className="row" style={{ gap: 8, alignItems: "baseline", marginTop: 6 }}>
-              <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
-              <span className={`mono ${change >= 0 ? "lime" : "red"}`} style={{ fontSize: 11, fontWeight: 600 }}>{change >= 0 ? "+" : "−"}{px(Math.abs(change), digits(market))}</span>
-            </div>
-          </div>
-          <div className={`candle-read ${pattern?.side ?? "neutral"}`} data-testid="candle-read"><small>{pattern ? "CLOSED CANDLE" : "MARKET LENS"}</small><b>{pattern?.name ?? (indicators.structure ? "Reading structure" : "Price action")}</b><span>{pattern ? "Pattern identified" : "Your trade. Your call."}</span></div>
         </div>
         <FloorPresence market={market} showMarkers={crowd} onMarkers={()=>{setCrowd(v=>!v);try{localStorage.setItem("brokie.crowd",crowd?"off":"on");}catch{/* */}}} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
@@ -251,7 +249,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               onEnter={()=>{}} />
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
           </>} />
-        {indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
+        {big && indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
         {!open && <div className="chart-attribution">{crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live."}</div>}
         {big && orderDock}
       </div>

@@ -78,10 +78,10 @@ export function App() {
       <div className={`app app-${tab}`}>
         <div className="header">
           <div className="wordmark">brokie<i /></div>
+          <div className="page-map" aria-label="App pages">{TAB_ORDER.map((t, i) => <button type="button" key={t} aria-label={`Go to ${t}`} aria-current={t === tab ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }}><i/>{t === tab ? <span>{t === "you" ? "You" : t[0].toUpperCase() + t.slice(1)}</span> : null}{i === TAB_ORDER.indexOf(tab) + 1 && <small aria-hidden="true">→</small>}</button>)}</div>
           <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
-        <div className="page-map" aria-label="App pages">{TAB_ORDER.map((t, i) => <button type="button" key={t} aria-label={`Go to ${t}`} aria-current={t === tab ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }}><i/>{t === tab ? <span>{t === "you" ? "You" : t[0].toUpperCase() + t.slice(1)}</span> : null}{i === TAB_ORDER.indexOf(tab) + 1 && <small aria-hidden="true">→</small>}</button>)}<span className="page-swipe-hint" aria-hidden="true">swipe to explore</span></div>
         <main ref={setDeck} className="page-stage swipe-deck" data-testid="page-deck" style={{ ["--slide" as string]: slide }}>
           {TAB_ORDER.filter(t => t === tab || t === previous || t === peek).map(t => <div key={t} data-page-role={t === tab ? "current" : t === peek ? "peek" : "previous"} className={`page-screen ${t === tab ? previous ? "entering" : "" : t === previous ? "leaving" : "peeking"}`} style={t === peek && t !== tab ? { transform: `translate3d(${TAB_ORDER.indexOf(t) > TAB_ORDER.indexOf(tab) ? 100 : -100}%,0,0)` } : undefined} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
             {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
