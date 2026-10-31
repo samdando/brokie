@@ -27,3 +27,7 @@ The other historical UI scripts predate the current progressive-disclosure layou
 
 
 31 October bracket repair: `node tests/api-timeout.cjs` checks aborts for stalled RPC requests and response bodies. `focus-floor.cjs` also covers hold-preview scale feedback at the bottom edge, delayed/rejected level saves, axis-tag touch dragging, no-op taps, touch cancellations, pinch interruptions, five-second hints and return-to-Trade hints. Restart Vite after source edits before running browser fixtures: importing `/src/game.ts` must use the same module instance as App, without stale HMR timestamps.
+
+31 October playtest polish: `node tests/polish-floor.cjs` checks closed markets showing their reopening time (sheet tiles and chart banner, in the player's time zone), the price change with % and look-back span, the add/close tip living in the size line instead of over chart levels, and the Chat composer sitting just above the tab bar at 320/393px.
+
+iOS shell: `node tests/native-shell.cjs` simulates the WKWebView flag (`window.brokieNative`) and checks the $1 pool and install tip stay hidden in the iOS app, touch feedback defaults on there, and the plain web stays unchanged.

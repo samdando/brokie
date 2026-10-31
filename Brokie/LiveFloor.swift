@@ -10,7 +10,8 @@ struct LiveFloorView: View {
     var body: some View {
         ZStack {
             Ink.background.ignoresSafeArea()
-            LiveFloorWebView(state: state).ignoresSafeArea(.container, edges: .bottom)
+            // Edge to edge: the web app pads itself with env(safe-area-inset-*), like the installed PWA.
+            LiveFloorWebView(state: state).ignoresSafeArea()
             if state.loading {
                 VStack(spacing: 14) {
                     Text("brokie.").font(.system(size: 38, weight: .black, design: .rounded)).italic()
@@ -24,16 +25,9 @@ struct LiveFloorView: View {
                     Text("The floor is offline").font(.title2.bold())
                     Text(error).font(.subheadline).foregroundStyle(Ink.muted).multilineTextAlignment(.center)
                     Button("Try again") { state.retry() }.buttonStyle(.borderedProminent).tint(Ink.lime).foregroundStyle(Ink.background)
-                    Button("Open native client", action: onNative).foregroundStyle(Ink.lime)
+                    Button("Practice offline", action: onNative).foregroundStyle(Ink.lime)
                 }.padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(Ink.background)
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack {
-                Text("LIVE FLOOR").font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(Ink.muted)
-                Spacer()
-                Button("Native account", action: onNative).font(.system(size: 10, weight: .semibold)).foregroundStyle(Ink.lime)
-            }.padding(.horizontal, 16).frame(height: 30).background(Ink.background)
         }
         .preferredColorScheme(.dark)
     }
@@ -53,16 +47,27 @@ struct LiveFloorWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let controller = WKUserContentController()
         controller.add(context.coordinator, name: "brokieHaptic")
-        // Only a haptic bridge. Native keychain credentials are not read or injected.
+        // A haptic bridge and an "in the iOS app" flag. Native keychain credentials are not read or injected.
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
         let script = """
         if (location.origin === 'https://samdando.github.io' && location.pathname.startsWith('/brokie/')) {
+            window.brokieNative = Object.freeze({ platform: 'ios', version: '\(version)' });
+            document.documentElement.classList.add('ios-app');
             navigator.vibrate = function(pattern) {
-                window.webkit.messageHandlers.brokieHaptic.postMessage({duration: Array.isArray(pattern) ? pattern[0] : pattern});
+                var list = Array.isArray(pattern) ? pattern : [pattern];
+                window.webkit.messageHandlers.brokieHaptic.postMessage({ pattern: list.map(Number) });
                 return true;
             };
         }
         """
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // Hold-to-trade must never start text selection, the loupe or the copy/share callout.
+        let css = """
+        var s = document.createElement('style');
+        s.textContent = 'html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}input,textarea,[contenteditable]{-webkit-user-select:text;user-select:text}';
+        document.head.appendChild(s);
+        """
+        controller.addUserScript(WKUserScript(source: css, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = controller
         configuration.websiteDataStore = .default()
@@ -74,6 +79,8 @@ struct LiveFloorWebView: UIViewRepresentable {
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.scrollView.bounces = false
         view.allowsBackForwardNavigationGestures = false
+        view.allowsLinkPreview = false
+        view.scrollView.showsVerticalScrollIndicator = false
         view.isInspectable = _isDebugAssertConfiguration()
         state.webView = view
         view.load(URLRequest(url: BrokieConfig.liveFloorURL, cachePolicy: .reloadRevalidatingCacheData))
@@ -97,7 +104,7 @@ struct LiveFloorWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { fail(error) }
         private func fail(_ error: Error) {
             if (error as NSError).code == NSURLErrorCancelled { return }
-            state.loading = false; state.error = "Check your connection, then retry. Your native account remains saved in the original client."
+            state.loading = false; state.error = "Check your connection, then try again. You can still practise offline in the meantime."
         }
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { state.retry() }
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -118,8 +125,30 @@ struct LiveFloorWebView: UIViewRepresentable {
         }
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame, allowed(message.frameInfo.request.url), let body = message.body as? [String: Any] else { return }
-            let duration = (body["duration"] as? Double) ?? 12
-            UIImpactFeedbackGenerator(style: duration > 25 ? .heavy : .light).impactOccurred()
+            let pattern = (body["pattern"] as? [Double]) ?? [(body["duration"] as? Double) ?? 12]
+            Haptics.play(pattern)
+        }
+    }
+}
+
+/** Maps the web app's vibration patterns onto iOS haptics: [10,40,18] a win, [40,30,40] a refusal/loss,
+ *  short single taps a light tick (size chips, holds), longer ones a firm thump. */
+@MainActor
+enum Haptics {
+    private static let light = UIImpactFeedbackGenerator(style: .light)
+    private static let rigid = UIImpactFeedbackGenerator(style: .rigid)
+    private static let heavy = UIImpactFeedbackGenerator(style: .heavy)
+    private static let notify = UINotificationFeedbackGenerator()
+    static func play(_ pattern: [Double]) {
+        let first = pattern.first ?? 12
+        if pattern.count >= 3 {
+            notify.notificationOccurred(first <= 15 ? .success : .error)
+        } else if first <= 10 {
+            light.impactOccurred(intensity: 0.7)
+        } else if first <= 25 {
+            rigid.impactOccurred()
+        } else {
+            heavy.impactOccurred()
         }
     }
 }

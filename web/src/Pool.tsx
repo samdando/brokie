@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { Button, Eyebrow, Sheet } from "./ui";
 import type { PoolInfo, PoolRow } from "./types";
+import { nativeApp } from "./config";
 
 /** The $1 pool. Pay one $1 entry (USDC on Base, or PayID / cash to Sam), your season account
  *  restarts at $100k on HARD MODE, and the pool is split by % return at the end of the season.
@@ -10,8 +11,9 @@ export function PoolCard() {
   const st = useGame();
   const pool = st.pool;
   const [open, setOpen] = useState(false);
-  useEffect(() => { void game.refreshPool(); }, []);
-  if (!pool) return null;
+  useEffect(() => { if (!nativeApp) void game.refreshPool(); }, []);
+  // Paid entries never appear in the iOS app (App Store rules on real-money contests).
+  if (!pool || nativeApp) return null;
   const { config, entry, standings } = pool;
   const inPool = pool.tier === "pool" && entry?.status === "paid";
   const me = standings.rows.find((r) => r.is_you);
@@ -119,7 +121,7 @@ function StandingRow({ x, minDays }: { x: PoolRow; minDays: number }) {
 /** Small 💵 chip for leaderboard rows of players with a paid entry. */
 export function PoolChip({ handle }: { handle: string }) {
   const st = useGame();
-  if (!st.pool || !game.poolHandles.has(handle)) return null;
+  if (nativeApp || !st.pool || !game.poolHandles.has(handle)) return null;
   return <span className="pool-chip" title="In the $1 pool · hard mode" aria-label="In the $1 pool, hard mode" data-testid="pool-chip">$</span>;
 }
 

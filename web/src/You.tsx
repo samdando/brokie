@@ -1,4 +1,5 @@
-import { haptic, orderEffect, saveEffect } from "./effects";
+import { haptic, hapticsOn, orderEffect, saveEffect } from "./effects";
+import { nativeApp } from "./config";
 import { Avatar } from "./Avatar";
 import { AvatarShop } from "./AvatarShop";
 import { DailyRecap, TradeReview } from "./TradeReview";
@@ -139,6 +140,7 @@ function HandleSheet({ open, onClose, toast }: { open: boolean; onClose: () => v
 }
 
 function InstallTip() {
+  if (nativeApp) return null;
   const standalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone);
   if (standalone) return null;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -257,6 +259,6 @@ const canShareFile = (b: Blob) => { try { return !!navigator.canShare?.({ files:
 
 function OrderEffectsSetting() {
   const [sound, setSound] = useState(() => { try { return localStorage.getItem("brokie.sound") === "on"; } catch { return false; } });
-  const [touch, setTouch] = useState(() => { try { return localStorage.getItem("brokie.haptics") === "on"; } catch { return false; } });
+  const [touch, setTouch] = useState(hapticsOn);
   return <section className="stack" style={{ gap: 10 }}><b>Feedback</b><small className="muted">Small confirmations, on your terms. Motion follows your device setting.</small><label className="sound-setting"><span>Play order sounds</span><input type="checkbox" checked={sound} onChange={e => { const on = e.target.checked; setSound(on); try { localStorage.setItem("brokie.sound", on ? "on" : "off"); } catch { /* */ } if (on) { saveEffect("soft"); orderEffect("soft", true); } }} /></label><label className="sound-setting"><span>Touch feedback</span><input type="checkbox" checked={touch} onChange={e => { const on=e.target.checked; setTouch(on); try { localStorage.setItem("brokie.haptics",on ? "on" : "off"); } catch { /* */ } if(on) haptic(8); }}/></label></section>;
 }

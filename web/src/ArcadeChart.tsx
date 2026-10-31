@@ -363,7 +363,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       <canvas ref={canvas} aria-label={`${MARKETS[market].title} price chart`} role="img" />
       {overlay && <div className="arcade-overlay" style={{ width: plotW, height: plotH }}>{overlay(toXY, plotW, plotH)}</div>}
       {finger && <div className={`hold-ring ${finger.armed ? "armed" : ""} ${finger.side ?? (finger.y < half ? "long" : "short")}`} style={{ left: finger.x, top: finger.y }} aria-hidden="true"><i /></div>}
-      {finger?.armed && finger.side && <div className={`hold-label ${finger.side}`} style={{ top: Math.max(10, Math.min(plotH - 60, finger.y - 70)) }} data-testid="hold-label">
+      {finger?.armed && finger.side && <div className={`hold-label ${finger.side}`} style={{ top: labelTop(finger.y, plotH) }} data-testid="hold-label">
         <b>{preview?.closing ? "CLOSING" : finger.side === "long" ? "BUYING" : "SELLING"}</b>
         <span>{preview?.closing ? "Taking it off · no hedge" : preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
       </div>}
@@ -408,4 +408,11 @@ export function levelsFromSlide(side: Side, entry: number, price: number | null,
   const tp = towardProfit ? price : profitUp ? entry + d : entry - d;
   const sl = towardProfit ? (profitUp ? entry - d : entry + d) : price;
   return { tp: snapTo(tp), sl: snapTo(sl) };
+}
+
+/** Keep the BUYING/SELLING read clear of the thumb: well above the touch, or docked at the
+ *  bottom of the plot when the finger is too close to the top for that. */
+function labelTop(y: number, plotH: number) {
+  const above = y - 104;
+  return above >= 8 ? Math.min(plotH - 60, above) : Math.max(8, plotH - 60);
 }

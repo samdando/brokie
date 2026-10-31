@@ -4,7 +4,7 @@ import { ChartIndicators } from "./ChartIndicators";
 import { BubbleLayer } from "./Bubbles";
 import { candleRead, IndicatorOptions } from "./indicators";
 import { frameLabel, game, stacksOf, useGame } from "./game";
-import { isCrypto, FUTURES, CRYPTOS } from "./sessions";
+import { isCrypto, FUTURES, CRYPTOS, opensLabel } from "./sessions";
 import { MARKETS, Market, Side, digits, pnlOf, type Bubble } from "./types";
 import { Sheet, hintDone, money, px, signedMoney } from "./ui";
 import { haptic, orderEffect, readEffect } from "./effects";
@@ -102,10 +102,13 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
   const pattern = indicators.patterns ? candleRead(candles.slice(0, -1)) : null;
   const tick = MARKETS[market].tick;
   const change = quote != null && candles[0] ? quote - candles[0].open : 0;
+  const changePct = candles[0]?.open ? change / candles[0].open * 100 : 0;
+  // The change is measured from the first loaded candle, so say how far back that is.
+  const span = spanLabel(candles.length * st.candleSeconds);
 
   const blocked = rules?.status === "blown" ? "Season max-loss reached. Open your account to restart."
     : rules?.status === "locked" ? "Daily limit reached. Trading unlocks next session."
-    : !open ? (isCrypto(market) ? "Crypto trades during the weekend session." : "Market closed. Trades resume when prices are live.")
+    : !open ? closedNote(market, game.now())
     : st.pending || game.ordersInFlight > 0 ? "One order at a time." : null;
 
   function onArm(side: Side) {
@@ -205,7 +208,7 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
         <div className="focus-figures">
           <div className="focus-price" data-testid="focus-price">
             <b>{quote != null ? px(quote, digits(market)) : "—"}</b>
-            <span className={change >= 0 ? "lime" : "red"}>{change >= 0 ? "▲" : "▼"} {px(Math.abs(change), digits(market))}</span>
+            <span className={change >= 0 ? "lime" : "red"} data-testid="focus-change">{change >= 0 ? "▲" : "▼"} {px(Math.abs(change), digits(market))} <em>{changePct >= 0 ? "+" : "−"}{Math.abs(changePct).toFixed(2)}%{span && <i> · {span}</i>}</em></span>
           </div>
           <button type="button" className={`pnl-box ${pnlTone}`} onClick={here.length ? onPositions : onAccount} data-testid="focus-pnl" aria-label={here.length ? `Manage ${MARKETS[market].title} positions` : "Account and P&L"}>
             <small>{here.length ? `${side === "long" ? "Long" : "Short"} ${held} · P&L` : "Flat · P&L"}</small>
@@ -231,13 +234,15 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
           <div className="coach-zone long"><span className="coach-pill">▲ Hold the top half to buy</span></div>
           <div className="coach-zone short"><span className="coach-pill">▼ Hold the bottom half to sell</span></div>
         </div>}
-        {showPositionCoach && !preview && <small className="focus-tip" data-testid="focus-tip" role="note">Hold the same half to add · the other half to close</small>}
       </div>
 
       <div className="focus-hud bottom">
         <div className="focus-size-block">
-          <small className="focus-size-context" data-testid="focus-size-context" aria-live="polite">{st.qty} {st.qty === 1 ? "micro" : "micros"} · {money(st.qty * MARKETS[market].pointValue)} / point</small>
-          <div className="focus-size" role="group" aria-label="Order size in micros">{[1, 10, 100].map(q => <button type="button" key={q} aria-pressed={st.qty === q} onClick={() => { game.setQty(q); haptic(8); }} data-testid={`focus-size-${q}`}>{q}</button>)}</div>
+          {showPositionCoach && !preview
+            // The add/close tip borrows this line for a few seconds, so it never covers the chart's levels.
+            ? <small className="focus-size-context focus-tip" data-testid="focus-tip" role="note">Same half adds · other closes</small>
+            : <small className="focus-size-context" data-testid="focus-size-context" aria-live="polite">{st.qty} {st.qty === 1 ? "micro" : "micros"} · {money(st.qty * MARKETS[market].pointValue)} / point</small>}
+          <div className="focus-size" role="group" aria-label="Order size in micros">{[1, 10, 100].map(q => <button type="button" key={q} aria-pressed={st.qty === q} onClick={() => { game.setQty(q); haptic(8); if (showPositionCoach) { setPositionCoach(false); markSeen("brokie.coach.position"); } }} data-testid={`focus-size-${q}`}>{q}</button>)}</div>
         </div>
         {here.length ? (
           <button type="button" className={`cash-out ${herePnl != null && herePnl >= 0 ? "up" : "down"}`} disabled={closing} data-testid="cash-out"
@@ -253,7 +258,8 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
         <div className="stack" data-testid="focus-markets"><div className="row between"><h2 className="h2">Markets</h2><button type="button" className="text-action" onClick={() => setMarkets(false)}>Done</button></div>
           {[["Futures", FUTURES], ["Crypto", CRYPTOS]].map(([label, list]) => <div key={label as string} className="stack" style={{ gap: 8 }}><small className="eyebrow">{label as string}</small>
             <div className="focus-market-grid">{(list as Market[]).map(m => <button type="button" key={m} className={m === market ? "on" : ""} style={{ ["--c" as string]: MARKETS[m].color }} onClick={() => { game.setMarket(m); setMarkets(false); }} data-testid={`focus-market-${m}`}>
-              <b>{MARKETS[m].title}</b><small>{MARKETS[m].subtitle}</small><span>{game.quote(m) ? px(game.quote(m)!.price, digits(m)) : "—"}</span></button>)}</div></div>)}
+              <b>{MARKETS[m].title}</b><small>{MARKETS[m].subtitle}</small><span>{game.quote(m) ? px(game.quote(m)!.price, digits(m)) : "—"}</span>
+              {!game.isOpen(m) && <em className="market-closed" data-testid={`focus-market-closed-${m}`}>{opensLabel(m, game.now()) ?? "Waiting for prices"}</em>}</button>)}</div></div>)}
           {!shown.includes(market) && null}
         </div>
       </Sheet>
@@ -273,6 +279,19 @@ export function FocusFloor({ active, toast, indicators, onIndicators, onAccount,
       </Sheet>
     </div>
   );
+}
+
+/** Closed-market copy that says when trading comes back, in the player's own time. */
+function closedNote(market: Market, now: number) {
+  const opens = opensLabel(market, now);
+  if (!opens) return "Waiting for live prices…";
+  return `${isCrypto(market) ? "Crypto is weekend-only" : "Market closed"} · ${opens.replace(/^Opens/, "opens")}`;
+}
+
+function spanLabel(seconds: number) {
+  if (seconds <= 0) return "";
+  const m = Math.round(seconds / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return d >= 2 ? `${d}d` : h >= 1 ? `${h}h${m % 60 && h < 6 ? ` ${m % 60}m` : ""}` : `${m}m`;
 }
 
 const money0 = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;

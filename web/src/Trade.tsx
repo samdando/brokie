@@ -12,7 +12,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BubbleLayer } from "./Bubbles";
 import type { Bubble, Rules } from "./types";
 import { frameLabel, game, stacksOf, useGame } from "./game";
-import { isCrypto, sessionCountdown, FUTURES, CRYPTOS } from "./sessions";
+import { isCrypto, sessionCountdown, FUTURES, CRYPTOS, opensLabel } from "./sessions";
 
 import { BrokieChart, CHART_SMALL } from "./Chart";
 import { FocusFloor } from "./FocusFloor";
@@ -253,7 +253,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
           </>} />
         {big && indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
-        {!open && <div className="chart-attribution">{crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live."}</div>}
+        {!open && <div className="chart-attribution">{(crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live.") + (opensLabel(market, game.now()) ? ` ${opensLabel(market, game.now())}.` : "")}</div>}
         {big && orderDock}
       </div>
 

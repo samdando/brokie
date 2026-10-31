@@ -1,7 +1,10 @@
+import { nativeApp } from "./config";
 export type Effect = "soft" | "quiet";
 export function readEffect(): Effect { try { return localStorage.getItem("brokie.effect") === "quiet" ? "quiet" : "soft"; } catch { return "soft"; } }
 export function saveEffect(effect: Effect) { try { localStorage.setItem("brokie.effect", effect); } catch { /* private mode */ } }
-export function haptic(pattern: number | number[] = 8) { try { if (localStorage.getItem("brokie.haptics") === "on") navigator.vibrate?.(pattern); } catch { /* Unsupported or disabled. */ } }
+/** Touch feedback: opt-in on the web, on by default in the iOS app (real Taptic Engine haptics). */
+export function hapticsOn() { try { const v = localStorage.getItem("brokie.haptics"); return v === "on" || (v == null && nativeApp); } catch { return nativeApp; } }
+export function haptic(pattern: number | number[] = 8) { try { if (hapticsOn()) navigator.vibrate?.(pattern); } catch { /* Unsupported or disabled. */ } }
 let audio: AudioContext | undefined, last = 0;
 /** Both audio and haptics are opt-in. No remote media or background playback. */
 export function orderEffect(effect: Effect, preview = false) {

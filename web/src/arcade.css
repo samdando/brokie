@@ -29,10 +29,13 @@
 .focus-price { display:grid; gap:5px; min-width:0; }
 .focus-price b { font:700 clamp(25px,7.6vw,32px)/1 var(--mono); letter-spacing:-1.2px; color:#f3f2ef; white-space:nowrap; }
 .focus-price span { font:600 11px/1 var(--mono); letter-spacing:.02em; }
+.focus-price span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.focus-price span em { font-style:normal; color:#8d93a3; margin-left:4px; }
+@media (max-width:360px) { .focus-price span em i { display:none; } }
 .pnl-box { display:grid; justify-items:end; gap:5px; text-align:right; padding:0; min-width:0; background:none; border:0; }
 .pnl-box small { font:600 9px/1 var(--mono); letter-spacing:.08em; color:#80848f; text-transform:uppercase; }
 .pnl-box b { font:750 clamp(22px,6.6vw,28px)/1 var(--mono); letter-spacing:-1px; color:#5d616c; white-space:nowrap; }
-.pnl-box span { font:600 10px/1 var(--mono); opacity:.85; }
+.pnl-box span { font:600 10px/1 var(--mono); opacity:.85; white-space:nowrap; }
 .pnl-box.up b { color:#7FE0B8; } .pnl-box.down b { color:#FF6F79; }
 .focus-controls { display:none; }
 .focus-chip-row { display:flex; gap:8px; }
@@ -80,16 +83,19 @@
 .focus-market-grid b { color:var(--c); font:800 14px var(--mono); }
 .focus-market-grid small { font-size:10px; color:#878b99; }
 .focus-market-grid span { font:600 12px var(--mono); margin-top:4px; }
+.focus-market-grid .market-closed { font:600 9.5px var(--mono); font-style:normal; color:#8d93a3; letter-spacing:.02em; }
+.focus-market-grid button:has(.market-closed) span { color:#9aa0ad; }
 .drawer-row { display:flex; justify-content:space-between; align-items:center; min-height:56px; padding:16px 2px; border-bottom:1px solid #24262f; font-size:15px; }
 .drawer-row.quiet b { font-weight:500; color:#a7aab4; font-size:14px; }
 .drawer-note { line-height:1.6; margin-top:8px; }
 .drawer-row span { color:#878b99; font-size:12px; }
 .focus-drawer .floor-presence, .focus-drawer > div:first-of-type + * { margin-bottom:4px; }
-@media (max-width:360px) { .focus-size { gap:4px; } .focus-size button { min-width:40px; } .cash-out span { letter-spacing:.03em; font-size:8px; white-space:nowrap; } .cash-out { padding:8px 12px; } .focus-floor .focus-tip { white-space:normal; width:max-content; max-width:calc(100% - 90px); text-align:center; line-height:1.4; border-radius:12px; } .focus-chip-row { gap:6px; } .focus-chip { min-width:36px; padding:0 9px; } .cash-out b { font-size:17px; } .coach-card { gap:10px; padding-left:12px; } }
+@media (max-width:360px) { .focus-size { gap:4px; } .focus-size button { min-width:40px; } .cash-out span { letter-spacing:.03em; font-size:8px; white-space:nowrap; } .cash-out { padding:8px 12px; } .focus-chip-row { gap:6px; } .focus-chip { min-width:36px; padding:0 9px; } .cash-out b { font-size:17px; } .coach-card { gap:10px; padding-left:12px; } }
 .focus-floor.small .focus-hud.top { gap:8px; } .focus-floor.small .focus-figures { padding-bottom:10px; }
 .focus-floor.small .focus-hud.bottom { padding-top:12px; } .focus-floor.small .focus-size button { min-height:44px; } .focus-floor.small .cash-out { min-height:50px; padding:8px 14px; }
 @media (prefers-reduced-motion: reduce) { .hold-ring, .pattern-callout, .hold-coach, .focus-tip { animation:none; } }
-.focus-tip { position:absolute; left:50%; top:14px; transform:translateX(-50%); white-space:nowrap; font:600 10px var(--mono); color:#c3c6cf; padding:8px 12px; border-radius:99px; background:#1b1c23ee; border:1px solid #33353f; pointer-events:none; animation:coach-in .4s ease both; }
+.focus-size-context { overflow:hidden; text-overflow:ellipsis; }
+.focus-size-context.focus-tip { color:#e9dcc4; animation:coach-in .4s ease both; }
 .chart-live { position:absolute; bottom:30px; min-height:36px; padding:0 14px; border-radius:99px; background:#1b1c23ee; border:1px solid #3a3d48; color:#e9ebef; font:650 11px var(--mono); box-shadow:0 6px 18px #0007; }
 
 /* Friends' trades on the focus chart: the markers, cards and pills are tappable, the overlay itself stays see-through. */

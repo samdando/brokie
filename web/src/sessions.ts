@@ -63,3 +63,22 @@ export function sessionCountdown(ms: number) {
   const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
+
+/** When this market next takes trades (session hours only; holidays and quote gaps aren't known here). */
+export function nextSessionOpen(m: Market, at: number): number {
+  if (marketSessionOpen(m, at)) return at;
+  // Session edges are whole New York hours, which are always whole UTC hours.
+  let t = Math.ceil(at / 3600000) * 3600000;
+  for (let i = 0; i < 24 * 8; i++, t += 3600000) if (marketSessionOpen(m, t)) return t;
+  return at;
+}
+/** "Opens in 40 min" / "Opens 8:00 am" / "Opens Mon 8:00 am", in the player's own time zone. */
+export function opensLabel(m: Market, at: number): string | null {
+  const next = nextSessionOpen(m, at);
+  if (next <= at) return null;
+  const mins = Math.round((next - at) / 60000);
+  if (mins < 60) return `Opens in ${Math.max(1, mins)} min`;
+  const time = new Date(next).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" }).replace(/\s?(am|pm)$/i, (_, p: string) => ` ${p.toLowerCase()}`);
+  const sameDay = new Date(next).toDateString() === new Date(at).toDateString();
+  return sameDay || next - at < 12 * 3600000 ? `Opens ${time}` : `Opens ${new Date(next).toLocaleDateString("en-AU", { weekday: "short" })} ${time}`;
+}

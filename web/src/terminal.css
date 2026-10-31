@@ -120,8 +120,8 @@ html,body { background:var(--bg); }
 .squad-screen .squad-overview,.lesson-card,.learn-progress,.you-screen .profile-summary { background:transparent; }
 .chat-page { display:flex; flex-direction:column; gap:14px; }
 .chat-page .page-heading h1 { font-size:30px; margin:6px 0 4px; }
-.chat-page .chat-room { display:flex; flex-direction:column; position:relative; height:calc(100dvh - 282px - var(--safe-t) - var(--safe-b)); min-height:300px; }
-.chat-page:has(> .hscroll) .chat-room { height:calc(100dvh - 330px - var(--safe-t) - var(--safe-b)); }
+.chat-page .chat-room { display:flex; flex-direction:column; position:relative; height:calc(100dvh - 140px - var(--safe-t) - var(--safe-b)); min-height:260px; }
+.chat-page:has(> .hscroll) .chat-room { height:calc(100dvh - 188px - var(--safe-t) - var(--safe-b)); }
 .chat-page .chat-heading { padding:8px 0 13px; }
 .chat-page .chat-log { min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; }
 .chat-page .chat-composer { flex:none; padding-bottom:8px; }
