@@ -53,10 +53,17 @@ function windowEnd(market: RushMarket, utcDay: number, roll: number): number {
 
 /** Today's Daily Rush: identical for every player on the same Brisbane date. `attempt` > 0 only when
  *  the first window has no usable bars (a holiday); every player hits the same data, so the retry agrees too. */
+/** First full UTC day of stored 1-minute bars (futures backfilled from 19 Oct 2026, crypto from 26 Oct).
+ *  Windows are only drawn from days that exist, and the range grows on its own up to ~38 days back. */
+const FIRST_BAR_DAY = { futures: Date.UTC(2026, 9, 20) / 86_400_000, crypto: Date.UTC(2026, 9, 27) / 86_400_000 };
+const daysBack = (market: RushMarket, day: number, maxBack: number) =>
+  Math.max(1, Math.min(maxBack, day - (FUTURES.has(market) ? FIRST_BAR_DAY.futures : FIRST_BAR_DAY.crypto)));
+
 export function dailySeed(day = brisbaneDay(), attempt = 0): RushSeed {
   const market = attempt < 4 ? RUSH_MARKETS[((day % 7) + 7) % 7] : attempt === 4 ? "btc" : "eth";
   const h = hash(`brokie-rush:${day}:${attempt}`), h2 = hash(`brokie-rush-minute:${day}:${attempt}`);
-  return { market, bucket: 60, end: windowEnd(market, day - (2 + (h % 37)), h2), mode: "d" };
+  const span = Math.max(1, daysBack(market, day, 39) - 1);
+  return { market, bucket: 60, end: windowEnd(market, day - (2 + (h % span)), h2), mode: "d" };
 }
 export const DAILY_ATTEMPTS = 6;
 export const isTodaysDaily = (seed: RushSeed, day = brisbaneDay()) =>
@@ -65,7 +72,7 @@ export const isTodaysDaily = (seed: RushSeed, day = brisbaneDay()) =>
 export function practiceSeed(rand: () => number = Math.random, now = Date.now()): RushSeed {
   const market = RUSH_MARKETS[Math.floor(rand() * RUSH_MARKETS.length)];
   const today = Math.floor(now / 86_400_000);
-  return { market, bucket: 60, end: windowEnd(market, today - 1 - Math.floor(rand() * 39), Math.floor(rand() * 1e9)), mode: "p" };
+  return { market, bucket: 60, end: windowEnd(market, today - 1 - Math.floor(rand() * daysBack(market, today - 1, 39)), Math.floor(rand() * 1e9)), mode: "p" };
 }
 
 /** A window is playable when it is full, continuous enough and actually moves. */
