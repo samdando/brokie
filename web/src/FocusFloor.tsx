@@ -25,7 +25,7 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
   const [drawer, setDrawer] = useState(false);
   const [markets, setMarkets] = useState(false);
   const [preview, setPreview] = useState<HoldPreview | null>(null);
-  const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null } } | null>(null);
+  const order = useRef<{ side: Side; entry: number; done: Promise<string | null>; levels: { tp: number | null; sl: number | null }; closing?: { closed?: number; pnl?: number } } | null>(null);
 
   // Fill the space between the page header and the tab bar.
   useLayoutEffect(() => {
@@ -64,11 +64,20 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
     haptic([12]); orderEffect(readEffect());
     const qty = st.qty;
     const levels = { tp: null as number | null, sl: null as number | null };
+    // Holding against an open position takes it off (no hedges on this floor).
+    const opposite: Side = side === "long" ? "short" : "long";
+    const against = here.filter(x => x.merged.side === opposite).reduce((n, x) => n + x.merged.quantity, 0);
+    if (against > 0) {
+      const result: { closed?: number; pnl?: number } = {};
+      order.current = { side, entry: quote, levels, closing: result, done: game.reduce(opposite, Math.min(qty, against)).then(r => { result.closed = r.closed; result.pnl = r.pnl; return r.error ?? null; }) };
+      setPreview({ side, entry: quote, tp: null, sl: null, closing: true });
+      return;
+    }
     order.current = { side, entry: quote, levels, done: game.open(side, qty) };
     setPreview({ side, entry: quote, tp: null, sl: null });
   }
   function onSlide(price: number | null) {
-    const o = order.current; if (!o) return;
+    const o = order.current; if (!o || o.closing) return;
     const l = levelsFromSlide(o.side, o.entry, price, tick);
     o.levels = l;
     setPreview(p => p ? { ...p, ...l } : p);
@@ -78,6 +87,11 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
     setPreview(null);
     if (!o) return;
     const err = await o.done;
+    if (o.closing) {
+      if (err) { toast(err); haptic([40, 30, 40]); return; }
+      haptic((o.closing.pnl ?? 0) >= 0 ? [10, 40, 18] : [40, 30, 40]);
+      toast(`Closed ${o.closing.closed ?? ""} ${MARKETS[market].title} · ${signedMoney(o.closing.pnl ?? 0)}`); return;
+    }
     const label = `${o.side === "long" ? "Bought" : "Sold"} ${game.state.qty} ${MARKETS[market].title}`;
     if (err) { toast(err); haptic([40, 30, 40]); return; }
     if (o.levels.tp == null || o.levels.sl == null) { toast(label); return; }
@@ -150,10 +164,11 @@ export function FocusFloor({ toast, indicators, onIndicators, onAccount, onPosit
 
       <div className="focus-hud bottom">
         {here.length ? (
+          <div className="cash-stack"><small className="focus-tip" data-testid="focus-tip">Hold same half to add · other half to close</small>
           <button type="button" className={`cash-out ${herePnl != null && herePnl >= 0 ? "up" : "down"}`} disabled={closing} data-testid="cash-out"
             onPointerDown={cashDown} onPointerUp={cashUp} onPointerCancel={cashUp} onPointerLeave={cashUp} style={{ ["--hold" as string]: cash }}>
             <span>{closing ? "Cashing out…" : "Hold to cash out"}</span><b>{herePnl != null ? signedMoney(herePnl) : "—"}</b>
-          </button>
+          </button></div>
         ) : (
           <div className="hold-hint" aria-hidden={!!preview}><span className="lime">▲ Hold top half to BUY</span><span className="red">▼ Hold bottom half to SELL</span><small>Slide for TP/SL · lift to lock</small></div>
         )}

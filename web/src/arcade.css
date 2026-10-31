@@ -65,3 +65,5 @@
 .focus-drawer .floor-presence, .focus-drawer > div:first-of-type + * { margin-bottom:4px; }
 @media (max-width:360px) { .pnl-box { min-width:100px; } .pnl-box b { font-size:17px; } .cash-out { min-width:128px; } .cash-out b { font-size:16px; } .focus-hud { right:66px; } }
 @media (prefers-reduced-motion: reduce) { .hold-ring, .pattern-callout { animation:none; } }
+.cash-stack { display:grid; gap:5px; }
+.focus-tip { font:600 9px var(--mono); color:#9a9eab; padding:3px 7px; border-radius:4px; background:rgba(10,11,14,.78); justify-self:start; pointer-events:none; }

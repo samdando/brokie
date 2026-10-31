@@ -26,7 +26,7 @@ await page.evaluate(()=>{
  const g=window.testGame; g.isOpen=()=>true; g.set({market:'nas'});const now=Date.now(),start=Math.floor(now/900000)-80,wave=i=>Math.sin(i*.21)*28+Math.sin(i*.07)*45+Math.sin(i*1.7)*6,price=i=>29700+wave(i)-wave(80);g.set({candleSeconds:900,candles:{...g.state.candles,nas:Array.from({length:80},(_,i)=>({index:start+i,open:price(i),high:Math.max(price(i),price(i+1))+4+Math.abs(Math.sin(i))*6,low:Math.min(price(i),price(i+1))-4-Math.abs(Math.cos(i))*6,close:price(i+1)}))}}); window.orders=[];window.brackets=[];window.closes=[];
  g.open=async(side,q)=>{window.orders.push({side,q});const p={id:'p1',market:'nas',side,quantity:q,entry_price:29700,opened_at:new Date().toISOString()};g.set({me:{...g.state.me,positions:[p]}});return null;};
  g.setBracket=async(id,b)=>{window.brackets.push({id,...b});g.set({brackets:{...g.state.brackets,[id]:{...(g.state.brackets[id]??{}),...b}}});};
- g.closeStack=async(ids)=>{window.closes.push(ids);g.set({me:{...g.state.me,positions:[]}});return {pnl:42};};
+ window.reduces=[];g.reduce=async(side,q)=>{window.reduces.push({side,q});return {closed:q,pnl:12};};g.closeStack=async(ids)=>{window.closes.push(ids);g.set({me:{...g.state.me,positions:[]}});return {pnl:42};};
 });
 const fit=async()=>assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'no horizontal overflow');
 for(const [w,h] of [[320,568],[393,852],[430,932]]){await page.setViewportSize({width:w,height:h});await page.waitForTimeout(150);await fit();
@@ -49,14 +49,23 @@ assert.equal(await page.evaluate(()=>location.hash),'');
 await page.getByTestId('cash-out').waitFor();await page.screenshot({path:'/tmp/brokie-focus-position.png'});
 // A quick tap does not trade.
 await page.mouse.click(cx,chart.y+chart.height*.7);await page.waitForTimeout(400);assert.equal(await page.evaluate(()=>window.orders.length),1);
+// Holding the other half while long takes it off instead of opening a hedge.
+await page.mouse.move(cx,chart.y+chart.height*.62);await page.mouse.down();await page.waitForTimeout(500);
+assert.match(await page.getByTestId('hold-label').innerText(),/CLOSING/);await page.mouse.move(cx,chart.y+chart.height*.75,{steps:4});await page.mouse.up();await page.waitForTimeout(150);
+assert.equal(await page.evaluate(()=>window.orders.length),1,'no hedge order');assert.deepEqual(await page.evaluate(()=>window.reduces),[{side:'long',q:1}]);assert.equal(await page.evaluate(()=>window.brackets.length),1,'closing never sets TP/SL');
 // Hold cash-out to close.
 const co=await page.getByTestId('cash-out').boundingBox();await page.mouse.move(co.x+20,co.y+15);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
 await page.waitForFunction(()=>window.closes.length===1);
 // Real touch swipes (CDP) change pages: on the chart, then from a button on the next page.
 const cdp=await page.context().newCDPSession(page);
-const swipe=async(x0,y,x1)=>{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x0,y}]});for(let i=1;i<=8;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x0+(x1-x0)*i/8,y}]});await page.waitForTimeout(16);}await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(400);};
+const swipe=async(x0,y,x1)=>{await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x0,y}]});for(let i=1;i<=8;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x0+(x1-x0)*i/8,y}]});await page.waitForTimeout(16);}await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(450);};
 const current=()=>page.evaluate(()=>document.querySelector('.page-map [aria-current="page"]')?.getAttribute('aria-label'));
-await swipe(330,chart.y+chart.height*.5,60);assert.equal(await current(),'Go to chat');assert.equal(await page.evaluate(()=>window.orders.length),1,'swipe never trades');
+{const y=chart.y+chart.height*.5;await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:330,y}]});for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:330-i*30,y}]});await page.waitForTimeout(16);}
+ const t=await page.evaluate(()=>[...document.querySelectorAll('.page-screen')].map(e=>[e.dataset.pageRole,Math.round(e.getBoundingClientRect().left)]));
+ assert.deepEqual(t.map(x=>x[0]).sort(),['current','peek']);const cur=t.find(x=>x[0]==='current')[1],pk=t.find(x=>x[0]==='peek')[1];assert(cur<-150&&cur>-200,'page follows the finger 1:1 ('+cur+')');assert(Math.abs(pk-cur-(await page.evaluate(()=>document.querySelector('.swipe-deck').clientWidth)))<2,'next page sits flush beside it');
+ await page.screenshot({path:'/tmp/brokie-swipe-mid.png'});
+ for(let i=7;i<=9;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:330-i*30,y}]});await page.waitForTimeout(16);}await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await page.waitForTimeout(450);}
+assert.equal(await current(),'Go to chat');assert.equal(await page.evaluate(()=>window.orders.length),1,'swipe never trades');
 await page.getByTestId('chat-page').waitFor();
 await swipe(330,500,60);assert.equal(await current(),'Go to squad');
 const row=await page.getByTestId('leader-row').first().boundingBox();await swipe(row.x+row.width-20,row.y+row.height/2,row.x+20);assert.equal(await current(),'Go to learn','swipe starting on a button');

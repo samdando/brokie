@@ -16,20 +16,13 @@ html,body { background:var(--bg); }
 .page-map small { color:#606471; font:12px var(--mono); }
 .page-map .page-swipe-hint { margin-left:auto; font:400 8px var(--mono); color:#737785; }
 .swipe-deck { min-height:calc(100dvh - 155px - var(--safe-t) - var(--safe-b)); overflow-x:clip; }
-.swipe-deck .page-screen { position:relative; left:var(--page-shift,0px); min-width:0; transition:left .18s ease-out; }
-.swipe-deck.dragging .page-screen { transition:none; user-select:none; -webkit-user-select:none; }
-.swipe-deck .page-screen.peeking,.swipe-deck .page-screen.leaving { position:absolute; inset:0 0 auto; left:var(--page-shift,0px); width:100%; pointer-events:none; }
-.swipe-deck .page-screen.peeking { visibility:visible; }
-.swipe-deck .page-screen.entering { animation:brokie-page-in .28s cubic-bezier(.2,.75,.25,1) both; }
-.swipe-deck .page-screen.leaving { animation:brokie-page-out .28s cubic-bezier(.2,.75,.25,1) both; }
-.swipe-deck .trade-dock { left:calc(50% + var(--page-shift,0px)); transition:left .18s ease-out; }
-.swipe-deck.dragging .trade-dock { transition:none; }
-.swipe-deck .entering .trade-dock { animation:brokie-dock-in .28s cubic-bezier(.2,.75,.25,1) both; }
-.swipe-deck .leaving .trade-dock { animation:brokie-dock-out .28s cubic-bezier(.2,.75,.25,1) both; }
-@keyframes brokie-page-in { from { left:calc(var(--slide) * 100vw + var(--release-x)); } to { left:0; } }
-@keyframes brokie-page-out { from { left:var(--release-x); } to { left:calc(var(--slide) * -100vw); } }
-@keyframes brokie-dock-in { from { left:calc(50% + var(--slide) * 100vw + var(--release-x)); } to { left:50%; } }
-@keyframes brokie-dock-out { from { left:calc(50% + var(--release-x)); } to { left:calc(50% - var(--slide) * 100vw); } }
+.swipe-deck .page-screen { position:relative; min-width:0; backface-visibility:hidden; }
+.swipe-deck.dragging .page-screen { user-select:none; -webkit-user-select:none; will-change:transform; }
+.swipe-deck .page-screen.peeking,.swipe-deck .page-screen.leaving { position:absolute; inset:0 0 auto; width:100%; pointer-events:none; }
+.swipe-deck .page-screen.entering { animation:brokie-page-in .26s cubic-bezier(.2,.8,.2,1) both; }
+.swipe-deck .page-screen.leaving { animation:brokie-page-out .26s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes brokie-page-in { from { transform:translate3d(calc(var(--slide) * 100%),0,0); } to { transform:none; } }
+@keyframes brokie-page-out { from { transform:none; } to { transform:translate3d(calc(var(--slide) * -100%),0,0); } }
 .swipe-deck:has(.chart-fullscreen) { overflow:visible; }
 .swipe-deck .chart-fullscreen .trade-dock { animation:none; transition:none; }
 .tabs { background:#121318f5; border-top:1px solid #2b2d36; backdrop-filter:blur(20px); }

@@ -13,10 +13,10 @@ import { swipeGuard } from "./pageSwipe";
 const UP = "#F2F3F5", DOWN = "#FF5C67", GRID = "rgba(255,255,255,.045)", AXIS = "rgba(255,255,255,.42)";
 const LONG = "#7FE0B8", SHORT = "#FF6F79", TP = "#7FE0B8", SL = "#FF6F79";
 const AXIS_W = 62, TIME_H = 22, TOP_PAD = 84, BOTTOM_PAD = 74;   // price room kept clear of the HUD
-export const HOLD_MS = 260;
+export const HOLD_MS = 340;
 const DEFAULT_SPAN = 64, MIN_SPAN = 16, MAX_SPAN = 240;
 
-export interface HoldPreview { side: Side; entry: number; tp: number | null; sl: number | null }
+export interface HoldPreview { side: Side; entry: number; tp: number | null; sl: number | null; /** Holding against your position takes micros off it instead of hedging. */ closing?: boolean }
 export interface ArcadeTradeHandlers {
   /** Why a hold can't trade right now (closed market, locked account…), or null when it can. */
   blocked: string | null;
@@ -135,7 +135,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       }
     }
     if (preview) {
-      lines.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.side === "long" ? "BUYING" : "SELLING", dash: [2, 3], strong: true });
+      lines.push({ price: preview.entry, color: preview.side === "long" ? LONG : SHORT, label: preview.closing ? "CLOSING" : preview.side === "long" ? "BUYING" : "SELLING", dash: [2, 3], strong: true });
       if (preview.tp != null) lines.push({ price: preview.tp, color: TP, label: "TP", dash: [5, 4] });
       if (preview.sl != null) lines.push({ price: preview.sl, color: SL, label: "SL", dash: [5, 4] });
     }
@@ -232,7 +232,7 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       return;
     }
     if (!s.armed) {
-      if (Math.hypot(p.x - s.x, p.y - s.y) > 10) cancelHold();   // a swipe or scroll, not a hold
+      if (Math.hypot(p.x - s.x, p.y - s.y) > 8) cancelHold();   // a swipe or scroll, not a hold
       return;
     }
     setFinger({ x: p.x, y: p.y, armed: true, side: s.side });
@@ -268,8 +268,8 @@ export function ArcadeChart({ market, candles, bucketSeconds, quote, positions, 
       {overlay && <div className="arcade-overlay" style={{ width: plotW, height: plotH }}>{overlay(toXY, plotW, plotH)}</div>}
       {finger && <div className={`hold-ring ${finger.armed ? "armed" : ""} ${finger.side ?? (finger.y < half ? "long" : "short")}`} style={{ left: finger.x, top: finger.y }} aria-hidden="true"><i /></div>}
       {finger?.armed && finger.side && <div className={`hold-label ${finger.side}`} style={{ top: Math.max(10, Math.min(plotH - 60, finger.y - 70)) }} data-testid="hold-label">
-        <b>{finger.side === "long" ? "BUYING" : "SELLING"}</b>
-        <span>{preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
+        <b>{preview?.closing ? "CLOSING" : finger.side === "long" ? "BUYING" : "SELLING"}</b>
+        <span>{preview?.closing ? "Taking it off · no hedge" : preview?.tp != null ? `TP ${px(preview.tp, digits(market))} · SL ${px(preview.sl!, digits(market))}` : "Slide ↑↓ for TP/SL · lift to lock"}</span>
       </div>}
       {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
     </div>
