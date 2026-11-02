@@ -5,6 +5,7 @@ import { Backend, BackendError } from "./api";
 import { haptic } from "./effects";
 import { isConfigured } from "./config";
 import { marketSessionOpen, sessionMarkets, weekendMode } from "./sessions";
+import { POOL_ENABLED } from "./pool-flag";
 import { MARKETS, type Bubble, type Candle, type Position, type ChatMsg, type EventItem, type EventsFeed, type FeedEvent, type FeedbackKind, type Flash, type GlobalBoard, type LeaderRow, type Lifetime, type Market, type PoolInfo, type PoolRail, type MyState, type Quote, type Side, type Squad, type Trade } from "./types";
 
 export type Phase = "unconfigured" | "connecting" | "needsHandle" | "ready" | "failed";
@@ -458,6 +459,7 @@ export class Game {
 
   async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }
   async refreshPool() {
+    if (!POOL_ENABLED) return;
     try { const pool = await this.api.rpc<PoolInfo>("my_pool"); if (pool?.config && pool.standings?.rows) this.set({ pool }); }
     catch { /* older server without pool.sql */ }
   }

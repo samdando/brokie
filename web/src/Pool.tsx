@@ -7,7 +7,16 @@ import { nativeApp } from "./config";
 /** The $1 pool. Pay one $1 entry (USDC on Base, or PayID / cash to Sam), your season account
  *  restarts at $100k on HARD MODE, and the pool is split by % return at the end of the season.
  *  Everything here mirrors the server (pool.sql); the app never touches money itself. */
+/** Paid $1 pool is switched off for public builds (AU gambling rules). Flip only with legal sign-off. */
+export { POOL_ENABLED } from "./pool-flag";
+import { POOL_ENABLED } from "./pool-flag";
+
 export function PoolCard() {
+  if (!POOL_ENABLED) return null;
+  return <PoolCardInner />;
+}
+
+function PoolCardInner() {
   const st = useGame();
   const pool = st.pool;
   const [open, setOpen] = useState(false);
@@ -121,7 +130,7 @@ function StandingRow({ x, minDays }: { x: PoolRow; minDays: number }) {
 /** Small 💵 chip for leaderboard rows of players with a paid entry. */
 export function PoolChip({ handle }: { handle: string }) {
   const st = useGame();
-  if (nativeApp || !st.pool || !game.poolHandles.has(handle)) return null;
+  if (!POOL_ENABLED || nativeApp || !st.pool || !game.poolHandles.has(handle)) return null;
   return <span className="pool-chip" title="In the $1 pool · hard mode" aria-label="In the $1 pool, hard mode" data-testid="pool-chip">$</span>;
 }
 
