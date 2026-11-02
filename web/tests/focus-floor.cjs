@@ -8,7 +8,7 @@ const page=await browser.newPage({viewport:{width:393,height:852},deviceScaleFac
 const errors=[];page.on('pageerror',e=>{errors.push(e.message); console.error('PAGE ERROR',e.message)});
 await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
 await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
-await page.evaluate(()=>localStorage.removeItem('brokie.layout'));
+await page.evaluate(()=>localStorage.setItem('brokie.layout.v2','focus'));
 await page.evaluate(async()=>{
  const {game}=await import('/src/game.ts'); window.testGame=game; window.realRefreshBubbles=game.refreshBubbles.bind(game);
  for(const name of ['setActive','refreshState','refreshSquads','refreshBoard','refreshBubbles','refreshLifetime','refreshChat','refreshGlobal','refreshEvents','refreshCandles']) game[name]=async()=>{};

@@ -8,7 +8,7 @@ const browser=await chromium.launch(process.env.CHROME_PATH?{executablePath:proc
 const page=await browser.newPage({viewport:{width:393,height:852},deviceScaleFactor:2,hasTouch:true,isMobile:true});
 const errors=[];page.on('pageerror',e=>{errors.push(e.message); console.error('PAGE ERROR',e.message)});
 await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
-await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
+await page.addInitScript(()=>{try{localStorage.setItem('brokie.layout.v2','focus')}catch{}});await page.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');
 await page.evaluate(()=>{localStorage.clear();});
 await page.evaluate(async()=>{
  const {game}=await import('/src/game.ts'); window.testGame=game;
@@ -23,7 +23,7 @@ await page.evaluate(async()=>{
   {id:'t-old',market:'nas',side:'long',quantity:10,entry_price:29000,exit_price:29200,pnl:4000,closed_at:new Date(Date.now()-20*864e5).toISOString(),reason:'manual'}];
  game.set({phase:'ready',candleSeconds:900,market:'nas',me:{handle:'sam',season:'s1',season_number:1,season_ends_at:'2026-12-14T00:00:00Z',server_time:now,cash:100004.31,rules,protection_credit:0,liquidations:0,has_backup_code:true,positions:[],trades,quotes:['nas','gold','es'].map(market=>({market,price:29700,quoted_at:now}))},
   squads:[],squadId:null,candles:{nas:candles},leaderboard:[],feed:[],chat:[],lifetime:{total_trades:2,win_rate:1,max_drawdown:0,seasons_played:1,seasons_funded:0,seasons_blown:0,seasons:[]}});
- localStorage.setItem('brokie.lessons','[0,1,2]');
+ localStorage.setItem('brokie.lessons','[0,1,2]');localStorage.setItem('brokie.layout.v2','focus');
 });
 await page.getByTestId('focus-floor').waitFor();
 await page.evaluate(()=>{
@@ -216,7 +216,7 @@ assert(await hudFits(),'HUD fits at 320');
 
 // Win/loss sounds use the opt-in sound setting: on by default in the iOS app, still off on the web.
 assert.equal(await page.evaluate(()=>localStorage.getItem('brokie.sound')),null,'web: sound stays opt-in');
-{const ctx=await browser.newContext();await ctx.addInitScript(()=>{window.brokieNative={};});const ios=await ctx.newPage();
+{const ctx=await browser.newContext();await ctx.addInitScript(()=>{window.brokieNative={};try{localStorage.setItem('brokie.layout.v2','focus')}catch{}});const ios=await ctx.newPage();
  await ios.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
  await ios.goto(process.env.BASE_URL || 'http://127.0.0.1:5173');await ios.waitForFunction(()=>localStorage.getItem('brokie.sound')!==null);
  assert.equal(await ios.evaluate(async()=>[localStorage.getItem('brokie.sound'),(await import('/src/effects.ts')).soundOn()].join()),'on,true','iOS app: sound on when unset');

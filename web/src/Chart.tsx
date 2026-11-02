@@ -6,7 +6,7 @@ import { TradeCard } from "./Bubbles";
 import type { Bracket } from "./game";
 import { px, signedMoney } from "./ui";
 
-const LIME = "#F0F1F2", RED = "#FF656F", MUTED = "#737783";
+const LIME = "#089981", RED = "#F23645", MUTED = "#B2B5BE";   // TradingView palette
 export const CHART_SMALL = 304;
 const PIN_TOP = 36, PIN_BOTTOM = 40;   // px kept clear for the O/H/L/C legend and the time axis   // chart height in px (includes the time axis)
 // One chart on screen at a time, so its height lives here and the overlay pieces read it.
@@ -61,14 +61,14 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     const c = createChart(host.current, {
       height: H,
       // Keep the compact library attribution inside the chart.
-      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 10, fontFamily: "ui-monospace, Menlo, monospace", attributionLogo: true },
-      grid: { vertLines: { visible: false }, horzLines: { color: "rgba(180,185,200,.065)", style: LineStyle.Solid } },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.16, bottom: 0.14 }, entireTextOnly: true },
-      timeScale: { borderVisible: false, visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: MUTED, fontSize: 11, fontFamily: "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif", attributionLogo: true },
+      grid: { vertLines: { color: "rgba(42,46,57,.6)", style: LineStyle.Solid }, horzLines: { color: "rgba(42,46,57,.6)", style: LineStyle.Solid } },
+      rightPriceScale: { borderVisible: true, borderColor: "#2A2E39", scaleMargins: { top: 0.16, bottom: 0.14 }, entireTextOnly: true },
+      timeScale: { borderVisible: true, borderColor: "#2A2E39", visible: true, timeVisible: true, secondsVisible: false, rightOffset: 6, minBarSpacing: 2, fixLeftEdge: false,
         // The chart picks the mark type: year/month/day marks get a date, the rest a time.
         tickMarkFormatter: (t: number, type: number) => { const d = new Date(t * 1000); return type < 3 || bucketRef.current >= 86400 ? d.toLocaleDateString([], { day: "numeric", month: "short" }) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } },
       // C5: on touch, a long-press enters crosshair tracking; the next tap exits it.
-      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "rgba(255,255,255,.35)", labelVisible: true, labelBackgroundColor: "#2A3850" }, horzLine: { color: "rgba(255,255,255,.25)", labelBackgroundColor: "#2A3850" } },
+      crosshair: { mode: CrosshairMode.Normal, vertLine: { color: "#9598A1", width: 1, style: LineStyle.LargeDashed, labelVisible: true, labelBackgroundColor: "#363A45" }, horzLine: { color: "#9598A1", width: 1, style: LineStyle.LargeDashed, labelBackgroundColor: "#363A45" } },
       // Bar times are UTC seconds; show them in the player's own time zone.
       // Daily candles show just the date.
       localization: { locale: "en-US", timeFormatter: (t: number) => bucketRef.current >= 86400
@@ -79,7 +79,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
       handleScroll: false,
       kineticScroll: { touch: false, mouse: false },
     });
-    const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
+    const candle = c.addCandlestickSeries({ upColor: LIME, downColor: RED, wickUpColor: LIME, wickDownColor: RED, borderUpColor: LIME, borderDownColor: RED, borderVisible: true, priceLineVisible: false, lastValueVisible: false });
     const area = c.addAreaSeries({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
     chart.current = c;
     series.current = { candle, area };
@@ -159,7 +159,7 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
 
   useEffect(() => {
     chart.current?.applyOptions({
-      handleScale: { pinch: fullscreen, mouseWheel: fullscreen, axisPressedMouseMove: { time: fullscreen, price: fullscreen }, axisDoubleClickReset: { time: fullscreen, price: fullscreen } },
+      handleScale: { pinch: true, mouseWheel: true, axisPressedMouseMove: { time: fullscreen, price: fullscreen }, axisDoubleClickReset: { time: fullscreen, price: fullscreen } },
       handleScroll: { horzTouchDrag: fullscreen, vertTouchDrag: fullscreen, pressedMouseMove: fullscreen, mouseWheel: false },
       kineticScroll: { touch: fullscreen, mouse: false },
     });

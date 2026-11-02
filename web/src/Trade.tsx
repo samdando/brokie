@@ -27,8 +27,8 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   const lastFuture = useRef<Market>("nas");
   const lastCrypto = useRef<Market>("btc");
   if (crypto) lastCrypto.current = st.market; else if (st.market !== "prediction") lastFuture.current = st.market;
-  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { return localStorage.getItem("brokie.layout") === "classic" ? "classic" : "focus"; } catch { return "focus"; } });
-  const pickLayout = (next: "focus" | "classic") => { setLayout(next); try { localStorage.setItem("brokie.layout", next); } catch { /* */ } };
+  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { return localStorage.getItem("brokie.layout.v2") === "focus" ? "focus" : "classic"; } catch { return "classic"; } });
+  const pickLayout = (next: "focus" | "classic") => { setLayout(next); try { localStorage.setItem("brokie.layout.v2", next); } catch { /* */ } };
   const [accountOpen, setAccountOpen] = useState(false);
   const [settled, setSettled] = useState<{ pnl: number; title: string } | null>(null);
   useEffect(() => { if (!settled) return; const timer=setTimeout(()=>setSettled(null),2800); return ()=>clearTimeout(timer); },[settled]);

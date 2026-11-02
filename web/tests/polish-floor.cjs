@@ -9,7 +9,7 @@ for(const [w,h] of [[320,568],[393,852]]){
  const page=await browser.newPage({viewport:{width:w,height:h},hasTouch:true,isMobile:true,timezoneId:'Australia/Brisbane'});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',r=>new URL(r.request().url()).hostname==='127.0.0.1'?r.continue():r.abort());
- await page.goto((process.env.BASE_URL||'http://127.0.0.1:5173')+'/tests/terminal-preview.html');
+ await page.addInitScript(()=>{try{localStorage.setItem('brokie.layout.v2','focus')}catch{}});await page.goto((process.env.BASE_URL||'http://127.0.0.1:5173')+'/tests/terminal-preview.html');
  await page.getByTestId('focus-floor').waitFor();
  // Preview clock: Saturday 31 Oct 2pm Brisbane. Futures reopen Sunday 6pm New York = Monday 9am Brisbane.
  assert.match(await page.getByTestId('focus-change').innerText(),/[▲▼] [\d,.]+ [+−]\d+\.\d\d%/,'change shows a percentage');
