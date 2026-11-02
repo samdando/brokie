@@ -17,16 +17,20 @@ export function useTradeSwipe({ enabled, fullscreen, revision, onCommit }: { ena
     if (target.closest("button") && !status) return;
     if (!status) return;
     const root = e.currentTarget, id = e.pointerId, startX = e.clientX, startY = e.clientY;
-    const threshold = Math.min(145, root.clientWidth * .38);
+    const threshold = Math.min(100, root.clientWidth * .38);
     let x = 0, locked: boolean | null = null, armed = false;
     const commit = latest.current;
     const cleanup = () => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", cancel); window.removeEventListener("pointerdown", other);
+      window.removeEventListener("touchmove", hold);
       window.removeEventListener("blur", cancel); document.removeEventListener("visibilitychange", cancel);
       if (root.hasPointerCapture(id)) root.releasePointerCapture(id);
       active.current = null; setDistance(0);
     };
+    // iOS Safari ignores touch-action:pan-y, starts its own pan and fires pointercancel.
+    // A non-passive touchmove that preventDefaults keeps the finger ours (same trick as pageSwipe).
+    const hold = (ev: TouchEvent) => { if (locked !== false && ev.cancelable) ev.preventDefault(); };
     const swallow = () => { swallowClick.current = true; };
     const cancel = () => { if (locked) swallow(); cleanup(); };
     const other = (ev: PointerEvent) => { if (ev.pointerId !== id) cancel(); };
@@ -49,7 +53,7 @@ export function useTradeSwipe({ enabled, fullscreen, revision, onCommit }: { ena
       cleanup(); if (shouldCommit) commit();
     };
     active.current = cancel;
-    window.addEventListener("pointermove", move, { passive: false }); window.addEventListener("pointerup", up);
+    window.addEventListener("pointermove", move, { passive: false }); window.addEventListener("touchmove", hold, { passive: false }); window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", cancel); window.addEventListener("pointerdown", other);
     window.addEventListener("blur", cancel); document.addEventListener("visibilitychange", cancel);
   }
