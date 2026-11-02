@@ -1844,3 +1844,19 @@ html,body { background:#0B121B; }
 .pool-row { display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:12px; }
 .pool-row .pool-handle { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .pool-row .pool-note { font-size:10px; min-width:52px; text-align:right; } .pool-row .pool-payout { min-width:54px; text-align:right; font-weight:700; }
 .pool-chip { display:inline-grid; place-items:center; width:14px; height:14px; margin-left:4px; border-radius:50%; font:900 9px var(--round); background:var(--lime); color:var(--bg); vertical-align:middle; }
+
+/* Support Brokie: pure donations card (web only) */
+.donate-card { display:grid; gap:14px; padding:16px 18px; border-radius:18px; background:linear-gradient(135deg, rgba(214,254,89,.10), rgba(214,254,89,.03)); border:1px solid rgba(214,254,89,.28); }
+.donate-head { display:flex; align-items:center; gap:14px; }
+.donate-heart { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font:900 18px var(--round); background:var(--lime); color:var(--bg); flex:none; }
+.donate-text { display:grid; gap:3px; min-width:0; } .donate-text b { font-size:14px; } .donate-text small { font-size:11px; color:var(--muted); }
+.donate-seg { margin:0; }
+.donate-body { display:flex; gap:14px; align-items:center; }
+.donate-qr { width:112px; height:112px; flex:none; border-radius:12px; overflow:hidden; background:#fff; box-shadow:0 0 0 1px rgba(214,254,89,.35), 0 8px 24px rgba(0,0,0,.35); }
+.donate-qr svg { display:block; width:100%; height:100%; }
+.donate-side { display:grid; gap:8px; min-width:0; flex:1; }
+.donate-address { font-size:13px; font-weight:600; color:#fff; padding:9px 10px; border-radius:10px; background:var(--bg); border:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:all; }
+.donate-copy { font:800 10px var(--mono); letter-spacing:1px; text-transform:uppercase; color:var(--bg); background:var(--lime); padding:10px 12px; border-radius:99px; transition:transform .12s ease, background .2s ease; }
+.donate-copy:active { transform:scale(.96); } .donate-copy.done { background:#fff; }
+.donate-note { font-size:10px; color:var(--muted); }
+.donate-fine { font-size:10px; color:var(--muted); text-align:center; }

@@ -10,6 +10,7 @@ import { drawTradeImage, receiptURL } from "./TradeImage";
 import { MARKETS, SharedReceipt, Trade, pnlOf } from "./types";
 import { RankCard } from "./rank";
 import { PoolCard } from "./Pool";
+import { DonateCard } from "./DonateCard";
 
 export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; onFeedback: () => void }) {
   const st = useGame();
@@ -52,6 +53,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </div></details>
       </section>
       <PoolCard />
+      <DonateCard />
       <RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} />
 
       </> : <LifetimeCard />}
