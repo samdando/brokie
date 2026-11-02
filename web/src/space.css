@@ -154,3 +154,29 @@
 .quote-sub .candle-read small { font-size:7px; }
 .quote-sub .candle-read b { font-size:10px; white-space:nowrap; }
 .trade-screen .quote-heading .chart-actions { align-self:center; }
+
+/* TradingView-style trade buttons, OHLC header, landscape fullscreen */
+.spam-btn.long, .trade-screen .trade-dock .spam-btn.long { background:#089981 !important; color:#fff !important; box-shadow:none; }
+.spam-btn.short, .trade-screen .trade-dock .spam-btn.short { background:#F23645 !important; color:#fff !important; box-shadow:none; }
+.spam-btn .spam-label { color:#fff; }
+.spam-price { font-size:12px; font-weight:600; color:rgba(255,255,255,.85); }
+.quote-heading { position:relative; }
+.tv-ohlc { display:flex; flex-wrap:nowrap; overflow:hidden; white-space:nowrap; gap:5px; font-size:10px; line-height:14px; color:#B2B5BE; margin:-4px 0 0; padding:0 2px; }
+.tv-ohlc b { color:#D1D4DC; font-weight:700; }
+.tv-ohlc i { font-style:normal; } .tv-ohlc i.up { color:#089981; } .tv-ohlc i.dn { color:#F23645; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .chart-fullscreen .quote-heading { padding-top:4px; padding-bottom:4px; }
+  .chart-fullscreen .quote-sub, .chart-fullscreen .instrument-title { display:none; }
+}
+
+/* Compact order dock: chart gets the height */
+.trade-screen .trade-dock { gap:6px !important; padding:8px 14px 8px !important; }
+.trade-screen .dock-status { min-height:30px !important; }
+.trade-screen .dock-status .dock-pnl > b { font-size:20px !important; letter-spacing:-.5px; }
+.trade-screen .dock-status small { font-size:9px; }
+.trade-screen .trade-dock .execution-options, .trade-screen .quantity-selector { height:34px !important; }
+.trade-screen .quantity-selector button { min-height:26px !important; width:38px; font-size:12px; }
+.trade-screen .spam-pad { gap:8px; margin-top:0; }
+.trade-screen .trade-dock .spam-btn { height:48px !important; min-height:48px !important; border-radius:10px; }
+.trade-screen .trade-dock .spam-label { font-size:15px; }
+.trade-screen .trade-dock .spam-price { font-size:11px; }

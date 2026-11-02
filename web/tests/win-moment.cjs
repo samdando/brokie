@@ -58,7 +58,7 @@ const checks=await page.locator('[data-testid="indicator-settings"] input[type="
 assert.deepEqual(checks.filter(Boolean).length,1,'only the EMA is on for a beginner');
 await page.getByRole('button',{name:'Done',exact:true}).click();
 assert.equal(await page.evaluate(async()=>{const m=await import('/src/indicators.ts');const g=window.testGame,me=g.state.me;
- g.set({me:{...me,trades:Array.from({length:12},(_,i)=>({...me.trades[0],id:'v'+i}))}});const vet=m.readIndicators().structure;g.set({me});return vet;}),true,'10+ trades and nothing saved: normal defaults');
+ g.set({me:{...me,trades:Array.from({length:12},(_,i)=>({...me.trades[0],id:'v'+i}))}});const vet=m.readIndicators().structure;g.set({me});return vet;}),false,'10+ trades and nothing saved: EMA-only defaults');
 
 // Hold top → BUY 10, slide down: the label prices the risk and the win in dollars (1:1 by default).
 const chart=await page.getByTestId('arcade-chart').boundingBox();

@@ -1,10 +1,10 @@
 import type { Candle } from "./types";
 
 export interface IndicatorOptions { ema: boolean; bands: boolean; structure: boolean; gaps: boolean; patterns: boolean }
-export const DEFAULT_INDICATORS: IndicatorOptions = { ema: true, bands: false, structure: true, gaps: true, patterns: true };
+export const DEFAULT_INDICATORS: IndicatorOptions = { ema: true, bands: false, structure: false, gaps: false, patterns: false };
 /** What a brand-new player sees: candles and the EMA, no structure/gap/pattern labels before their first trades. */
 export const CLEAN_INDICATORS: IndicatorOptions = { ema: true, bands: false, structure: false, gaps: false, patterns: false };
-export const INDICATOR_KEY = "brokie.indicators.v1";
+export const INDICATOR_KEY = "brokie.indicators.v2";
 /** True once the player has picked indicators themselves (a preset or a toggle). */
 export function hasSavedIndicators() { try { return localStorage.getItem(INDICATOR_KEY) != null; } catch { return true; } }
 let beginner: (() => boolean) | null = null;

@@ -27,7 +27,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   const lastFuture = useRef<Market>("nas");
   const lastCrypto = useRef<Market>("btc");
   if (crypto) lastCrypto.current = st.market; else if (st.market !== "prediction") lastFuture.current = st.market;
-  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { return localStorage.getItem("brokie.layout.v2") === "focus" ? "focus" : "classic"; } catch { return "classic"; } });
+  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { localStorage.removeItem("brokie.layout.v2"); } catch { /* */ } return "classic"; }); // Full chart layout retired: everyone gets classic.
   const pickLayout = (next: "focus" | "classic") => { setLayout(next); try { localStorage.setItem("brokie.layout.v2", next); } catch { /* */ } };
   const [accountOpen, setAccountOpen] = useState(false);
   const [settled, setSettled] = useState<{ pnl: number; title: string } | null>(null);
@@ -209,7 +209,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
         crowd={crowd} onCrowd={toggleCrowd} showHistory={showHistory} onHistory={toggleHistory} /> : <>
       <div className="floor-toolbar">
         <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
-        <button type="button" className="market-section-switch" onClick={()=>pickLayout("focus")} data-testid="focus-layout">Full chart<span aria-hidden="true">⤢</span></button><button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
+        <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
       </div>
       {rules?.status === "blown" && <button className="account-restriction" onClick={()=>setAccountOpen(true)} data-testid="season-restriction"><b>Season max-loss limit reached</b><span>{rules.resets_used === 0 ? "Free restart available ↗" : "View account status ↗"}</span></button>}
       <div className="market-stage" data-testid="markets-section" data-section={crypto ? "crypto" : "futures"}>
@@ -239,6 +239,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
             aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
           </div>
         </div>
+            {candles.length > 0 && (() => { const c = candles[candles.length - 1], d = digits(market); return <div className="tv-ohlc mono" data-testid="tv-ohlc"><b>{MARKETS[market].title}</b><span>· {frameLabel(st.candleSeconds)}</span><span>O <i className={c.close >= c.open ? "up" : "dn"}>{px(c.open, d)}</i></span><span>H <i className={c.close >= c.open ? "up" : "dn"}>{px(c.high, d)}</i></span><span>L <i className={c.close >= c.open ? "up" : "dn"}>{px(c.low, d)}</i></span><span>C <i className={c.close >= c.open ? "up" : "dn"}>{px(c.close, d)}</i></span></div>; })()}
         <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
         <BrokieChart fullscreen={big} height={big ? bigH : previewH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
@@ -540,6 +541,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     window.addEventListener("blur", off);
     return () => { document.removeEventListener("visibilitychange", off); window.removeEventListener("blur", off); };
   }, []);
+  const livePx = game.quote(game.state.market)?.price ?? null;
   const btn = (side: Side) => {
     const label = side === "long" ? "BUY" : "SELL";
     return (
@@ -550,13 +552,14 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
         onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
         data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{label}</span>
+        <span className="spam-price mono" data-testid={side === "long" ? "buy-price" : "sell-price"}>{livePx ? px(livePx, digits(game.state.market)) : "—"}</span>
       </button>
     );
   };
   return <div className="spam-pad" data-testid="spam-pad">{btn("long")}{btn("short")}</div>;
 }
 
-/** Drag a position sideways and release past 40% to close. Cancellation never closes. */
+/** Drag a position sideways and release past ~100px to close. Cancellation never closes. */
 function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProtection }:
   { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean>; protection?: { sl?: number; tp?: number }; onProtection: () => void }) {
   const [dx, setDx] = useState(0);
@@ -574,7 +577,7 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
       if (locked === null && Math.hypot(ddx, ddy) > 8) locked = Math.abs(ddx) > Math.abs(ddy);
       if (!locked) return;
       setPhase("drag"); setDx(ddx); lastDx = ddx;
-      const over = Math.abs(ddx) > w() * 0.4;
+      const over = Math.abs(ddx) > Math.min(100, w() * 0.4);
       if (over !== armed.current) { armed.current = over; if (over) buzz(22); }
     };
     const up = async () => {
@@ -595,7 +598,7 @@ function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProt
     };
     el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
   }
-  const over = Math.abs(dx) > w() * 0.4;
+  const over = Math.abs(dx) > Math.min(100, w() * 0.4);
   const tint = phase === "drag" && over ? (win ? "tint-win" : "tint-loss") : "";
   return (
     <div className={`swipe-wrap ${phase === "gone" ? "collapse" : ""}`} data-testid="position">
