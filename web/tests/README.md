@@ -1,3 +1,13 @@
+# Clubhouse verification
+
+Run `PLAYWRIGHT_MODULE=/path/to/playwright node web/tests/clubhouse.cjs` from the repository root against an isolated local Vite server on port 5179 (or set `BASE_URL`). Start it from `web` with `VITE_SUPABASE_URL='' VITE_SUPABASE_ANON_KEY='' npm run dev -- --host 127.0.0.1 --port 5179`. The fixture uses synthetic accounts, blocks external requests and never sends live orders or messages.
+
+This is the current browser regression for the approved Clubhouse design. It covers three destinations (Trade, The floor, You), inline order controls, direct main/fullscreen closes, pending/refused/negative results, duplicate-tap protection, stop/target access, seven-market squad activity, own closed receipts after navigation, explicit Chat sends, leaderboard access and account settings without hedging. It also checks saved hedge preferences, queued opposite orders after a new fill, queued market changes and partially completed stack closes. Main/fullscreen screenshots at 320/393/430px and floor/receipt screenshots are saved as `/tmp/brokie-clubhouse-*.png`.
+
+`node web/tests/fills.cjs`, `bracket-sync.cjs`, `protection.cjs` and `api-timeout.cjs` remain applicable. `npm test` from `backend/tests` includes `no-hedging.mjs`, covering the server guard, same-direction additions, partials, retained brackets, separate markets, reversal after flattening, exact receipts, reruns and restricted access. Apply `backend/no_hedging.sql` to enforce the rule across clients.
+
+The older `simple-floor.cjs`, `screen-cleanup.cjs` and page navigation scripts below describe retired layouts and are retained as historical scenarios. Their four/five-tab, embedded trade tape and fixed-dock assertions are replaced by `clubhouse.cjs`.
+
 # Trading floor verification
 
 6 November risk/receipt cleanup: `node tests/fills.cjs` checks same-event leg grouping without merging different players, directions, prices, exits or instrument identities. `node tests/screen-cleanup.cjs` reproduces the supplied NAS/DLL screens with a synthetic account, verifying grouped totals and individual reviews, no oversized flat card, a compact dock at 320/393/430px, fullscreen safe areas, and no empty recap. Screenshots use `/tmp/brokie-cleanup-*.png`. `simple-floor.cjs` now also checks the absence of a daily meter when the server disables DLL and preserves access to all 200 grouped fills.

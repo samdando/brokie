@@ -40,16 +40,12 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
         <button className="profile-settings" aria-label="Account settings" onClick={() => setSettings(true)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 3-.7 2.5-2.4 1L3.7 6 2 9l1.9 1.8v2.4L2 15l1.7 3 2.2-.5 2.4 1L9 21h6l.7-2.5 2.4-1 2.2.5 1.7-3-1.9-1.8v-2.4L22 9l-1.7-3-2.2.5-2.4-1L15 3Z"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>
 
-      <div className="seg" role="tablist" aria-label="Performance period"><button role="tab" aria-selected={period === "season"} className={period === "season" ? "on" : ""} onClick={() => setPeriod("season")}>This season</button><button role="tab" aria-selected={period === "lifetime"} className={period === "lifetime" ? "on" : ""} onClick={() => setPeriod("lifetime")}>Lifetime</button></div>
+      <h1 className="club-page-title">Your run.</h1>
+      <div className="seg club-period" role="tablist" aria-label="Performance period"><button role="tab" aria-selected={period === "season"} className={period === "season" ? "on" : ""} onClick={() => setPeriod("season")}>This season</button><button role="tab" aria-selected={period === "lifetime"} className={period === "lifetime" ? "on" : ""} onClick={() => setPeriod("lifetime")}>Lifetime</button></div>
       {period === "season" ? <>
-      <section className="you-card season-card">
-        <div className="season-score"><div className="row between"><Eyebrow>Season {me.season_number ?? ""} · total return</Eyebrow><span className="profile-season-end">{countdown(me.season_ends_at, game.now())} left</span></div><strong className={me.cash + unrealized >= base ? "lime" : "red"}>{((me.cash + unrealized - base) / base * 100) >= 0 ? "+" : ""}{((me.cash + unrealized - base) / base * 100).toFixed(2)}%</strong><div className={`season-score-money ${me.cash + unrealized >= base ? "lime" : "red"}`}>{signedMoney(me.cash + unrealized - base)}</div><span className="muted">{money(me.cash + unrealized)} paper equity</span></div>
-        <div className="profile-stats">
-          {[["Trades", "last 50", String(me.trades.length)], ["Win rate", "last 50", me.trades.length ? `${Math.round((wins / me.trades.length) * 100)}%` : "—"], ["Realized", "season", signedMoney(me.cash - base)]].map(([k, sub, v]) => (
-            <div key={k} className={`profile-stat ${k === "Realized" ? me.cash >= base ? "lime" : "red" : ""}`}><span>{k}<small>{sub}</small></span><b>{v}</b></div>
-          ))}
-        </div>
-        <details className="quiet-disclosure balance-disclosure"><summary><span>Account breakdown</span><small>Cash &amp; open P&amp;L <span aria-hidden="true">⌄</span></small></summary><div className="stack season-balance" style={{ gap: 14 }}>
+      <section className="you-card season-card club-account-hero">
+        <div className="season-score"><Eyebrow>Paper equity · Season {me.season_number ?? ""}</Eyebrow><strong>{money(me.cash + unrealized)}</strong><div className="club-return"><b className={me.cash + unrealized >= base ? "lime" : "red"}>{signedMoney(me.cash + unrealized - base)}</b><span>{((me.cash + unrealized - base) / base * 100) >= 0 ? "+" : ""}{((me.cash + unrealized - base) / base * 100).toFixed(2)}% this season</span></div></div>
+        <details className="quiet-disclosure balance-disclosure"><summary><span>Account breakdown</span><small>Cash &amp; open P&amp;L <span aria-hidden="true">⌄</span></small></summary><div className="stack season-balance" style={{ gap: 14 }}><div className="club-account-stats"><span>{me.trades.length} recent fills</span><span>{me.trades.length ? Math.round(wins / me.trades.length * 100) : 0}% win rate · latest 50</span><span>{countdown(me.season_ends_at,game.now())} left</span></div>
         <div className="detail"><span>Paper cash</span><span>{money(me.cash)}</span></div>
         <div className="detail"><span>Open P&amp;L (unrealized)</span><span className={unrealized >= 0 ? "lime" : "red"}>{signedMoney(unrealized)}</span></div>
         <div className="muted" style={{ fontSize: 10 }}>Season totals include all closed trades and open positions. Trade count and win rate cover your latest 50 closed trades.</div>
@@ -59,15 +55,15 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <PoolCard />
 
       </> : <LifetimeCard />}
-      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><OrderEffectsSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
+      <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OrderEffectsSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
       <Sheet open={look} onClose={() => setLook(false)}><div className="stack"><div className="row between"><Eyebrow>Your look</Eyebrow><button className="text-action" onClick={() => setLook(false)}>Done</button></div><AvatarShop toast={toast} /></div></Sheet>
-      <DailyRecap />
       <div id="receipts" className="stack you-receipts" style={{ gap: 12 }}>
-        <div className="row between"><h2 className="h2">Your trades</h2><span className="section-caption">Latest 50 · tap to review</span></div>
+        <div className="row between"><h2 className="h2">Receipts.</h2><span className="section-caption">Every entry. Every exit.</span></div>
         {me.trades.length === 0 && <div className="quiet-empty"><span aria-hidden="true">↗</span><b>No closed trades yet.</b><p>Your entries and exits will appear here.</p></div>}
         {(allReceipts ? receipts : receipts.slice(0,6)).map(group => <FillRow key={group.key} group={group} quote={null} showMarket testId="receipt" onReview={id => setCard(me.trades.find(t => t.id === id) ?? null)} />)}
         {receipts.length > 6 && <button className="quiet-action receipts-more" onClick={() => setAllReceipts(!allReceipts)}>{allReceipts ? "Show fewer trades" : `View all ${me.trades.length} fills`}</button>}
       </div>
+      <details className="quiet-disclosure"><summary><span>Today’s recap</span><small>Session results ⌄</small></summary><DailyRecap /></details>
       {period === "season" && <details className="quiet-disclosure profile-rank-disclosure"><summary><span>Season rank</span><small>View progress ⌄</small></summary><RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} /></details>}
       <button className="profile-customize" onClick={() => setLook(true)}><Avatar handle={me.handle} /><span><b>Make it yours</b><small>Your face on the trading floor.</small></span><span aria-hidden="true">↗</span></button>
 
@@ -233,23 +229,6 @@ function FramesSetting() {
             disabled={on && st.frames.length === 1} onClick={() => game.toggleFrame(f.s)}>{f.l}</button>;
         })}
       </div>
-    </div>
-  );
-}
-
-/** Tapping SELL while long (or BUY while short): take micros off (default) or open a hedge (opt-in). */
-function OppositeSetting() {
-  const mode = useGame().opposite;
-  return (
-    <div className="stack" style={{ gap: 8 }} data-testid="opposite-setting">
-      <div><b style={{ fontSize: 13 }}>Tapping the other button</b>
-        <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>When you're long and tap SELL (or short and tap BUY).</div></div>
-      <div className="seg" role="radiogroup" aria-label="Tapping the other button">
-        {([["partial", "Take partials"], ["hedge", "Open a hedge"]] as const).map(([v, label]) => (
-          <button key={v} type="button" role="radio" aria-checked={mode === v} className={`seg-btn ${mode === v ? "on" : ""}`} onClick={() => game.setOpposite(v)}>{label}</button>
-        ))}
-      </div>
-      <div className="muted" style={{ fontSize: 11 }}>{mode === "partial" ? "Each tap reduces the opposite position by your selected size, newest first. Your SL/TP stays on what's left." : "Each tap opens your selected size the other way, so you're long and short at once."}</div>
     </div>
   );
 }

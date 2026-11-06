@@ -1,0 +1,219 @@
+/* Clubhouse: one-tap trading, the social floor, and a personal receipt book. */
+body:has(.clubhouse-root) { --bg:#121611; --panel:#1d231b; --line:#343c2f; --muted:#a4ad9d; --lime:#b8e7a0; --red:#ff9a8c; --terminal-accent:#ff9675; --club-font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; --club-paper:#f1eedc; --club-ink:#22291d; --club-paper-muted:#737766; background:var(--bg); color:#f2f1e5; }
+body:has(.clubhouse-you) { --bg:#f1eedc; --panel:#fffef4; --line:#d9d9c8; --muted:#737766; --lime:#31734c; --red:#ac4a42; color:#22291d; color-scheme:light; }
+.clubhouse-root { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:14px; line-height:1.4; min-height:100dvh; }
+.clubhouse-root .app { max-width:480px; padding:calc(8px + var(--safe-t)) 22px calc(104px + var(--safe-b)); }
+.clubhouse-root .app .header { height:60px; min-height:60px; margin:0; align-items:center; }
+.clubhouse-root .wordmark { font:850 28px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-style:normal; letter-spacing:-1.8px; }
+.clubhouse-root .wordmark i { background:#ff9675; width:5px; height:5px; margin-bottom:2px; }
+.club-balance { display:flex; flex-direction:column; gap:2px; text-align:right; margin-left:auto; min-height:44px; justify-content:center; }
+.club-balance span { color:var(--muted); text-transform:uppercase; letter-spacing:.7px; font-size:10px; }
+.club-balance b { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+.clubhouse-root .mono { font-family:inherit; font-variant-numeric:tabular-nums; }
+.clubhouse-root .tabs { background:var(--bg); border-top:1px solid var(--line); padding:8px 18px calc(8px + var(--safe-b)); height:calc(66px + var(--safe-b)); backdrop-filter:none; }
+.clubhouse-root .tabs-inner { max-width:436px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; height:44px; }
+.clubhouse-root .tab { flex-direction:row; position:relative; width:100%; min-height:44px; height:44px; gap:7px; border-radius:99px; font:500 12px/1.2 var(--club-font); color:var(--muted); }
+.clubhouse-root .tab.on { background:#f1eedc; color:#22291d; font-weight:650; }
+.clubhouse-you .tab.on { background:#22291d; color:#f1eedc; }
+.clubhouse-root .tab.on::before { display:none; }
+.clubhouse-root .tab svg { width:18px; height:18px; stroke-width:1.7; }
+.club-unread { position:absolute; top:1px; right:8px; min-width:16px; height:16px; padding:2px; border-radius:50%; background:#ff9675; color:#292015; font:600 9px/12px var(--club-font); }
+.clubhouse-root .simple-trade-screen { gap:0; padding-bottom:0; }
+.clubhouse-root .simple-trade-screen .club-market-mode { min-height:26px; margin-bottom:8px; padding:0; }
+.clubhouse-root .account-disclosure { border:0; padding:0; min-height:28px; font:400 11px/1.2 var(--club-font); color:var(--muted); }
+.clubhouse-root .account-disclosure .account-status-dot,.clubhouse-root .account-disclosure b,.clubhouse-root .account-disclosure >span:last-child { display:none; }
+.clubhouse-root .market-section-switch { font:500 11px/1.3 var(--club-font); min-height:28px; color:var(--muted); padding:0; }
+.clubhouse-root .simple-trade-screen .market-stage { gap:0; }
+.clubhouse-root .simple-trade-screen .markets { display:flex; flex-wrap:wrap; gap:7px; border:0; padding:0; margin:0 0 18px; }
+.clubhouse-root .simple-trade-screen .markets .market { flex:none; width:auto; min-width:0; height:auto; min-height:39px; padding:9px 14px; background:#1d231b; border:0; border-radius:99px; text-align:center; }
+.clubhouse-root .simple-trade-screen .markets .market b { font:500 12px/1.3 var(--club-font); color:#a4ad9d; }
+.clubhouse-root .simple-trade-screen .markets .market.on { background:#f1eedc; }
+.clubhouse-root .simple-trade-screen .markets .market.on b { color:#22291d; font-weight:650; }
+.clubhouse-root .simple-price-card { background:none; border:0; padding:0; gap:0; }
+.clubhouse-root .simple-price-card .quote-heading { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0; padding:8px 0 23px; margin:0; }
+.clubhouse-root .simple-price-card .quote-block { display:flex; flex-direction:column; align-items:center; gap:0; flex:none; width:100%; }
+.clubhouse-root .simple-price-card .instrument-title { display:flex; align-items:center; justify-content:center; gap:6px; font:550 14px/1.4 var(--club-font); color:#f2f1e5; }
+.clubhouse-root .simple-price-card .instrument-title .badge { background:none; padding:0; font-size:8px; letter-spacing:.3px; }
+.clubhouse-root .simple-price-card .quote { font:650 clamp(43px,12vw,55px)/1.15 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; letter-spacing:-3px; color:#f2f1e5; margin:8px 0 6px; }
+.club-price-decimal { font-size:.58em; color:#a4ad9d; letter-spacing:-1px; }
+.club-price-caption { display:flex; gap:7px; align-items:center; font-size:11px; color:#a4ad9d; }
+.clubhouse-root .simple-price-card .chart-actions { margin-top:14px; align-self:center; display:flex; justify-content:center; }
+.clubhouse-root .simple-price-card .chart-info-btn { display:none; }
+.clubhouse-root .simple-price-card .chart-corner-toggle { display:flex; align-items:center; gap:6px; border-radius:99px; min-height:36px; height:auto; width:auto; padding:7px 12px; border:1px solid #343c2f; color:#f2f1e5; font:400 11px/1.4 var(--club-font); background:none; }
+.clubhouse-root .simple-price-card .chart-corner-toggle svg { width:14px; height:14px; }
+.club-trade-flow { gap:0; }
+.clubhouse-root .price-positions { gap:12px; }
+.clubhouse-root .club-position { position:relative; display:flex; flex-direction:column; gap:0; width:100%; border:0; border-radius:26px; padding:18px; background:#f1eedc; color:#22291d; margin-bottom:18px; }
+.club-position-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; }
+.club-position-head b { font-weight:650; }
+.club-position-head b span { margin-left:4px; }
+.club-position-head small { font-size:10px; font-weight:600; letter-spacing:.4px; }
+.club-position-result { font-size:32px; font-weight:650; line-height:1.1; letter-spacing:-1.4px; margin-top:15px; font-variant-numeric:tabular-nums; }
+.club-position-result.loss { color:#ac4a42; }
+.clubhouse-root .club-position .price-relation { color:#737766; font-size:11px; margin-top:5px; }
+.clubhouse-root .club-position .entry-comparison { display:grid; grid-template-columns:auto minmax(30px,1fr) auto; gap:12px; width:100%; align-items:center; margin-top:18px; }
+.clubhouse-root .club-position .entry-comparison span { display:flex; flex-direction:column; gap:3px; }
+.clubhouse-root .club-position .entry-comparison span:last-child { text-align:right; }
+.clubhouse-root .club-position .entry-comparison small { font:400 10px/1.4 var(--club-font); color:#737766; }
+.clubhouse-root .club-position .entry-comparison b { font:600 13px/1.4 var(--club-font); color:#22291d; font-variant-numeric:tabular-nums; }
+.clubhouse-root .club-position .entry-comparison svg { width:100%; height:16px; color:#536a45; }
+.club-position-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px; }
+.club-position-actions button { background:#d9ddc7; color:#22291d; border:0; border-radius:12px; min-height:42px; padding:10px 8px; font-size:12px; font-weight:600; }
+.club-position-actions button:last-child { background:#22291d; color:#f1eedc; }
+.club-position-actions button:disabled { opacity:.55; }
+.clubhouse-root .flat-price { display:flex; align-items:center; justify-content:center; gap:7px; background:none; border:0; border-radius:0; padding:6px 0 21px; margin:0; min-height:0; font-size:11px; color:#a4ad9d; }
+.clubhouse-root .flat-price>span:first-child { font-size:17px; }
+.clubhouse-root .simple-trade-screen .club-order-pad { display:flex; flex-direction:column; align-items:stretch; position:static; transform:none; margin:0 0 25px; width:100%; max-width:none; min-height:0; border:0; border-radius:26px; box-shadow:none; background:#1d231b; padding:14px!important; gap:12px!important; }
+.clubhouse-root .club-order-pad .dock-close-surface { display:none; }
+.clubhouse-root .club-order-pad .execution-options { padding:0; width:100%; height:auto!important; display:flex; margin:0!important; }
+.clubhouse-root .club-order-pad .quantity-selector { width:100%; height:auto!important; border:0; background:none; border-radius:0; display:flex; justify-content:flex-end; gap:4px; }
+.clubhouse-root .club-order-pad .quantity-selector>span { flex:1; margin-right:auto; padding:0; color:#a4ad9d; font:400 11px/1.3 var(--club-font); }
+.clubhouse-root .club-order-pad .quantity-selector button { width:auto; min-width:39px; min-height:34px!important; height:auto; padding:6px 10px; border-radius:9px; font:400 12px/1.3 var(--club-font); color:#a4ad9d; background:none; }
+.clubhouse-root .club-order-pad .quantity-selector button[aria-pressed=true] { background:#f1eedc; color:#22291d; font-weight:650; }
+.clubhouse-root .simple-trade-screen .trade-dock .spam-pad { display:grid; grid-template-columns:1fr 1fr; width:100%; gap:9px; margin:0; }
+.clubhouse-root .simple-trade-screen .trade-dock .spam-btn { width:100%; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:8px; min-height:53px!important; height:53px!important; padding:10px!important; border:0; border-radius:15px; }
+.clubhouse-root .simple-trade-screen .trade-dock .spam-btn.long { background:#c1e7a8!important; color:#23321e!important; }
+.clubhouse-root .simple-trade-screen .trade-dock .spam-btn.short { background:#ff9675!important; color:#2c231b!important; }
+.clubhouse-root .simple-trade-screen .trade-dock .spam-label { font:650 15px/1.3 var(--club-font); letter-spacing:0; color:inherit; }
+.spam-arrow { font-size:20px; font-weight:400; }
+.club-section-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+.club-section-heading h2 { font-size:20px; font-weight:600; letter-spacing:-.6px; margin:0; }
+.club-section-heading button { display:flex; align-items:center; gap:4px; font-size:11px; color:#a4ad9d; padding:8px 0 8px 8px; min-height:36px; }
+.club-activity-line { display:flex; width:100%; align-items:center; gap:10px; text-align:left; margin:0 0 13px; padding:0; min-height:44px; }
+.club-activity-line>.av { width:34px; height:34px; font-size:19px; flex-shrink:0; }
+.club-activity-line>span:not(.av) { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }
+.club-activity-line b { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.club-activity-line small { font-size:11px; color:#a4ad9d; }
+.club-activity-line>strong { font-size:12px; font-weight:550; white-space:nowrap; }
+.club-empty-preview { display:flex; width:100%; align-items:center; justify-content:space-between; padding:12px 0; min-height:44px; font-size:12px; color:#a4ad9d; }
+.clubhouse-root .trade-success { position:relative; inset:auto; margin:0 0 12px; border-radius:16px; color:#22291d; background:#f1eedc; padding:14px 17px; display:flex; justify-content:space-between; gap:8px; font-size:12px; box-shadow:none; pointer-events:none; }
+.clubhouse-root .trade-success b { color:#31734c; font-size:18px; }
+.clubhouse-root .trade-success.loss b { color:#ac4a42; }
+.clubhouse-root .simple-trade-screen .chart-fullscreen { background:#111611; color:#e8ede2; padding:calc(12px + var(--safe-t)) 15px calc(12px + var(--safe-b)); gap:10px; border:0; border-radius:0; }
+.clubhouse-root .chart-fullscreen .quote-heading { min-height:0; padding:0; }
+.clubhouse-root .chart-fullscreen .quote { font:550 27px/1.1 var(--club-font); letter-spacing:-.9px; }
+.clubhouse-root .chart-fullscreen .instrument-title { font:400 11px/1.4 var(--club-font); color:#a3ae9d; }
+.clubhouse-root .chart-fullscreen .quote-sub { font:400 10px/1.2 var(--club-font); }
+.clubhouse-root .chart-fullscreen>.floor-presence { display:none; }
+.clubhouse-root .chart-fullscreen .chart-actions { gap:5px; }
+.clubhouse-root .chart-fullscreen .chart-utility,.clubhouse-root .chart-fullscreen .chart-corner-toggle { background:#232d20; border:0; border-radius:50%; width:36px; min-width:36px; height:36px; color:#dfe8d7; }
+.clubhouse-root .simple-trade-screen .chart-fullscreen .club-chart-dock { display:flex; flex-direction:column; position:static; transform:none; width:100%; max-width:none; background:none; border:0; border-top:1px solid #303a2b; border-radius:0; margin:0; padding:9px 0 0!important; gap:8px!important; }
+.clubhouse-root .club-chart-dock .dock-close-surface { display:flex; align-items:center; gap:8px; }
+.clubhouse-root .club-chart-dock .dock-status { min-height:28px!important; }
+.clubhouse-root .club-chart-dock .close-trade-btn { min-height:36px; background:#f1eedc; border:0; border-radius:12px; color:#22291d; }
+.clubhouse-root .club-chart-dock .execution-options { justify-content:flex-start; gap:7px; }
+.clubhouse-root .club-chart-dock .quantity-selector { margin-left:auto; border-color:#394332; }
+.clubhouse-root .club-chart-dock .quantity-selector button[aria-pressed=true] { background:#f1eedc; color:#22291d; }
+.clubhouse-root .club-chart-dock .spam-btn { min-height:44px!important; height:44px!important; }
+.clubhouse-root .indicator-legend { border-color:#303a2b; font-family:inherit; }
+.clubhouse-root .chart-all-trades { background:#232d20; border:1px solid #394332; color:#e1ebd7; }
+.clubhouse-root .club-page-title { font-size:36px; font-weight:600; letter-spacing:-1.7px; line-height:1.1; margin:15px 0 9px; }
+.club-page-sub { font-size:12px; color:var(--muted); margin:0 0 22px; line-height:1.5; }
+.club-floor-title { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.club-round-control { width:38px; height:38px; border-radius:50%; background:var(--panel); color:var(--muted); font-size:22px; }
+.club-squad-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:20px; }
+.club-faces { display:flex; padding-left:0; }
+.club-faces .av { width:34px; height:34px; font-size:18px; border:2px solid var(--bg)!important; }
+.club-faces .av+.av { margin-left:-8px; }
+.club-squad-row>span { font-size:11px; color:var(--muted); }
+.club-local-tabs { display:flex; gap:20px; border-bottom:1px solid var(--line); margin:0 0 21px; }
+.club-local-tabs button { position:relative; min-height:44px; font:400 12px/1.3 var(--club-font); color:var(--muted); }
+.club-local-tabs button[aria-selected=true] { color:inherit; font-weight:650; }
+.club-local-tabs button[aria-selected=true]::after { content:""; position:absolute; bottom:-1px; left:0; right:0; height:3px; background:#ff9675; border-radius:2px; }
+.club-local-tabs i { display:inline-block; margin-left:5px; background:#ff9675; color:#292015; border-radius:99px; font-style:normal; font-size:9px; padding:2px 5px; }
+.club-squad-picker { margin:0 0 12px; gap:7px; }
+.club-squad-picker button { background:var(--panel); border-radius:99px; padding:8px 12px; font-size:11px; }
+.club-squad-picker button[aria-pressed=true] { background:#f1eedc; color:#22291d; }
+.clubhouse-root .club-play { padding:0 0 22px; margin:0 0 20px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:none; }
+.clubhouse-root .fill-heading { display:flex; align-items:center; gap:10px; margin:0 0 13px; }
+.clubhouse-root .fill-heading>.av { width:34px; height:34px; font-size:18px; flex-shrink:0; }
+.clubhouse-root .fill-identity { flex:1; gap:3px; min-width:0; }
+.clubhouse-root .fill-identity>b { font-size:13px; font-weight:600; }
+.clubhouse-root .fill-identity .player-link { padding:0; min-height:0; min-width:0; font:600 13px/1.4 var(--club-font); text-decoration:none; }
+.clubhouse-root .fill-identity>span { display:block; font-size:11px; color:var(--muted); }
+.club-fill-state { font-size:10px; padding:5px 8px; background:var(--panel); color:var(--muted); border-radius:99px; flex-shrink:0; }
+.club-fill-ticket { padding:17px; background:var(--panel); border-radius:18px; }
+.club-fill-result { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.club-fill-result strong { font:600 27px/1.2 var(--club-font); letter-spacing:-1px; }
+.club-fill-result small { font-size:10px; color:var(--muted); flex-shrink:0; }
+.clubhouse-root .fill-prices { display:grid; grid-template-columns:auto minmax(35px,1fr) auto; gap:12px; align-items:center; margin-top:15px; padding:0; }
+.clubhouse-root .fill-prices>span { display:flex; flex-direction:column; gap:4px; }
+.clubhouse-root .fill-prices small { font-size:10px; color:var(--muted); }
+.clubhouse-root .fill-prices b { font:550 12px/1.4 var(--club-font); color:inherit; letter-spacing:-.2px; }
+.clubhouse-root .fill-prices svg { width:100%; height:33px; min-width:0; opacity:1; }
+.clubhouse-root .fill-footer { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:11px; font-size:10px; color:var(--muted); }
+.clubhouse-root .fill-footer>button { display:flex; align-items:center; gap:5px; padding:4px 0; margin:0; min-height:36px; color:inherit; text-decoration:underline; text-underline-offset:4px; font-size:11px; white-space:nowrap; }
+.clubhouse-root .fill-breakdown { border-color:var(--line); margin-top:12px; padding-top:6px; }
+.clubhouse-root .fill-breakdown>div { font-size:11px; gap:8px; padding:10px 0; }
+.clubhouse-root .fill-breakdown time,.clubhouse-root .fill-breakdown>small { font-size:10px; color:var(--muted); }
+.clubhouse-root .fill-breakdown button { font-size:11px; color:inherit; min-height:34px; text-decoration:underline; }
+.clubhouse-root .club-empty { padding:24px 0; color:var(--muted); }
+.clubhouse-root .club-empty b { font-size:17px; color:inherit; font-weight:550; }
+.clubhouse-root .club-empty p { font-size:12px; line-height:1.6; }
+.clubhouse-root .club-board .squad-screen>.page-heading,.clubhouse-root .club-squad-options .squad-screen>.page-heading { display:none; }
+.clubhouse-root .club-board .secondary-screen,.clubhouse-root .club-squad-options .secondary-screen { padding-top:0; }
+.clubhouse-root .club-board .panel,.clubhouse-root .club-squad-options .panel { background:var(--panel); box-shadow:none; border:0; border-radius:18px; }
+.clubhouse-root .club-chat .chat-room { background:none; border:0; border-radius:0; height:calc(100dvh - 330px - var(--safe-t) - var(--safe-b)); min-height:340px; display:flex; flex-direction:column; overflow:visible; }
+.clubhouse-root .club-chat .chat-heading { display:none; }
+.clubhouse-root .club-chat .chat-log { flex:1; min-height:0; max-height:none; padding:0 0 12px; }
+.clubhouse-root .club-chat .chat-composer { position:static; margin:0; padding:8px 0 0; border:0; background:var(--bg); width:100%; transform:none; }
+.clubhouse-root .club-chat .chat-composer form { background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:4px; }
+.clubhouse-root .club-chat .chat-composer .field { color:inherit; background:none; border:0; font-size:16px; }
+.clubhouse-root .club-chat .chat-send { background:#f1eedc; color:#22291d; border-radius:12px; }
+.clubhouse-root .club-chat .chat-bubble { background:var(--panel); color:inherit; border:0; box-shadow:none; border-radius:0 17px 17px 17px; }
+.clubhouse-you .app { color:#22291d; }
+.clubhouse-you .you-screen.secondary-screen.stack { gap:20px!important; padding-top:10px; }
+.clubhouse-you .you-identity { gap:9px!important; margin:0; padding:0; }
+.clubhouse-you .you-identity .profile-look .av { width:34px!important; height:34px!important; font-size:18px!important; }
+.clubhouse-you .you-identity [data-testid=edit-handle] { font:550 13px/1.4 var(--club-font)!important; color:#22291d; }
+.clubhouse-you .you-identity [data-testid=edit-handle]>span { display:none; }
+.clubhouse-you .profile-settings { width:38px; min-height:38px; background:none; color:#22291d; }
+.clubhouse-you .club-page-title { margin:-3px 0 -2px; }
+.clubhouse-you .club-period { background:none; border:0; padding:0; display:flex; gap:16px; min-height:32px; margin-top:-6px; }
+.clubhouse-you .club-period button { flex:none; border-radius:0; padding:5px 0; min-height:32px; color:#737766; font:400 11px/1.3 var(--club-font); }
+.clubhouse-you .club-period button.on { background:none; color:#22291d; border-bottom:2px solid #ff9675; }
+.clubhouse-you .club-account-hero { border:0; border-radius:0; padding:0; background:none; display:block; margin:0; }
+.clubhouse-you .club-account-hero .season-score { border:0; padding:0 0 15px; }
+.clubhouse-you .club-account-hero .eyebrow { font:400 11px/1.4 var(--club-font); text-transform:none; letter-spacing:0; color:#737766; }
+.clubhouse-you .club-account-hero .season-score>strong { display:block; color:#22291d; font:600 clamp(34px,10.5vw,45px)/1.15 var(--club-font); letter-spacing:-2.5px; margin:7px 0 10px; font-variant-numeric:tabular-nums; }
+.club-return { display:flex; flex-wrap:wrap; align-items:center; gap:5px 8px; font-size:13px; }
+.club-return b { font-weight:500; }
+.club-return>span { color:#737766; font-size:11px; }
+.clubhouse-you .balance-disclosure { border:0; }
+.clubhouse-you .balance-disclosure>summary { min-height:36px; font-size:11px; color:#737766; padding:0; }
+.clubhouse-you .balance-disclosure>summary>small { font-size:10px; }
+.clubhouse-you .club-account-stats { display:flex; flex-wrap:wrap; gap:8px 14px; font-size:11px; }
+.clubhouse-you .club-account-hero .season-balance { padding-top:10px; }
+.clubhouse-you .you-receipts { border-top:1px solid #d9d9c8; padding-top:20px; gap:0!important; }
+.clubhouse-you .you-receipts>.row:first-child { margin:0 0 16px; }
+.clubhouse-you .you-receipts .h2 { font:550 25px/1.2 var(--club-font); letter-spacing:-.8px; }
+.clubhouse-you .you-receipts .section-caption { color:#737766; font-size:11px; }
+.clubhouse-root .club-receipt { position:relative; padding:18px; margin:0 0 17px; background:#fffef4; color:#22291d; border:0; border-radius:3px 3px 14px 14px; box-shadow:0 5px 10px #24301106; }
+.club-receipt::before,.club-receipt::after { content:""; position:absolute; width:16px; height:16px; top:66px; border-radius:50%; background:#f1eedc; }
+.club-receipt::before { left:-8px; }.club-receipt::after { right:-8px; }
+.clubhouse-root .club-receipt .fill-heading { gap:8px; margin:0; }
+.clubhouse-root .club-receipt .fill-identity { display:flex; flex-direction:row; align-items:baseline; flex-wrap:wrap; gap:5px; }
+.clubhouse-root .club-receipt .fill-identity>b { font-size:12px; font-weight:550; }
+.clubhouse-root .club-receipt .fill-identity>span { font-size:11px; color:#22291d; }
+.clubhouse-root .club-receipt .club-fill-state { padding:0; border:0; background:none; color:#737766; font-size:10px; }
+.clubhouse-root .club-receipt .club-fill-ticket { background:none; padding:0; border-radius:0; }
+.clubhouse-root .club-receipt .club-fill-result { margin:9px 0 16px; }
+.clubhouse-root .club-receipt .club-fill-result strong { font:550 30px/1.2 var(--club-font); letter-spacing:-1.2px; }
+.clubhouse-root .club-receipt .fill-prices { border-top:1px dashed #cbcebc; padding-top:12px; margin:0; gap:10px; grid-template-columns:1fr 22px 1fr; }
+.clubhouse-root .club-receipt .fill-prices svg { height:18px; }
+.clubhouse-root .club-receipt .fill-prices small { color:#737766; }
+.clubhouse-root .club-receipt .fill-prices b { font-size:13px; color:#22291d; }
+.clubhouse-root .club-receipt .fill-footer { color:#737766; margin-top:14px; }
+.clubhouse-root .club-receipt .fill-footer button { color:#22291d; }
+.clubhouse-you .quiet-disclosure { border-color:#d9d9c8; }
+.clubhouse-you .quiet-disclosure>summary { min-height:44px; font-size:12px; }
+.clubhouse-you .profile-customize { background:#e6e8d8; border:0; border-radius:18px; padding:14px; color:#22291d; }
+.clubhouse-you .profile-customize b,.clubhouse-you .profile-customize small { color:inherit; }
+.clubhouse-you .you-quiet { border-color:#d9d9c8; }
+.clubhouse-you .you-quiet .settings-entry,.clubhouse-you .you-quiet .settings-entry span,.clubhouse-you .install-tip,.clubhouse-you .install-tip b { color:#737766!important; }
+body:has(.clubhouse-root) .sheet { background:var(--panel); color:inherit; border:1px solid var(--line); border-radius:26px 26px 0 0; }
+body:has(.clubhouse-you) .sheet { background:#fffef4; color:#22291d; }
+body:has(.clubhouse-root) .sheet .field,body:has(.clubhouse-root) .sheet input,body:has(.clubhouse-root) .sheet textarea { color:inherit; background:var(--bg); border-color:var(--line); font-size:16px; }
+body:has(.clubhouse-root) .toast { background:#f1eedc; color:#22291d; border:0; border-radius:14px; bottom:calc(78px + var(--safe-b)); font-family:inherit; font-size:12px; }
+@media(max-width:360px) { .clubhouse-root .app { padding-left:17px; padding-right:17px; }.clubhouse-root .simple-price-card .quote { font-size:43px; }.clubhouse-root .simple-trade-screen .markets .market { padding:8px 12px; }.clubhouse-root .club-page-title { font-size:32px; }.clubhouse-root .club-chart-dock .spam-btn { height:42px!important; min-height:42px!important; }.clubhouse-root .club-receipt { padding:15px; } }
+@media(prefers-reduced-motion:reduce) { .clubhouse-root * { scroll-behavior:auto; }.clubhouse-root .trade-success { animation:none; } }

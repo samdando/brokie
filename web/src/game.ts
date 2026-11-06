@@ -47,7 +47,7 @@ export interface GameState {
   bracketSaving: string | null;
   /** Spam taps waiting to be sent (ticket 15). */
   pending: { side: Side; count: number; reduce?: boolean } | null;
-  /** What tapping the opposite button does while you hold a position: open a hedge or take a partial. */
+  /** Legacy preference field; opposite taps always reduce existing size. */
   opposite: "hedge" | "partial";
 }
 export interface Bracket { sl?: number; tp?: number }
@@ -91,7 +91,6 @@ const readFrames = (): number[] => {
 };
 /** Starts on the highest timeframe you picked unless you were on another one last time. */
 const readFrame = (frames: number[]): number => { const v = Number(read(FRAME_KEY)); return frames.includes(v) ? v : frames[frames.length - 1]; };
-const OPPOSITE_KEY = "brokie.opposite";
 const SEEN_KEY = "brokie.seen";
 const SEASON_KEY = "brokie.lastSeason";
 export const QTY_CHOICES = [1, 5, 10];
@@ -108,7 +107,7 @@ export class Game {
     clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, bubbleError: null, lifetime: null, pool: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 10),
     brackets: {}, bracketSaving: null, pending: null,
-    opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
+    opposite: "partial",   // Opposite taps always reduce the existing position.
   };
   private seen = new Set<string>(((): string[] => { try { return JSON.parse(read(SEEN_KEY) ?? "[]"); } catch { return []; } })());
   private submitting = false;
@@ -300,17 +299,16 @@ export class Game {
 
   // ---- Ticket 15: spam BUY / SELL. Each tap counts instantly; taps are batched ~300ms after the
   // last one into a single open_position call (max 10 micros per order, server rule). The opposite
-  // side opens the other leg, i.e. a hedge, exactly like the existing Go long / Go short. ----
+  // side reduces the existing position; it never opens an opposing position. ----
   private tapTimer: number | null = null;
-  setOpposite(mode: "hedge" | "partial") { write(OPPOSITE_KEY, mode); this.set({ opposite: mode }); }
+  setOpposite(_mode: "hedge" | "partial") { this.set({ opposite: "partial" }); }
   /** Micros you hold on this market against `side` (what a partial-mode tap would take off). */
   heldAgainst(side: Side): number {
     return (this.state.me?.positions ?? []).filter((p) => p.market === this.state.market && p.side !== side).reduce((s, p) => s + p.quantity, 0);
   }
   /** True when tapping `side` takes micros off your opposite position instead of opening a hedge. */
   tapReduces(side: Side): boolean {
-    const holdsSame = (this.state.me?.positions ?? []).some((p) => p.market === this.state.market && p.side === side);
-    return this.state.opposite === "partial" && !holdsSame && this.heldAgainst(side) > 0;
+    return this.heldAgainst(side) > 0;
   }
   /** `held`: the button is being held down, so don't start the 300 ms send timer;
    *  letting go calls armTaps, and a full order goes with sendTapsNow. */
@@ -339,12 +337,14 @@ export class Game {
   private flushTaps(onDone: (err: string | null, qty: number, pnl?: number) => void) {
     if (this.tapTimer) { clearTimeout(this.tapTimer); this.tapTimer = null; }
     const p = this.state.pending; if (!p) return;
+    const market = this.state.market;
     this.set({ pending: null });
     this.ordersInFlight++;
     const send = async () => {
       try {
         while (this.submitting) await new Promise((r) => setTimeout(r, 60));
-        if (p.reduce) { const r = await this.reduce(p.side === "long" ? "short" : "long", p.count); this.ordersInFlight--; onDone(r.error ?? null, r.closed ?? 0, r.pnl); return; }
+        if (this.state.market !== market) { this.ordersInFlight--; onDone("Market changed before the order was sent.", 0); return; }
+        if (p.reduce || this.heldAgainst(p.side) > 0) { const r = await this.reduce(p.side === "long" ? "short" : "long", p.count); this.ordersInFlight--; onDone(r.error ?? null, r.closed ?? 0, r.pnl); return; }
         const err = await this.open(p.side, p.count);
         this.ordersInFlight--;
         onDone(err, p.count);
@@ -384,8 +384,12 @@ export class Game {
 
   /** Closes every leg of a stack; sums the P&L. Stops at the first error. */
   async closeStack(ids: string[]): Promise<{ pnl?: number; error?: string }> {
-    let pnl = 0;
-    for (const id of ids) { const r = await this.close(id); if (r.error) return { error: r.error, pnl }; pnl += r.pnl ?? 0; }
+    let pnl = 0, closed = 0;
+    for (const id of ids) {
+      const r = await this.close(id);
+      if (r.error) return { error: closed ? `Closed ${closed} of ${ids.length} fills. Check the remaining position. ${r.error}` : r.error, pnl };
+      pnl += r.pnl ?? 0; closed++;
+    }
     return { pnl };
   }
 

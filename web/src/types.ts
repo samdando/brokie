@@ -88,3 +88,5 @@ export interface PoolEntry { rail: PoolRail; wallet: string | null; status: "pen
 export interface PoolRow { handle: string; is_you: boolean; return_pct: number; status: "active" | "locked" | "blown"; trading_days: number; qualified: boolean; eligible: boolean; share_pct: number; payout: number }
 export interface PoolStandings { season: string; season_number: number; ends_at: string; entries: number; entry_usd: number; house_pct: number; pool: number; rollover: number; total: number; has_winner: boolean; min_days: number; rows: PoolRow[] }
 export interface PoolInfo { config: PoolConfig; entry: PoolEntry | null; tier: "free" | "pool"; max_qty: number | null; standings: PoolStandings }
+
+export const marketTitle = (m: Market): string => ({ nas:"Nasdaq", es:"S&P 500", us30:"Dow", btc:"Bitcoin", eth:"Ethereum", sol:"Solana", gold:"Gold", prediction:"Prediction" }[m]);

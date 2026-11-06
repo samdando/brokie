@@ -17,7 +17,7 @@ import { BrokieChart } from "./Chart";
 import { SimpleFloor } from "./SimpleFloor";
 import { accountBubbles } from "./tradeActivity";
 import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, signedMoney, useNow } from "./ui";
-import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
+import { MARKETS, Market, Position, Side, digits, marketTitle, pnlOf } from "./types";
 
 
 export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
@@ -142,7 +142,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
     setClosing(id);
     try {
       const r = await game.closeStack(ids);
-      if (!r.error && (r.pnl ?? 0) > 0) { setSettled({ pnl:r.pnl!,title }); haptic(10); }
+      if (!r.error) { setSettled({ pnl:r.pnl ?? 0,title }); haptic(10); }
       else toast(r.error ?? `Closed ${title} · ${signedMoney(r.pnl ?? 0)}`);
       return !r.error;
     } catch (e) { toast((e as Error).message || "Close wasn't confirmed. Check your position."); return false; }
@@ -168,7 +168,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
     })}
   </div>;
-  const orderDock = <div className={`trade-dock ${stacks.length ? "has-positions" : "flat-dock"}`}>
+  const orderDock = <div className={`trade-dock ${big ? "club-chart-dock" : "club-order-pad"} ${stacks.length ? "has-positions" : "flat-dock"}`}>
     <div className="dock-close-surface" data-testid="quick-close">
       <TradingStatus market={market} disabled={!!closing} onOpen={()=>rules?.status === "blown" ? setAccountOpen(true) : setPositionsOpen(true)} />
       {here.length > 0 && <button type="button" className="close-trade-btn" disabled={!!closing || !!st.pending || game.ordersInFlight > 0} data-testid="close-trade" onClick={() => {
@@ -181,7 +181,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">{style === "candles" ? <><path d="M7 3v4m0 9v5m10-18v7m0 7v4"/><rect x="4" y="7" width="6" height="9" rx="1"/><rect x="14" y="10" width="6" height="7" rx="1"/></> : <path d="m3 17 5-7 5 4 8-10"/>}</svg>
       </button>}
       {big && <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>}
-      <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
+      <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size · micros</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
     </div>
     <SpamPad toast={toast} disabled={rules?.status === "blown"||(dailyLimit && rules?.status === "locked")||!open}/>
   </div>;
@@ -190,8 +190,8 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
   return (
     <div className="stack trade-screen simple-trade-screen">
-      <div className="floor-toolbar">
-        <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
+      <div className="floor-toolbar club-market-mode">
+        <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Account & risk <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
         <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
       </div>
       {rules?.status === "blown" && <button className="account-restriction" onClick={()=>setAccountOpen(true)} data-testid="season-restriction"><b>Season max-loss limit reached</b><span>{rules.resets_used === 0 ? "Free restart available ↗" : "View account status ↗"}</span></button>}
@@ -209,8 +209,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : "simple-price-card"}`} style={big ? { height: viewportH, maxHeight: viewportH } : undefined} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="chart-utilities quote-heading">
           <div className="quote-block">
-            <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].title}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
-            <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
+            <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : marketTitle(market)}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+            <span className="quote"><TickValue value={quote}>{quote != null ? <>{px(quote,digits(market)).split(".")[0]}{digits(market)>0 && <small className="club-price-decimal">.{px(quote,digits(market)).split(".")[1]}</small>}</> : "—"}</TickValue></span>
+            {!big && <span className="club-price-caption">Market price <span>·</span> Paper trading</span>}
             {big && <span className="quote-sub"><span className={`mono ${change >= 0 ? "lime" : "red"}`}>{change >= 0 ? "▲ " : "▼ "}{px(Math.abs(change), digits(market))}</span>
               {big && pattern && <span className={`candle-read ${pattern.side}`} data-testid="candle-read"><small>Pattern</small><b>{pattern.name}</b></span>}</span>}
           </div>
@@ -218,11 +219,11 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           {big && <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>}
           <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
-            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg>{!big && <span>Chart</span>}</button>
+            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg>{!big && <span>Open chart</span>}</button>
           </div>
         </div>
-        <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
-        {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
+        {big && <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>}
+        {settled && <div className={`trade-success ${settled.pnl < 0 ? "loss" : "win"}`} role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
         {big && st.bubbleError && <button type="button" className="trade-load-error" onClick={() => void game.refreshBubbles()} role="status">{st.bubbleError} Tap to retry.</button>}
         {big ? <BrokieChart fullscreen={big} height={bigH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style} activity={chartBubbles}
           brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
@@ -233,14 +234,15 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={()=>{}} />
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
-          </>} /> : <SimpleFloor market={market} quote={quote} positions={here.map(s => s.merged)} bubbles={chartBubbles} onPositions={() => setPositionsOpen(true)} error={st.bubbleError} onRetry={() => void game.refreshBubbles()} />}
+          </>} /> : <SimpleFloor market={market} quote={quote} positions={here.map(s => s.merged)} bubbles={chartBubbles} orderPad={orderDock} closing={closing} busy={!!closing || !!st.pending || game.ordersInFlight > 0} onFloor={goSquad}
+            onClose={p => { const stack=here.find(s => s.merged.id===p.id); if(stack) void close(p.id,stack.ids,`${MARKETS[p.market].title} ${p.side} ×${p.quantity}`); }}
+            onProtect={p => setProtectionId(p.id)} error={st.bubbleError} onRetry={() => void game.refreshBubbles()} />}
         {big && indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
         {!open && <div className="chart-attribution">{(crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live.") + (opensLabel(market, game.now()) ? ` ${opensLabel(market, game.now())}.` : "")}</div>}
         {big && orderDock}
       </div>
 
       <SessionClock market={market} compact />
-      {!big && orderDock}
 
 
       </div>
@@ -469,12 +471,12 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   }
   /** What happens when an order (a batch of taps) comes back from the server. */
   function done(side: Side) {
-    const hedging = legs.some((p) => p.side !== side) && !legs.some((p) => p.side === side);
+    const reducing = legs.some((p) => p.side !== side);
     const market = MARKETS[st.market].title;
     return (err: string | null, q: number, pnl?: number) => {
       if (err) { stopHold(false); game.dropTaps(); haptic(10); toast(err); }
       else if (pnl !== undefined) { buzz(pnl >= 0 ? [10, 40, 18] : [40, 30, 40]); toast(`Closed ${q} ${market} · ${signedMoney(pnl)}`); }
-      else { buzz([10, 40, 18]); toast(`${hedging ? "Hedged" : side === "long" ? "Bought" : "Sold"} ${q} micro${q === 1 ? "" : "s"} ${market}`); }
+      else { buzz([10, 40, 18]); toast(`${reducing ? "Reduced" : side === "long" ? "Bought" : "Sold"} ${q} micro${q === 1 ? "" : "s"} ${market}`); }
     };
   }
 
@@ -534,7 +536,7 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!e.repeat) tap(side); } }}
         onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
         data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
-        <span className="spam-label">{label}</span>
+        <span className="spam-arrow" aria-hidden="true">{side === "long" ? "↗" : "↘"}</span><span className="spam-label">{label === "BUY" ? "Buy" : "Sell"}</span>
       </button>
     );
   };

@@ -1,31 +1,34 @@
 import { Avatar } from "./Avatar";
+import { ClubFloor, type FloorView } from "./ClubFloor";
+import { pnlOf } from "./types";
 import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { TradeScreen } from "./Trade";
-import { SquadScreen } from "./Squad";
 import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
 import { Profiles } from "./Profiles";
 import { SharedTradePage } from "./SharedTrade";
 import { RushHost, RushPage } from "./Rush";
 import { FlashOverlay } from "./Events";
-import { ChatCard, FeedbackSheet } from "./Social";
+import { FeedbackSheet } from "./Social";
 
 import { useVoice, voice, ROOMS } from "./voice";
-import { Icon, useToast } from "./ui";
+import { Icon, money, useToast } from "./ui";
 
-type Tab = "trade" | "chat" | "squad" | "you";
-const TAB_ORDER: Tab[] = ["trade", "chat", "squad", "you"];
+type Tab = "trade" | "squad" | "you";
+const TAB_ORDER: Tab[] = ["trade", "squad", "you"];
 
 export function App() {
   const st = useGame();
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has("join") ? "squad" : "trade"));
+  const [floorView, setFloorView] = useState<FloorView>("trades");
   const [toast, setToast] = useToast();
   const navigate = (next: Tab) => {
-    game.setChatOpen(next === "chat");
     setToast(null);
     setTab(next);
   };
+  const openFloor = (view: FloorView = "trades") => { setFloorView(view); navigate("squad"); };
+  useEffect(() => { game.setChatOpen(tab === "squad" && floorView === "chat"); }, [tab, floorView]);
   useEffect(() => {
     const lock = () => {
       const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
@@ -62,40 +65,32 @@ export function App() {
 
   return (
     <Profiles>
+      <div className={`clubhouse-root clubhouse-${tab}`}>
       <div className={`app app-${tab}`}>
         <div className="header">
           <div className="wordmark">brokie<i /></div>
-          <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
+          <button className="club-balance" onClick={() => navigate("you")} aria-label="Your paper account"><span>Paper equity</span><b>{money(st.me.cash + st.me.positions.reduce((sum,p) => sum + (p.market === "prediction" ? pnlOf(p,0) : game.quote(p.market) ? pnlOf(p,game.quote(p.market)!.price) : 0),0))}</b></button>
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
         <main className="page-stage" data-testid="page-deck">
           {TAB_ORDER.filter(t => t === tab).map(t => <div key={t} data-page-role="current" className="page-screen">
-            {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
-            {t === "chat" && <div className="chat-page secondary-screen" data-testid="chat-page">
-              {game.squad ? <>{st.squads.length > 1 && <div className="hscroll">{st.squads.map(s => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}<ChatCard key={game.squad.id}/></> : <div className="quiet-empty stack" style={{ gap: 12 }}><span aria-hidden="true">↗</span><b>Bring the group together.</b><div className="muted">Your squad gets a place for setups, reactions, and everything between trades.</div><button className="big-btn lime" onClick={() => navigate("squad")}>Go to Squad</button></div>}
-            </div>}
-            {t === "squad" && <SquadScreen toast={setToast} />}
+            {t === "trade" && <TradeScreen toast={setToast} goSquad={() => openFloor("trades")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
+            {t === "squad" && <ClubFloor view={floorView} onView={setFloorView} toast={setToast} />}
             {t === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
           </div>)}
         </main>
       </div>
-      {tab !== "squad" && <MiniBar onOpen={() => navigate("squad")} />}
+      {tab !== "squad" && <MiniBar onOpen={() => openFloor("board")} />}
       <nav className="tabs"><div className="tabs-inner">
-        {(["trade", "chat", "squad", "you"] as const).map((t) => t === "chat" ? (
-          <button key={t} className={`tab chat-btn ${tab === "chat" ? "on" : ""}`} aria-current={tab === "chat" ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate("chat"); }} data-testid="chat-btn"
-            aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"}>
-            <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat
-          </button>
-        ) : (
-          <button key={t} className={`tab ${tab === t ? "on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`}>{Icon[t]}{t[0].toUpperCase() + t.slice(1)}</button>
-        ))}
+        {TAB_ORDER.map(t => <button key={t} className={`tab ${tab === t ? "on" : ""}`} aria-current={tab === t ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }} data-testid={`tab-${t}`} aria-label={t === "squad" && st.chatUnread ? `The floor, ${st.chatUnread} new messages` : undefined}>{Icon[t]}<span>{t === "squad" ? "The floor" : t === "you" ? "You" : "Trade"}</span>{t === "squad" && st.chatUnread > 0 && <i className="club-unread" aria-label={`${st.chatUnread} unread messages`}>{st.chatUnread > 9 ? "9+" : st.chatUnread}</i>}</button>)}
       </div></nav>
       {toast && <div className="toast" role="status" data-testid="toast">{toast}</div>}
-      <ChatPop onOpen={() => navigate("chat")} />
+      <ChatPop onOpen={() => openFloor("chat")} />
       <FlashOverlay />
       <FeedbackSheet open={fb} onClose={() => setFb(false)} toast={setToast} />
       <BackupCodeSheet />
       <RushHost />
+      </div>
     </Profiles>
   );
 }
