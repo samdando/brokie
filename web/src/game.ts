@@ -27,6 +27,7 @@ export interface GameState {
   freshBackupCode: string | null;
   bubbles: Bubble[];
   bubbleScope: string | null;
+  bubbleError: string | null;
   lifetime: Lifetime | null;
   /** The $1 pool: config, your entry, standings. Loaded on the You page and with the squad board. */
   pool: PoolInfo | null;
@@ -104,7 +105,7 @@ export class Game {
   state: GameState = {
     phase: isConfigured ? "connecting" : "unconfigured", error: null, me: null, squads: [], squadId: read(SQUAD_KEY),
     leaderboard: [], feed: [], candles: {}, candleSeconds: readFrame(readFrames()), frames: readFrames(), market: read(MARKET_KEY) !== "prediction" && read(MARKET_KEY) && Object.prototype.hasOwnProperty.call(MARKETS, read(MARKET_KEY) ?? "") ? read(MARKET_KEY) as Market : weekendMode(Date.now()) ? "btc" : "nas",
-    clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, lifetime: null, pool: null,
+    clockOffset: 0, freshBackupCode: null, bubbles: [], bubbleScope: null, bubbleError: null, lifetime: null, pool: null,
     global: null, chat: [], chatPop: null, chatOpen: false, chatUnread: 0, events: null, flash: null, qty: clampQty(read(QTY_KEY) ?? 10),
     brackets: {}, bracketSaving: null, pending: null,
     opposite: read(OPPOSITE_KEY) === "hedge" ? "hedge" : "partial",   // partials by default; hedging is opt-in
@@ -113,6 +114,7 @@ export class Game {
   private submitting = false;
   private chatSeen = new Map<string, number>();
   private bubbleRequest = 0;
+  private bubbleInFlight: { scope: string; request: number } | null = null;
   private listeners = new Set<() => void>();
   private timer: number | null = null;
   private quoteTimer: number | null = null;
@@ -202,6 +204,7 @@ export class Game {
       const fills = me.trades.filter(t => !known.has(t.id) && (t.reason === "stop_loss" || t.reason === "take_profit"));
       if (fills.length) this.raise({ key: `bracket:${fills.map(t => t.id).join(":")}`, tone: fills.reduce((n,t) => n+t.pnl,0) >= 0 ? "lime" : "red", title: fills.some(t => t.reason === "stop_loss") ? "Stop loss filled" : "Take profit filled", sub: `${fills.length} fill${fills.length === 1 ? "" : "s"} · check your trade receipts` });
     }
+    if (previous && (previous.positions.map(p => p.id).join() !== me.positions.map(p => p.id).join() || previous.trades[0]?.id !== me.trades[0]?.id)) void this.refreshBubbles();
     void this.migrateDeviceBrackets();
     const weekend = weekendMode(this.now());
     if (weekend !== this.lastWeekend) {
@@ -407,7 +410,7 @@ export class Game {
   selectSquad(id: string | null) {
     write(SQUAD_KEY, id);
     this.bubbleRequest++;
-    this.set({ squadId: id, leaderboard: [], feed: [], chat: [], chatUnread: 0, bubbles: [], bubbleScope: null });
+    this.set({ squadId: id, leaderboard: [], feed: [], chat: [], chatUnread: 0, bubbles: [], bubbleScope: null, bubbleError: null });
     void this.refreshBubbles();
     void this.refreshBoard();
   }
@@ -441,20 +444,38 @@ export class Game {
     } catch { /* keep last */ }
   }
 
-  setMarket(m: Market) { if (m === this.state.market) return; this.bubbleRequest++; write(MARKET_KEY, m); this.set({ market: m, bubbles: [], bubbleScope: null }); void this.refreshCandles(m); void this.refreshBubbles(); }
+  setMarket(m: Market) { if (m === this.state.market) return; this.bubbleRequest++; write(MARKET_KEY, m); this.set({ market: m, bubbles: [], bubbleScope: null, bubbleError: null }); void this.refreshCandles(m); void this.refreshBubbles(); }
 
   async refreshBubbles() {
     if (this.state.phase !== "ready") return;
     const market = this.state.market;
     const squad = this.squad?.id ?? null;
     const bucket = this.state.candleSeconds;
-    const bars = this.state.candles[market];
-    const from = bars?.length ? new Date(bars[0].index * bucket * 1000).toISOString() : null;
+    const scope = `${market}:${squad ?? ""}:${bucket}`;
+    // Polling must not supersede the same slow request every three seconds.
+    if (this.bubbleInFlight?.scope === scope) return;
+    // The server already limits fills to the current season. Request all of
+    // that history so a busy trader cannot push someone else out of the tape.
+    const from = new Date(0).toISOString();
     const request = ++this.bubbleRequest;
+    this.bubbleInFlight = { scope, request };
     try {
-      const bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad, p_from: from });
-      if (request === this.bubbleRequest && this.state.market === market && this.state.candleSeconds === bucket && this.squad?.id === (squad ?? undefined)) this.set({ bubbles, bubbleScope: `${market}:${squad ?? ""}` });
-    } catch { /* keep last */ }
+      let bubbles: Bubble[];
+      try {
+        bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad, p_from: from });
+      } catch (e) {
+        // Older servers expose the two-argument RPC. Only retry a missing
+        // signature; authorization and network failures must remain visible.
+        if (!(e instanceof BackendError) || !(e.code === "PGRST202" || /could not find the function|schema cache.*chart_bubbles/i.test(e.message))) throw e;
+        bubbles = await this.api.rpc<Bubble[]>("chart_bubbles", { p_market: market, p_squad: squad });
+      }
+      if (request === this.bubbleRequest && this.state.market === market && this.state.candleSeconds === bucket && this.squad?.id === (squad ?? undefined)) this.set({ bubbles, bubbleScope: `${market}:${squad ?? ""}`, bubbleError: null });
+    } catch {
+      if (request === this.bubbleRequest && this.state.market === market && this.state.candleSeconds === bucket && this.squad?.id === (squad ?? undefined))
+        this.set({ bubbleError: "Squad trades couldn’t refresh. Your account fills are still shown." });
+    } finally {
+      if (this.bubbleInFlight?.request === request) this.bubbleInFlight = null;
+    }
   }
 
   async buyBack() { await this.api.rpc("buy_back"); await this.refreshState(); }

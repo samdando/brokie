@@ -1,7 +1,6 @@
 import { FloorPresence } from "./FloorPresence";
 import { ChartIndicators, INDICATOR_ITEMS } from "./ChartIndicators";
 import { candleRead, IndicatorOptions, readIndicators, saveIndicators } from "./indicators";
-import { useTradeSwipe } from "./useTradeSwipe";
 import { priceForPnl, protectionDirection, protectionPnl } from "./protection";
 import { EventStrip } from "./Events";
 import { tradingSummary } from "./tradingSummary";
@@ -14,29 +13,27 @@ import type { Bubble, Rules } from "./types";
 import { frameLabel, game, stacksOf, useGame } from "./game";
 import { isCrypto, sessionCountdown, FUTURES, CRYPTOS, opensLabel } from "./sessions";
 
-import { BrokieChart, CHART_SMALL } from "./Chart";
-import { FocusFloor } from "./FocusFloor";
+import { BrokieChart } from "./Chart";
+import { SimpleFloor } from "./SimpleFloor";
+import { accountBubbles } from "./tradeActivity";
 import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
-export function TradeScreen({ active = true, toast, goSquad, goHistory }: { active?: boolean; toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
+export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) => void; goSquad: () => void; goHistory: () => void }) {
   const st = useGame();
   const me = st.me!;
   const crypto = isCrypto(st.market);
   const lastFuture = useRef<Market>("nas");
   const lastCrypto = useRef<Market>("btc");
   if (crypto) lastCrypto.current = st.market; else if (st.market !== "prediction") lastFuture.current = st.market;
-  const [layout, setLayout] = useState<"focus" | "classic">(() => { try { localStorage.removeItem("brokie.layout.v2"); } catch { /* */ } return "classic"; }); // Full chart layout retired: everyone gets classic.
-  const pickLayout = (next: "focus" | "classic") => { setLayout(next); try { localStorage.setItem("brokie.layout.v2", next); } catch { /* */ } };
   const [accountOpen, setAccountOpen] = useState(false);
   const [settled, setSettled] = useState<{ pnl: number; title: string } | null>(null);
   useEffect(() => { if (!settled) return; const timer=setTimeout(()=>setSettled(null),2800); return ()=>clearTimeout(timer); },[settled]);
-  const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd") !== "off"; } catch { return true; } });
-  const [showHistory, setShowHistory] = useState(() => { try { return localStorage.getItem("brokie.chartHistory") === "on"; } catch { return false; } });
-  const toggleCrowd = () => { setCrowd(v => { try { localStorage.setItem("brokie.crowd", v ? "off" : "on"); } catch { /* */ } return !v; }); };
-  const toggleHistory = () => { setShowHistory(v => { try { localStorage.setItem("brokie.chartHistory", v ? "off" : "on"); } catch { /* */ } return !v; }); };
-  const [style, setStyle] = useState<"candles" | "line">(() => (localStorage.getItem("brokie.style") as "line") || "candles");
+  const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd.v2") !== "off"; } catch { return true; } });
+  const showHistory = true;
+  const toggleCrowd = () => { setCrowd(v => { try { localStorage.setItem("brokie.crowd.v2", v ? "off" : "on"); } catch { /* */ } return !v; }); };
+  const [style, setStyle] = useState<"candles" | "line">(() => { try { return localStorage.getItem("brokie.style") === "line" ? "line" : "candles"; } catch { return "candles"; } });
   const [closing, setClosing] = useState<string | null>(null);
   const closeInFlight = useRef(false);
   const [pnlInfo, setPnlInfo] = useState(false);
@@ -53,7 +50,6 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
     window.addEventListener("resize", resize); window.visualViewport?.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("resize", resize); };
   }, []);
-  const [previewH, setPreviewH] = useState(CHART_SMALL);
   const [bigH, setBigH] = useState(Math.max(120, viewportH - 300));
   // Remember where the page was BEFORE the chart leaves the page flow: once it's fixed, the browser
   // shifts the scroll position to keep content in place, and reading it then would be ~a chart too high.
@@ -111,15 +107,12 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   const quote = mark(market);
   // Own fills come from account state immediately, including each individual leg.
   // The position pills may aggregate size, but chart entries keep their real fills.
-  const chartBubbles: Bubble[] = [
-    ...(st.bubbleScope === `${market}:${game.squad?.id ?? ""}` ? st.bubbles.filter(b => !(b.is_you && b.state === "open") && (crowd || b.is_you)) : []),
-    ...me.positions.filter(p => p.market === market).map(p => ({ ...p, state: "open" as const, handle: me.handle, is_you: true, exit_price: null, pnl: null, reason: null, at: p.opened_at, size_pct: null, dd_floor: null, equity: null })),
-  ];
+  const chartBubbles = accountBubbles(me, market,
+    st.bubbleScope === `${market}:${game.squad?.id ?? ""}` ? st.bubbles : [], crowd);
   const open = game.isOpen(market);
   useLayoutEffect(() => {
     const card=chartCard.current;
     if (!card) return;
-    const dock=card.closest(".trade-screen")?.querySelector<HTMLElement>(".trade-dock");
     const fit=()=>{
       const css=getComputedStyle(card);
       const used=Array.from(card.children).reduce((sum,child)=>{
@@ -132,12 +125,11 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
       const flow=Array.from(card.children).filter(child=>!['fixed','absolute'].includes(getComputedStyle(child).position)).length;
       const gaps=(parseFloat(css.rowGap)||0)*Math.max(0,flow-1);
       if(big) setBigH(Math.max(80,Math.floor(card.clientHeight-padding-used-gaps-2)));
-      else if(dock) setPreviewH(Math.max(96,Math.min(640,Math.floor(dock.getBoundingClientRect().top-card.getBoundingClientRect().top-window.scrollY-padding-used-gaps-12))));
     };
-    fit();const ro=new ResizeObserver(fit);ro.observe(card);if(dock)ro.observe(dock);
+    fit();const ro=new ResizeObserver(fit);ro.observe(card);
     for(const child of Array.from(card.children))if(!child.querySelector(".chart-host"))ro.observe(child);
     return ()=>ro.disconnect();
-  },[big,viewportH,open,market]);
+  },[big,viewportH,open,market,st.bubbleError,indicatorCount]);
   const change = quote && candles[0] ? quote - candles[0].open : 0;
   const hi = candles.length ? Math.max(...candles.map((c) => c.high)) : null;
   const lo = candles.length ? Math.min(...candles.map((c) => c.low)) : null;
@@ -158,15 +150,6 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   const here = stacks.filter(s => s.merged.market === market);
   const quick = here.length === 1 ? here[0] : null;
   const quickTitle = quick ? `${MARKETS[market].title} · ${quick.merged.side === "long" ? "Long" : "Short"} ${quick.merged.quantity}` : "Choose a position";
-  const swipe = useTradeSwipe({
-    enabled: layout === "classic" && here.length > 0 && !closing && !st.pending && game.ordersInFlight === 0 && !accountOpen && !positionsOpen && !protectionId && !chartInfo && !indicatorsOpen && !st.chatOpen,
-    fullscreen: big,
-    revision: `${market}:${here.map(s=>`${s.ids.join(',')}:${s.merged.quantity}`).join('|')}`,
-    onCommit: () => {
-      if (!quick) { setPositionsOpen(true); return; }
-      void close(quick.merged.id, [...quick.ids], `${MARKETS[market].title} ${quick.merged.side} ×${quick.merged.quantity}`);
-    }
-  });
   async function saveProtection(id: string, b: { sl?: number; tp?: number }) {
     try { await game.setBracket(id, b); toast("SL/TP saved · stays active when you leave the app"); if (cardHint) { hintDone("cards"); setCardHint(false); } }
     catch (e) { toast((e as Error).message || "Stop was not saved. Try again."); }
@@ -179,21 +162,24 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   const positionCards = <div className="stack position-list" style={{ gap: 10 }}>
     {stacks.map(({ merged: p, ids }) => {
       const price = mark(p.market);
-      return <SwipeCard key={p.id} p={p} pnl={price !== null && Number.isFinite(price) && price > 0 ? pnlOf(p, price) : null} busy={closing === p.id} disabled={!!closing}
+      return <PositionCard key={p.id} p={p} pnl={price !== null && Number.isFinite(price) && price > 0 ? pnlOf(p, price) : null} busy={closing === p.id} disabled={!!closing}
         hedged={me.positions.some(q => q.market === p.market && q.side !== p.side)} protection={st.brackets[p.id]} onProtection={() => { setPositionsOpen(false); setProtectionId(p.id); }}
         onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
     })}
   </div>;
   const orderDock = <div className="trade-dock">
-    <div className={`dock-close-surface ${swipe.distance ? "swiping" : ""}`} style={{ ["--close-progress" as string]: swipe.distance }} data-testid="quick-close">
-      <TradingStatus market={market} disabled={!!closing} onOpen={()=>rules?.status === "blown" ? setAccountOpen(true) : setPositionsOpen(true)} swipeHint={here.length ? closing ? "Closing…" : quick ? `Swipe → close ${quickTitle}` : "Swipe → choose a position" : undefined}/>
-      {swipe.distance > 0 && <div className="quick-close-progress" role="status"><span>{swipe.distance >= 1 ? quick ? "Release to close" : "Release to choose" : "Keep swiping →"}</span><b>{quickTitle}</b></div>}
+    <div className="dock-close-surface" data-testid="quick-close">
+      <TradingStatus market={market} disabled={!!closing} onOpen={()=>rules?.status === "blown" ? setAccountOpen(true) : setPositionsOpen(true)} />
+      {here.length > 0 && <button type="button" className="close-trade-btn" disabled={!!closing || !!st.pending || game.ordersInFlight > 0} data-testid="close-trade" onClick={() => {
+        if (quick) void close(quick.merged.id, [...quick.ids], quickTitle);
+        else setPositionsOpen(true);
+      }}>{closing ? "Closing…" : quick ? "Close trade" : "Choose trade to close"}</button>}
     </div>
     <div className="execution-options chart-controls">
-      <button type="button" className="execution-style style-switch" role="switch" aria-checked={style === "line"} aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"} title={style === "candles" ? "Candles" : "Line"} data-testid="style-switch" onClick={()=>{const next=style === "candles" ? "line" : "candles";setStyle(next);try{localStorage.setItem("brokie.style",next);}catch{/* */}}}>
+      {big && <button type="button" className="execution-style style-switch" role="switch" aria-checked={style === "line"} aria-label={style === "candles" ? "Candlestick chart. Tap for line chart" : "Line chart. Tap for candlestick chart"} title={style === "candles" ? "Candles" : "Line"} data-testid="style-switch" onClick={()=>{const next=style === "candles" ? "line" : "candles";setStyle(next);try{localStorage.setItem("brokie.style",next);}catch{/* */}}}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">{style === "candles" ? <><path d="M7 3v4m0 9v5m10-18v7m0 7v4"/><rect x="4" y="7" width="6" height="9" rx="1"/><rect x="14" y="10" width="6" height="7" rx="1"/></> : <path d="m3 17 5-7 5 4 8-10"/>}</svg>
-      </button>
-      <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>
+      </button>}
+      {big && <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>}
       <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
     </div>
     <SpamPad toast={toast} disabled={rules?.status === "blown"||rules?.status === "locked"||!open}/>
@@ -202,11 +188,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
 
 
   return (
-    <div className={`stack trade-screen ${layout === "focus" ? "focus-mode" : ""}`} onPointerDownCapture={swipe.onPointerDownCapture} onClickCapture={swipe.onClickCapture}>
-
-      {layout === "focus" ? <FocusFloor active={active} toast={toast} indicators={indicators} onIndicators={() => setIndicatorsOpen(true)} onAccount={() => setAccountOpen(true)} onPositions={() => setPositionsOpen(true)} onClassic={() => pickLayout("classic")}
-        presence={<FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>}
-        crowd={crowd} onCrowd={toggleCrowd} showHistory={showHistory} onHistory={toggleHistory} /> : <>
+    <div className="stack trade-screen simple-trade-screen">
       <div className="floor-toolbar">
         <button type="button" className={`account-disclosure ${rules?.status ?? "active"}`} onClick={()=>setAccountOpen(true)} aria-label="Account and risk details" data-testid="account-disclosure"><span className="account-status-dot"/><span>Paper account <b data-testid="account-equity-preview">{money(equity,0)}</b></span><span aria-hidden="true">⌄</span></button>
         <button type="button" className={`market-section-switch ${crypto ? "selected" : ""}`} aria-label={crypto ? "Switch to futures" : "Switch to crypto"} data-testid="crypto-switch" onClick={()=>game.setMarket(crypto ? lastFuture.current : lastCrypto.current)}>{crypto ? "Futures" : "Crypto"}<span aria-hidden="true">{crypto ? "↙" : "↗"}</span></button>
@@ -223,36 +205,35 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
-      <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : ""}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
+      <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : "simple-price-card"}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="chart-utilities quote-heading">
           <div className="quote-block">
             <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
             <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
-            <span className="quote-sub"><span className={`mono ${change >= 0 ? "lime" : "red"}`}>{change >= 0 ? "▲ " : "▼ "}{px(Math.abs(change), digits(market))}</span>
-              {pattern && <span className={`candle-read ${pattern.side}`} data-testid="candle-read"><small>Pattern</small><b>{pattern.name}</b></span>}</span>
+            {big && <span className="quote-sub"><span className={`mono ${change >= 0 ? "lime" : "red"}`}>{change >= 0 ? "▲ " : "▼ "}{px(Math.abs(change), digits(market))}</span>
+              {big && pattern && <span className={`candle-read ${pattern.side}`} data-testid="candle-read"><small>Pattern</small><b>{pattern.name}</b></span>}</span>}
           </div>
           <div className="chart-actions">
-          <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>
-          <button type="button" className="chart-utility history-switch" aria-pressed={showHistory} aria-label={showHistory ? "Hide closed trades on chart" : "Show closed trades on chart"} onClick={toggleHistory} data-testid="history-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-5v6l4 2"/></svg></button>
+          {big && <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>}
           <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
             aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
           </div>
         </div>
-            {candles.length > 0 && (() => { const c = candles[candles.length - 1], d = digits(market); return <div className="tv-ohlc mono" data-testid="tv-ohlc"><b>{MARKETS[market].title}</b><span>· {frameLabel(st.candleSeconds)}</span><span>O <i className={c.close >= c.open ? "up" : "dn"}>{px(c.open, d)}</i></span><span>H <i className={c.close >= c.open ? "up" : "dn"}>{px(c.high, d)}</i></span><span>L <i className={c.close >= c.open ? "up" : "dn"}>{px(c.low, d)}</i></span><span>C <i className={c.close >= c.open ? "up" : "dn"}>{px(c.close, d)}</i></span></div>; })()}
+            {big && candles.length > 0 && (() => { const c = candles[candles.length - 1], d = digits(market); return <div className="tv-ohlc mono" data-testid="tv-ohlc"><b>{MARKETS[market].title}</b><span>· {frameLabel(st.candleSeconds)}</span><span>O <i className={c.close >= c.open ? "up" : "dn"}>{px(c.open, d)}</i></span><span>H <i className={c.close >= c.open ? "up" : "dn"}>{px(c.high, d)}</i></span><span>L <i className={c.close >= c.open ? "up" : "dn"}>{px(c.low, d)}</i></span><span>C <i className={c.close >= c.open ? "up" : "dn"}>{px(c.close, d)}</i></span></div>; })()}
         <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
-        <BrokieChart fullscreen={big} height={big ? bigH : previewH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style}
+        {big && st.bubbleError && <button type="button" className="trade-load-error" onClick={() => void game.refreshBubbles()} role="status">{st.bubbleError} Tap to retry.</button>}
+        {big ? <BrokieChart fullscreen={big} height={bigH} handle={me.handle} market={market} candles={candles} bucketSeconds={st.candleSeconds} quote={quote} positions={stacks.map((x) => x.merged)} style={style} activity={chartBubbles}
           brackets={st.brackets} onBracket={saveProtection} onClearBracket={clearProtection}
           sizePctOf={(p) => { const v = st.bubbles.filter((b) => b.is_you && b.state === "open" && b.side === p.side).reduce((s, b) => s + (b.size_pct ?? 0), 0); return v || null; }}
-          // History is opt-in; current squad entries stay visible by default.
           overlay={(toXY, width, height) => <>
             <ChartIndicators candles={candles} options={indicators} seconds={st.candleSeconds} toXY={toXY} width={width} height={height}/>
             <BubbleLayer key={`${market}:${game.squad?.id ?? ""}`} height={height} showHistory={showHistory} now={game.now()} bubbles={chartBubbles} market={market} quote={quote} toXY={toXY} width={width} onSelect={pick}
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={()=>{}} />
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
-          </>} />
+          </>} /> : <SimpleFloor market={market} quote={quote} positions={here.map(s => s.merged)} bubbles={chartBubbles} onPositions={() => setPositionsOpen(true)} onExpand={toggleBig} error={st.bubbleError} onRetry={() => void game.refreshBubbles()} />}
         {big && indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
         {!open && <div className="chart-attribution">{(crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live.") + (opensLabel(market, game.now()) ? ` ${opensLabel(market, game.now())}.` : "")}</div>}
         {big && orderDock}
@@ -263,7 +244,6 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
 
 
       </div>
-      </>}
       <Sheet open={accountOpen} onClose={()=>setAccountOpen(false)}><div className="account-detail stack" data-testid="account-sheet"><div className="row between"><h2 className="h2">Account & risk</h2><button type="button" className="text-action" onClick={()=>setAccountOpen(false)}>Done</button></div><p className="account-context">{money(base,0)} starting balance · Simulated funds</p>
       <section className={`account-hero account-compact ${rules?.status ?? "active"}`}>
         <div className="account-summary">
@@ -278,7 +258,7 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
       </section>
       <SessionClock market={market} alerts={false} /><EventStrip compact />
       <button type="button" className="text-action" onClick={()=>{setAccountOpen(false);goHistory();}}>View trade history ↗</button></div></Sheet>
-      <Sheet open={chartInfo} onClose={()=>setChartInfo(false)}><div className="stack"><div className="row between"><h2 className="h2">Your chart</h2><button type="button" className="text-action" onClick={()=>setChartInfo(false)}>Done</button></div>        <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "Preview locked. Use the top-right expand button to pan, zoom and trade fullscreen."} Pictures mark entries: green ↑ is long, red ↓ is short. Tap grouped pictures to see everyone and each trade. Small crosses mark exits.</div>
+      <Sheet open={chartInfo} onClose={()=>setChartInfo(false)}><div className="stack"><div className="row between"><h2 className="h2">Your chart</h2><button type="button" className="text-action" onClick={()=>setChartInfo(false)}>Done</button></div>        <div className="chart-help muted">{hi !== null && <>High {px(hi)} · Low {px(lo!)}. </>}{big ? "Pinch to zoom, drag to pan, double-tap to return live." : "See your entry against the live price here. Open fullscreen for candles, indicators and everyone’s trades."} Pictures mark entries: green ↑ is long, red ↓ is short. Lines join each entry to its exit. Tap grouped pictures to see every fill. Small crosses mark exits.</div>
 </div></Sheet>
       <Sheet open={indicatorsOpen} onClose={() => setIndicatorsOpen(false)}><div className="indicator-settings stack" data-testid="indicator-settings">
         <div className="row between"><div><Eyebrow>Your market lens</Eyebrow><h2 className="h2">Read between the candles.</h2></div><button type="button" className="text-action" onClick={() => setIndicatorsOpen(false)}>Done</button></div>
@@ -303,14 +283,14 @@ export function TradeScreen({ active = true, toast, goSquad, goHistory }: { acti
   );
 }
 
-function TradingStatus({ market, onOpen, swipeHint, disabled }: { market: Market; onOpen?: () => void; swipeHint?: string; disabled?: boolean }) {
+function TradingStatus({ market, onOpen, disabled }: { market: Market; onOpen?: () => void; disabled?: boolean }) {
   const st = useGame(), now = useNow(1000) + st.clockOffset;
   const summary = tradingSummary(st.me?.positions ?? [], st.me?.quotes ?? [], market, now);
   const value = summary.pnl === null ? "—" : summary.flat ? "$0.00" : signedMoney(summary.pnl);
   const tone = summary.flat || summary.pnl === null ? "muted" : summary.pnl >= 0 ? "lime" : "red";
   const exposure = [summary.long ? `LONG ${summary.long}` : "", summary.short ? `SHORT ${summary.short}` : ""].filter(Boolean).join(" · ") || "FLAT";
   const content = <><span className="dock-pnl"><small>Unrealised <span>· all trades</span></small><b className={tone} data-testid="live-unrealised">{value}</b>{summary.stale && <em>{summary.pnl === null ? "Waiting for prices" : "Last quoted prices"}</em>}</span>
-    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Season max-loss reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b>{swipeHint && <em className="quick-close-hint">{swipeHint}</em>}</span></>;
+    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Season max-loss reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
   return onOpen ? <button className="dock-status" onClick={onOpen} disabled={disabled} aria-busy={disabled || undefined} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
 }
 
@@ -559,65 +539,15 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
   return <div className="spam-pad" data-testid="spam-pad">{btn("long")}{btn("short")}</div>;
 }
 
-/** Drag a position sideways and release past ~100px to close. Cancellation never closes. */
-function SwipeCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProtection }:
+/** Closing is an explicit tap, so scrolling and chart gestures never place orders. */
+function PositionCard({ p, pnl, busy, disabled, hedged, onClose, protection, onProtection }:
   { p: Position; pnl: number | null; busy: boolean; disabled: boolean; hedged: boolean; onClose: () => Promise<boolean>; protection?: { sl?: number; tp?: number }; onProtection: () => void }) {
-  const [dx, setDx] = useState(0);
-  const [phase, setPhase] = useState<"idle" | "drag" | "fly" | "back" | "gone">("idle");
-  const ref = useRef<HTMLDivElement>(null);
-  const armed = useRef(false);
   const win = pnl !== null && pnl >= 0;
-  const w = () => ref.current?.offsetWidth ?? 320;
-  function down(e: React.PointerEvent) {
-    if (disabled || phase === "fly" || phase === "gone") return;
-    const x0 = e.clientX, y0 = e.clientY; let locked: boolean | null = null; let lastDx = 0;
-    const el = e.currentTarget as HTMLElement; el.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      const ddx = ev.clientX - x0, ddy = ev.clientY - y0;
-      if (locked === null && Math.hypot(ddx, ddy) > 8) locked = Math.abs(ddx) > Math.abs(ddy);
-      if (!locked) return;
-      setPhase("drag"); setDx(ddx); lastDx = ddx;
-      const over = Math.abs(ddx) > Math.min(100, w() * 0.4);
-      if (over !== armed.current) { armed.current = over; if (over) buzz(22); }
-    };
-    const up = async () => {
-      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
-      if (!locked) return;
-      if (armed.current) {
-        armed.current = false;
-        const dir = Math.sign(lastDx || 1);
-        setPhase("fly"); setDx(dir * (w() + 60));
-        buzz(win ? [10, 40, 18] : [40, 30, 40]);
-        const ok = await onClose();
-        if (ok) setPhase("gone"); else { setPhase("back"); setDx(0); }
-      } else { setPhase("back"); setDx(0); }
-    };
-    const cancel = () => {
-      el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", cancel);
-      armed.current = false; setPhase("back"); setDx(0);
-    };
-    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", cancel);
-  }
-  const over = Math.abs(dx) > Math.min(100, w() * 0.4);
-  const tint = phase === "drag" && over ? (win ? "tint-win" : "tint-loss") : "";
-  return (
-    <div className={`swipe-wrap ${phase === "gone" ? "collapse" : ""}`} data-testid="position">
-      <div className={`swipe-bg ${win ? "win" : "loss"}`} style={{ opacity: Math.min(1, Math.abs(dx) / (w() * 0.4)) }}>
-        <span>Close trade</span><span>Close trade</span>
-      </div>
-      <div ref={ref} className={`pos-card ${tint} ${phase}`} onPointerDown={down}
-        style={{ transform: `translateX(${dx}px) rotate(${dx / 40}deg)`, touchAction: "pan-y" }}
-        onTransitionEnd={() => { if (phase === "back") setPhase("idle"); }}>
-        <span className="badge-sq" style={{ background: MARKETS[p.market].color + "1A", color: MARKETS[p.market].color }}>{MARKETS[p.market].title[0]}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>{MARKETS[p.market].title} <span className={p.side === "long" ? "lime" : "red"}>{p.side === "long" ? "LONG ↗" : "SHORT ↘"}</span>
-            {hedged && <span className="hedge-pill inline" data-testid="hedged-row">HEDGED</span>}</div>
-          <div className="muted mono" style={{ fontSize: 10, marginTop: 4 }}>x{p.quantity} · {px(p.entry_price)}</div>
-        </div>
-        <span className={`mono pos-pnl ${pnl === null ? "muted" : win ? "lime" : "red"}`}><TickValue value={pnl}>{pnl === null ? "—" : signedMoney(pnl)}</TickValue></span>
-        {busy && <span className="spinner" style={{ width: 12, height: 12 }} />}
-        <button className="position-protection" type="button" disabled={disabled} onPointerDown={e => e.stopPropagation()} onClick={onProtection} aria-label={`Manage SL/TP for ${MARKETS[p.market].title} ${p.side}`}><span>SL <b>{protection?.sl != null ? px(protection.sl, digits(p.market)) : "—"}</b></span><span>TP <b>{protection?.tp != null ? px(protection.tp, digits(p.market)) : "—"}</b></span><span className="manage-protection">Edit SL/TP ↗</span></button>
-      </div>
-    </div>
-  );
+  return <div className="position-card pos-card" data-testid="position">
+    <div className="position-card-heading"><b>{MARKETS[p.market].title} <span className={p.side === "long" ? "lime" : "red"}>{p.side.toUpperCase()} ×{p.quantity}</span>{hedged && <span className="hedge-pill inline">HEDGED</span>}</b>
+      <strong className={`mono ${pnl === null ? "muted" : win ? "lime" : "red"}`}><TickValue value={pnl}>{pnl === null ? "—" : signedMoney(pnl)}</TickValue></strong></div>
+    <small className="muted">Entry {px(p.entry_price, digits(p.market))}</small>
+    <div className="position-card-actions"><button type="button" className="position-protection" disabled={disabled} onClick={onProtection} aria-label={`Manage SL/TP for ${MARKETS[p.market].title} ${p.side}`}>SL {protection?.sl != null ? px(protection.sl, digits(p.market)) : "—"} · TP {protection?.tp != null ? px(protection.tp, digits(p.market)) : "—"} · Edit</button>
+      <button type="button" className="close-trade-btn" disabled={disabled} onClick={() => void onClose()}>{busy ? "Closing…" : "Close trade"}</button></div>
+  </div>;
 }

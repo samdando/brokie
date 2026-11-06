@@ -5,6 +5,7 @@ import "./styles.css";
 import "./terminal.css";
 import "./arcade.css";
 import "./space.css";
+import "./simple.css";
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /><div className="rotate-lock" role="alert"><div><span aria-hidden="true">📱</span>Turn your phone upright<small>Brokie is built for portrait.</small></div></div></StrictMode>);
 

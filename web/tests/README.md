@@ -1,5 +1,13 @@
 # Trading floor verification
 
+6 November simple-floor pass: Trade opens with the live price, an entry comparison for each open direction, and a chronological list of your and your selected squad’s fills. Candles, timeframe controls, indicators and pan/zoom live in fullscreen. Closed fills and entry-to-exit lines show by default. Navigation and closing use buttons; Learn and the page/close swipe handlers are removed from this flow.
+
+Run `node tests/simple-floor.cjs` against an isolated local Vite server on port 5179 (or set `BASE_URL`). It covers 320/393/430px, fullscreen fit and exits, explicit close success/refusal, own receipts after navigation and fresh account state, 200 overlapping closes without hiding quiet traders, legacy RPC compatibility, errors and stale-response isolation. Use the `PLAYWRIGHT_MODULE` setting described below if Playwright is supplied by a bundled runtime. Screenshots go to `/tmp/brokie-simple-*.png`.
+
+The new client requests the entire current season from `chart_bubbles`. Apply `backend/chart_history.sql` after the existing risk/Predictions migrations before release for uncapped history. On older servers the client falls back to the two-argument RPC, which retains that server’s 24-hour/60-row limit. Own current account receipts remain visible if the social RPC fails. The feature shares fills within the selected squad, following existing membership permissions.
+
+The historical browser scripts below include expectations for retired swipe, Learn, embedded-chart and opt-in-history behavior. Use `simple-floor.cjs` for those replaced interactions. Pure calculation/API checks and the disposable database history suite remain applicable.
+
 The 31 October focus pass makes Brokie's own canvas chart (`src/ArcadeChart.tsx`, `src/FocusFloor.tsx`) the default Trade page. `node tests/focus-floor.cjs` covers full-screen fit at 320/393/430px, hold top = BUY / bottom = SELL, slide for 1:1 TP/SL saved to the server, taps never trading, hold to cash out, real CDP touch page swipes (chart, content, buttons, back) and vertical scrolls being ignored, and the classic-layout toggle. The older floor tests pin `brokie.layout=classic` with an init script.
 
 The 31 October terminal pass adds `npm run test:indicators` and a local-only `/tests/terminal-preview.html` route with synthetic accounts and mocked operations. Chat is now a page in Trade → Chat → Squad → Learn → You order. Page swipes work over the preview chart and content cards; swipe-to-close is confined to the P&L bar. See `docs/SETUP_RUSH_REFERENCE.md` for the verified browser matrix and remaining device checks.

@@ -113,12 +113,14 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, height, onSel
   useEffect(() => { setPicked(null); setPickedGroup(null); }, [market]);
 
   const markers = useMemo(() => tradeMarkers(bubbles, toXY, width, height, !!hideMine, showHistory), [bubbles, toXY, width, height, hideMine, showHistory]);
-  const paths = showHistory ? bubbles.filter(b => b.id === picked).flatMap(b => {
-    if (b.state !== "closed" || b.exit_price === null) return [];
+  const paths = bubbles.flatMap(b => {
+    if ((hideMine && b.is_you) || (b.state === "closed" && !showHistory)) return [];
+    const price = b.state === "closed" ? b.exit_price : quote;
+    if (price === null) return [];
     const entry = toXY(Date.parse(b.opened_at) / 1000, b.entry_price, true);
-    const exit = toXY(Date.parse(b.at) / 1000, b.exit_price, true);
+    const exit = toXY((b.state === "closed" ? Date.parse(b.at) : now) / 1000, price, true);
     return entry && exit ? [{ b, entry, exit }] : [];
-  }) : [];
+  });
 
   // Mates' exits that are off the left edge of this timeframe: offer to zoom out to find them.
   const earlier = bubbles.filter((b) => b.state === "closed" && b.exit_price !== null && !toXY(Date.parse(b.opened_at) / 1000, b.entry_price) && !toXY(Date.parse(b.at) / 1000, b.exit_price)).length;
@@ -129,7 +131,7 @@ export function BubbleLayer({ bubbles, market, quote, toXY, width, height, onSel
   return (
     <>
       <svg className="trade-connectors" width={width} height={height} aria-hidden="true">
-        {paths.map(({ b, entry, exit }) => <g key={b.id} className={`trade-path ${b.side} ${picked === b.id ? "selected" : ""}`} data-testid="trade-path" data-trade-id={b.id}>
+        {paths.map(({ b, entry, exit }) => <g key={b.id} className={`trade-path ${b.side} ${b.state} ${picked === b.id ? "selected" : ""}`} data-testid="trade-path" data-trade-id={b.id}>
           <line className="trade-path-outline" x1={entry.x} y1={entry.y} x2={exit.x} y2={exit.y} />
           <line className="trade-path-line" x1={entry.x} y1={entry.y} x2={exit.x} y2={exit.y} />
           <circle className="trade-endpoint" cx={entry.x} cy={entry.y} r="4" /><circle className="trade-endpoint" cx={exit.x} cy={exit.y} r="4" />
@@ -185,7 +187,7 @@ export function TradeCard({ b, quote, market, now, onClose }: { b: Bubble; quote
         <div><span>Entry price</span><b>{px(b.entry_price)}</b></div>
         <div><span>{open ? "Price now" : "Exit price"}</span><b>{open ? (quote != null ? px(quote) : "—") : px(b.exit_price ?? b.entry_price)}</b></div>
         <div><span>Entry time</span><b>{new Date(b.opened_at).toLocaleString()}</b></div>
-        <div><span>Held for</span><b>{held((open ? now : Date.parse(b.at)) - Date.parse(b.opened_at))}</b></div>
+        <div><span>{open ? "Held for" : "Exit time"}</span><b>{open ? held(now - Date.parse(b.opened_at)) : new Date(b.at).toLocaleString()}</b></div>
       </div>
       {!b.is_you && <div className="tc-actions"><PlayerLink handle={b.handle}>Profile</PlayerLink></div>}
     </div>

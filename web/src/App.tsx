@@ -1,9 +1,8 @@
 import { Avatar } from "./Avatar";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { game, useGame } from "./game";
 import { TradeScreen } from "./Trade";
 import { SquadScreen } from "./Squad";
-import { LearnScreen } from "./Learn";
 import { BackupCodeSheet, YouScreen } from "./You";
 import { Onboarding } from "./Onboarding";
 import { Profiles } from "./Profiles";
@@ -14,34 +13,19 @@ import { ChatCard, FeedbackSheet } from "./Social";
 
 import { useVoice, voice, ROOMS } from "./voice";
 import { Icon, useToast } from "./ui";
-import { usePageSwipe } from "./pageSwipe";
 
-type Tab = "trade" | "chat" | "squad" | "learn" | "you";
-const TAB_ORDER: Tab[] = ["trade", "chat", "squad", "learn", "you"];
+type Tab = "trade" | "chat" | "squad" | "you";
+const TAB_ORDER: Tab[] = ["trade", "chat", "squad", "you"];
 
 export function App() {
   const st = useGame();
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(location.search).has("join") ? "squad" : "trade"));
-  const [previous, setPrevious] = useState<Tab | null>(null);
-  const [slide, setSlide] = useState(1);
-  const current = useRef(tab);
-  const [deck, setDeck] = useState<HTMLElement | null>(null);
-  const [peek, setPeek] = useState<Tab | null>(null);
   const [toast, setToast] = useToast();
-  const navigate = (next: Tab, instant = false) => {
-    if (next === current.current) return;
-    setSlide(TAB_ORDER.indexOf(next) > TAB_ORDER.indexOf(current.current) ? 1 : -1);
+  const navigate = (next: Tab) => {
     game.setChatOpen(next === "chat");
-    setPeek(null); setToast(null);
-    setPrevious(instant ? null : current.current); current.current = next; setTab(next);
+    setToast(null);
+    setTab(next);
   };
-  useEffect(() => { if (!previous) return; const t = setTimeout(() => setPrevious(null), 300); return () => clearTimeout(t); }, [tab, previous]);
-  const neighbour = (step: 1 | -1) => TAB_ORDER[TAB_ORDER.indexOf(current.current) + step] ?? null;
-  usePageSwipe(deck, {
-    canGo: (step) => !!neighbour(step),
-    onPeek: (step) => setPeek(step ? neighbour(step) : null),
-    onCommit: (step) => { const next = neighbour(step); if (!next) return; setReviewHistory(false); navigate(next, true); },
-  });
   useEffect(() => {
     const lock = () => {
       const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
@@ -81,26 +65,23 @@ export function App() {
       <div className={`app app-${tab}`}>
         <div className="header">
           <div className="wordmark">brokie<i /></div>
-          <div className="page-map" aria-label="App pages">{TAB_ORDER.map((t, i) => <button type="button" key={t} aria-label={`Go to ${t}`} aria-current={t === tab ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate(t); }}><i/>{t === tab ? <span>{t === "you" ? "You" : t[0].toUpperCase() + t.slice(1)}</span> : null}{i === TAB_ORDER.indexOf(tab) + 1 && <small aria-hidden="true">→</small>}</button>)}</div>
           <button className="avatar-btn" onClick={() => navigate("you")} aria-label="Your profile"><Avatar handle={st.me.handle} /></button>
         </div>
         {st.phase === "failed" && <button className="err panel" style={{ padding: 12, marginBottom: 16, width: "100%", textAlign: "left" }} onClick={() => game.start()}>Connection hiccup: {st.error} · tap to retry</button>}
-        <main ref={setDeck} className="page-stage swipe-deck" data-testid="page-deck" style={{ ["--slide" as string]: slide }}>
-          {TAB_ORDER.filter(t => t === tab || t === previous || t === peek).map(t => <div key={t} data-page-role={t === tab ? "current" : t === peek ? "peek" : "previous"} className={`page-screen ${t === tab ? previous ? "entering" : "" : t === previous ? "leaving" : "peeking"}`} style={t === peek && t !== tab ? { transform: `translate3d(${TAB_ORDER.indexOf(t) > TAB_ORDER.indexOf(tab) ? 100 : -100}%,0,0)` } : undefined} ref={el => { if (el) el.toggleAttribute("inert", t !== tab); }} aria-hidden={t !== tab || undefined}>
-            {t === "trade" && <TradeScreen active={t === tab} toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
+        <main className="page-stage" data-testid="page-deck">
+          {TAB_ORDER.filter(t => t === tab).map(t => <div key={t} data-page-role="current" className="page-screen">
+            {t === "trade" && <TradeScreen toast={setToast} goSquad={() => navigate("squad")} goHistory={() => { setReviewHistory(true); navigate("you"); }} />}
             {t === "chat" && <div className="chat-page secondary-screen" data-testid="chat-page">
               {game.squad ? <>{st.squads.length > 1 && <div className="hscroll">{st.squads.map(s => <button key={s.id} className={`squad-chip ${s.id === game.squad?.id ? "on" : ""}`} onClick={() => game.selectSquad(s.id)}>{s.name}</button>)}</div>}<ChatCard key={game.squad.id}/></> : <div className="quiet-empty stack" style={{ gap: 12 }}><span aria-hidden="true">↗</span><b>Bring the group together.</b><div className="muted">Your squad gets a place for setups, reactions, and everything between trades.</div><button className="big-btn lime" onClick={() => navigate("squad")}>Go to Squad</button></div>}
             </div>}
             {t === "squad" && <SquadScreen toast={setToast} />}
-            {t === "learn" && <LearnScreen goTrade={() => navigate("trade")} />}
             {t === "you" && <YouScreen toast={setToast} onFeedback={() => setFb(true)} />}
           </div>)}
         </main>
       </div>
       {tab !== "squad" && <MiniBar onOpen={() => navigate("squad")} />}
       <nav className="tabs"><div className="tabs-inner">
-        {(["trade", "chat", "squad", "learn", "you"] as const).map((t) => t === "chat" ? (
-          // Chat participates in the same swipe order as the other main pages.
+        {(["trade", "chat", "squad", "you"] as const).map((t) => t === "chat" ? (
           <button key={t} className={`tab chat-btn ${tab === "chat" ? "on" : ""}`} aria-current={tab === "chat" ? "page" : undefined} onClick={() => { setReviewHistory(false); navigate("chat"); }} data-testid="chat-btn"
             aria-label={st.chatUnread ? `Squad chat, ${st.chatUnread} new` : "Squad chat"}>
             <span className="tab-ico">{Icon.chat}{st.chatUnread > 0 && <span className="chat-badge" data-testid="chat-badge">{st.chatUnread > 9 ? "9+" : st.chatUnread}</span>}</span>Chat

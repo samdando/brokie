@@ -1,6 +1,6 @@
 import { PointerEvent as ReactPointerEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams, Logical } from "lightweight-charts";
-import type { Candle, Market, Position } from "./types";
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, LineStyle, UTCTimestamp, IPriceLine, MouseEventParams, Logical, AutoscaleInfoProvider } from "lightweight-charts";
+import type { Bubble, Candle, Market, Position } from "./types";
 import { MARKETS, direction, pnlOf } from "./types";
 import { TradeCard } from "./Bubbles";
 import type { Bracket } from "./game";
@@ -20,8 +20,8 @@ export type ToXY = (unixSeconds: number, price: number, unclipped?: boolean) => 
 type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
 interface Hover { o: number; h: number; l: number; c: number; time: number; price: number | null }
 
-export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", fullscreen = false, height = CHART_SMALL }:
-  { height?: number; fullscreen?: boolean; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
+export function BrokieChart({ market, candles, bucketSeconds, quote, positions, style, overlay, sizePctOf, brackets, onBracket, onClearBracket, handle = "?", fullscreen = false, height = CHART_SMALL, activity = [] }:
+  { activity?: Bubble[]; height?: number; fullscreen?: boolean; handle?: string; market: Market; candles: Candle[]; bucketSeconds: number; quote: number | null; positions: Position[]; style: "candles" | "line";
     overlay?: (toXY: ToXY, width: number, height: number) => ReactNode; equity?: number; sizePctOf?: (p: Position) => number | null;
     brackets?: Record<string, Bracket>; onBracket?: (id: string, b: Bracket) => void; onClearBracket?: (id: string, key: keyof Bracket) => void }) {
   H = height;
@@ -220,6 +220,26 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
     requestFrame.current();
   }, [candles, bucketSeconds, market, style, goLive, m.color]);
 
+  // A fill outside the candle's price range must still be visible. Only
+  // include trades crossing this time window, so old fills do not flatten it.
+  useEffect(() => {
+    const provider: AutoscaleInfoProvider = original => {
+      const info = original();
+      if (!info || !candles.length) return info;
+      const range = chart.current?.timeScale().getVisibleLogicalRange();
+      const first = candles[Math.max(0, Math.min(candles.length - 1, Math.floor(range?.from ?? 0)))].index * bucketSeconds;
+      const last = (candles[Math.max(0, Math.min(candles.length - 1, Math.ceil(range?.to ?? candles.length - 1)))].index + 1) * bucketSeconds;
+      const prices = activity.filter(b => Date.parse(b.opened_at) / 1000 <= last && (b.state === "open" || Date.parse(b.at) / 1000 >= first))
+        .flatMap(b => [b.entry_price, b.state === "closed" ? b.exit_price : quote])
+        .filter((p): p is number => p != null && Number.isFinite(p));
+      const priceRange = prices.reduce((range, price) => ({ minValue: Math.min(range.minValue, price), maxValue: Math.max(range.maxValue, price) }), info.priceRange);
+      return { ...info, priceRange };
+    };
+    series.current?.candle.applyOptions({ autoscaleInfoProvider: provider });
+    series.current?.area.applyOptions({ autoscaleInfoProvider: provider });
+    requestFrame.current();
+  }, [activity, candles, bucketSeconds, quote]);
+
   // ---- C3: one current-price tag, coloured by the last tick direction ----
   useEffect(() => {
     const s = series.current;
@@ -328,6 +348,12 @@ export function BrokieChart({ market, candles, bucketSeconds, quote, positions, 
             </div>
           );
         })()}
+        {fullscreen && <button type="button" className="chart-all-trades" data-testid="chart-all-trades" onClick={() => {
+          userMoved.current = true;
+          chart.current?.timeScale().fitContent();
+          chart.current?.priceScale("right").applyOptions({ autoScale: true });
+          requestFrame.current();
+        }}>All loaded trades</button>}
         {awayFromLive && <button type="button" className="live-btn" onClick={goLive} data-testid="back-to-live">⟲ Live</button>}
       </div>
     </div>
