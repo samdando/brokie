@@ -16,7 +16,7 @@ import { isCrypto, sessionCountdown, FUTURES, CRYPTOS, opensLabel } from "./sess
 import { BrokieChart } from "./Chart";
 import { SimpleFloor } from "./SimpleFloor";
 import { accountBubbles } from "./tradeActivity";
-import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, sessionOpenLabel, signedMoney, useNow } from "./ui";
+import { Button, Eyebrow, Sheet, TickValue, hintDone, hintOn, money, px, signedMoney, useNow } from "./ui";
 import { MARKETS, Market, Position, Side, digits, pnlOf } from "./types";
 
 
@@ -33,6 +33,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
   const [crowd, setCrowd] = useState(() => { try { return localStorage.getItem("brokie.crowd.v2") !== "off"; } catch { return true; } });
   const showHistory = true;
   const toggleCrowd = () => { setCrowd(v => { try { localStorage.setItem("brokie.crowd.v2", v ? "off" : "on"); } catch { /* */ } return !v; }); };
+  const dailyLimit = rulesDailyEnabled(st.me?.rules);
   const [style, setStyle] = useState<"candles" | "line">(() => { try { return localStorage.getItem("brokie.style") === "line" ? "line" : "candles"; } catch { return "candles"; } });
   const [closing, setClosing] = useState<string | null>(null);
   const closeInFlight = useRef(false);
@@ -167,7 +168,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
         onClose={() => { if (cardHint) { hintDone("cards"); setCardHint(false); } return close(p.id, ids, `${MARKETS[p.market].title} x${p.quantity}`); }} />;
     })}
   </div>;
-  const orderDock = <div className="trade-dock">
+  const orderDock = <div className={`trade-dock ${stacks.length ? "has-positions" : "flat-dock"}`}>
     <div className="dock-close-surface" data-testid="quick-close">
       <TradingStatus market={market} disabled={!!closing} onOpen={()=>rules?.status === "blown" ? setAccountOpen(true) : setPositionsOpen(true)} />
       {here.length > 0 && <button type="button" className="close-trade-btn" disabled={!!closing || !!st.pending || game.ordersInFlight > 0} data-testid="close-trade" onClick={() => {
@@ -182,7 +183,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {big && <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>}
       <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
     </div>
-    <SpamPad toast={toast} disabled={rules?.status === "blown"||rules?.status === "locked"||!open}/>
+    <SpamPad toast={toast} disabled={rules?.status === "blown"||(dailyLimit && rules?.status === "locked")||!open}/>
   </div>;
 
 
@@ -205,10 +206,10 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
 
       {heldElsewhere.length > 0 && <div className="chips">{heldElsewhere.map(m => <button className="chip" key={m} onClick={() => game.setMarket(m)}>View {MARKETS[m].title} position</button>)}</div>}
 
-      <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : "simple-price-card"}`} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
+      <div ref={chartCard} className={`chart-card ${big ? "chart-fullscreen" : "simple-price-card"}`} style={big ? { height: viewportH, maxHeight: viewportH } : undefined} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? "Fullscreen chart" : undefined}>
         <div className="chart-utilities quote-heading">
           <div className="quote-block">
-            <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].subtitle}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
+            <div className="instrument-title">{crypto ? `${MARKETS[market].title} · Paper crypto` : MARKETS[market].title}<span className="badge" data-testid="live-badge" style={{ color: open ? "var(--lime)" : "var(--muted)" }}><span className="dot" style={{ width: 4, height: 4, ["--c" as string]: open ? "var(--lime)" : "var(--muted)" }} />{open ? "LIVE" : "CLOSED"}</span></div>
             <span className="quote"><TickValue value={quote}>{quote ? px(quote, digits(market)) : "—"}</TickValue></span>
             {big && <span className="quote-sub"><span className={`mono ${change >= 0 ? "lime" : "red"}`}>{change >= 0 ? "▲ " : "▼ "}{px(Math.abs(change), digits(market))}</span>
               {big && pattern && <span className={`candle-read ${pattern.side}`} data-testid="candle-read"><small>Pattern</small><b>{pattern.name}</b></span>}</span>}
@@ -217,10 +218,9 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
           {big && <button type="button" className={`chart-utility indicators-btn ${indicatorCount ? "enabled" : ""}`} aria-label="Chart indicators" aria-expanded={indicatorsOpen} onClick={() => setIndicatorsOpen(true)} data-testid="indicators-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/><circle cx="9" cy="5" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="19" r="2" fill="var(--bg)"/></svg>{indicatorCount > 0 && <i/>}</button>}
           <button type="button" className="chart-utility chart-info-btn" onClick={() => setChartInfo(!chartInfo)} aria-expanded={chartInfo} aria-label="Chart info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></svg></button>
           <button className={`chart-corner-toggle ${big ? "on" : ""}`} aria-pressed={big} data-testid="big-chart"
-            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg></button>
+            aria-label={big ? "Exit fullscreen chart" : "Open fullscreen chart"} onClick={toggleBig}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d={big ? "M3 8h5V3m8 0v5h5M3 16h5v5m8 0v-5h5" : "M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"} /></svg>{!big && <span>Chart</span>}</button>
           </div>
         </div>
-            {big && candles.length > 0 && (() => { const c = candles[candles.length - 1], d = digits(market); return <div className="tv-ohlc mono" data-testid="tv-ohlc"><b>{MARKETS[market].title}</b><span>· {frameLabel(st.candleSeconds)}</span><span>O <i className={c.close >= c.open ? "up" : "dn"}>{px(c.open, d)}</i></span><span>H <i className={c.close >= c.open ? "up" : "dn"}>{px(c.high, d)}</i></span><span>L <i className={c.close >= c.open ? "up" : "dn"}>{px(c.low, d)}</i></span><span>C <i className={c.close >= c.open ? "up" : "dn"}>{px(c.close, d)}</i></span></div>; })()}
         <FloorPresence market={market} showMarkers={crowd} onMarkers={toggleCrowd} onSquad={()=>{setBig(false);goSquad();}} toast={toast}/>
         {settled && <div className="trade-success" role="status" data-testid="trade-success"><span>Trade closed · {settled.title}</span><b>{signedMoney(settled.pnl)}</b></div>}
         {big && st.bubbleError && <button type="button" className="trade-load-error" onClick={() => void game.refreshBubbles()} role="status">{st.bubbleError} Tap to retry.</button>}
@@ -233,7 +233,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
               onZoomOut={st.frames.some((f) => f > st.candleSeconds) ? () => game.setCandleSeconds(st.frames.find((f) => f > st.candleSeconds)!) : undefined}
               onEnter={()=>{}} />
             {!candles.length && <div className="chart-empty" role="status"><span aria-hidden="true">⌁</span><b>Waiting for the market</b><small>Fresh prices and candles will appear here.</small></div>}
-          </>} /> : <SimpleFloor market={market} quote={quote} positions={here.map(s => s.merged)} bubbles={chartBubbles} onPositions={() => setPositionsOpen(true)} onExpand={toggleBig} error={st.bubbleError} onRetry={() => void game.refreshBubbles()} />}
+          </>} /> : <SimpleFloor market={market} quote={quote} positions={here.map(s => s.merged)} bubbles={chartBubbles} onPositions={() => setPositionsOpen(true)} error={st.bubbleError} onRetry={() => void game.refreshBubbles()} />}
         {big && indicatorCount > 0 && <button type="button" className="indicator-legend" aria-label="Edit active chart indicators" onClick={() => setIndicatorsOpen(true)}>{indicators.ema && <><span className="ema-fast">EMA 20</span><span className="ema-slow">EMA 50</span></>}{indicators.structure && <span className="structure-key">STRUCTURE</span>}{indicators.gaps && <span className="gap-key">FVG</span>}{indicators.bands && <span>BB 20</span>}<span className="lens-count">{indicatorCount} ON ↗</span></button>}
         {!open && <div className="chart-attribution">{(crypto ? "Crypto orders open during the weekend trading session." : "Market closed · new trades resume when prices are live.") + (opensLabel(market, game.now()) ? ` ${opensLabel(market, game.now())}.` : "")}</div>}
         {big && orderDock}
@@ -290,8 +290,8 @@ function TradingStatus({ market, onOpen, disabled }: { market: Market; onOpen?: 
   const tone = summary.flat || summary.pnl === null ? "muted" : summary.pnl >= 0 ? "lime" : "red";
   const exposure = [summary.long ? `LONG ${summary.long}` : "", summary.short ? `SHORT ${summary.short}` : ""].filter(Boolean).join(" · ") || "FLAT";
   const content = <><span className="dock-pnl"><small>Unrealised <span>· all trades</span></small><b className={tone} data-testid="live-unrealised">{value}</b>{summary.stale && <em>{summary.pnl === null ? "Waiting for prices" : "Last quoted prices"}</em>}</span>
-    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Season max-loss reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
-  return onOpen ? <button className="dock-status" onClick={onOpen} disabled={disabled} aria-busy={disabled || undefined} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
+    <span className="dock-exposure">{st.bracketSaving && <em className="protection-saving" role="status">Saving SL/TP…</em>}<small className={st.me?.rules?.status === "locked" || st.me?.rules?.status === "blown" ? "red" : ""}>{st.me?.rules?.status === "locked" && rulesDailyEnabled(st.me?.rules) ? "Daily limit reached" : st.me?.rules?.status === "blown" ? "Season max-loss reached" : `${MARKETS[market].title} · ${exposure}`}</small><b>{summary.groups ? `${summary.groups} open position${summary.groups === 1 ? "" : "s"}` : "No open positions"}{onOpen && <span aria-hidden="true"> ›</span>}</b></span></>;
+  return onOpen ? <button className={`dock-status ${summary.flat ? "is-flat" : ""}`} onClick={onOpen} disabled={disabled} aria-busy={disabled || undefined} aria-label="View open positions and unrealised P&L" data-testid="trading-status">{content}</button> : <div className="dock-status">{content}</div>;
 }
 
 function ProtectionEditor({ id, toast, onClose }: { id: string; toast: (message: string) => void; onClose: () => void }) {
@@ -368,13 +368,15 @@ function PnlSheet({ open, onClose, equity, unrealized, base }: { open: boolean; 
   );
 }
 
+function rulesDailyEnabled(rules?: Rules) { return rules?.daily_loss_enabled ?? (rules?.daily_loss_pct ?? 0) > 0; }
+
 function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: string) => void; goHistory: () => void }) {
   const [busy, setBusy] = useState(false);
   const hard = useGame().pool?.tier === "pool";
   const now = useNow(1000) + game.state.clockOffset;
   const until = rules.unlock_at ? Date.parse(rules.unlock_at) - now : null;
-  if (rules.status === "active") return null;
-  if (rules.status === "locked") return (
+  if (rules.status === "active" || (rules.status === "locked" && !rulesDailyEnabled(rules))) return null;
+  if (rules.status === "locked" && rulesDailyEnabled(rules)) return (
     <div className="status-card" style={{ background: "rgba(255,125,139,.08)", border: "1px solid rgba(255,125,139,.35)" }} data-testid="status-locked">
       <span className="status-symbol" aria-hidden="true">Ⅱ</span>
       <div><b>Daily loss limit hit.</b><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Positions closed. {until !== null ? until > 0 ? `Daily allowance resets in ${sessionCountdown(until)}.` : "Daily reset reached. Refresh your account." : "Trading resumes at the next daily reset."}</div><div className="row" style={{ gap: 16, marginTop: 8 }}><button className="text-action lime" onClick={goHistory}>Review your trades →</button><button className="text-action" disabled={busy} onClick={async () => { setBusy(true); try { await game.refreshState(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Refreshing…" : "Refresh status"}</button></div></div>
@@ -383,20 +385,21 @@ function RuleStatus({ rules, toast, goHistory }: { rules: Rules; toast: (m: stri
   return (
     <div className="status-card" style={{ background: "#1b1b1b", border: "1px solid #444", flexDirection: "column", alignItems: "stretch" }} data-testid="status-blown">
       <div className="row"><span className="status-symbol" aria-hidden="true">↘</span>
-        <div><b style={{ fontSize: 17 }}>Season max-loss limit reached.</b><div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight:1.7 }}>This is separate from the daily lock. A new trading day won't reset it.<br />Equity {money(rules.equity)} · season floor {money(rules.drawdown_floor)}.</div></div></div>
+        <div><b style={{ fontSize: 17 }}>Season max-loss limit reached.</b><div className="muted" style={{ fontSize: 12, marginTop: 6, lineHeight:1.7 }}>A new trading day won't reset this season limit.<br />Equity {money(rules.equity)} · season floor {money(rules.drawdown_floor)}.</div></div></div>
       {hard ? <div className="muted" style={{ fontSize: 12, marginTop: 10 }} data-testid="hard-no-restart">Hard mode has no restart. Your pool run is over for this season; the free season is still yours next time.</div> : rules.resets_used === 0 ? (
         <button className="big-btn lime" style={{ marginTop: 12 }} disabled={busy} data-testid="buy-back"
-          onClick={async () => { setBusy(true); try { await game.buyBack(); toast(`Back in. ${rules.daily_loss_amount ? money(rules.daily_loss_amount, 0) : "4%"} daily limit, and 5 new trading days to qualify.`); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
+          onClick={async () => { setBusy(true); try { await game.buyBack(); toast("Back in. Fresh paper funds and 5 new trading days to qualify."); } catch (e) { toast((e as Error).message); } setBusy(false); }}>
           {busy ? <span className="spinner" /> : "Use free restart"}
         </button>
       ) : <div className="muted" style={{ fontSize: 12, marginTop: 10 }}>Your one restart has been used. Trading resumes next season.</div>}
-      {!hard && rules.resets_used === 0 && <small className="muted">Restarts at {money(rules.start_balance,0)} paper funds, with a {rules.daily_loss_amount ? money(rules.daily_loss_amount,0) : "4%"} daily limit and 5 new qualifying days. One restart per season.</small>}
+      {!hard && rules.resets_used === 0 && <small className="muted">Restarts at {money(rules.start_balance,0)} paper funds and 5 new qualifying days. One restart per season.</small>}
     </div>
   );
 }
 
 function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const dailyEnabled = rulesDailyEnabled(rules);
   const dailyRoom = Math.max(0, equity - rules.daily_floor), dailyMax = rules.day_start_equity - rules.daily_floor;
   const trailing = rules.dd_mode === "trailing";
   const ddRoom = Math.max(0, equity - rules.drawdown_floor), ddMax = rules.max_loss_amount ?? (rules.dd_base ?? rules.peak_equity) - rules.drawdown_floor;
@@ -415,10 +418,10 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
   );
   const df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0;
   const explanations: Record<string, string> = {
-    "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until the next session opens at ${sessionOpenLabel()} your time (5pm New York).`,
+    "meter-daily": `At ${money(rules.daily_floor, 0)} account equity, the server closes your positions and locks trading until the next trading session.`,
     "meter-dd": trailing
       ? `Your current trailing floor is ${money(rules.drawdown_floor, 0)}, ${rules.max_dd_pct}% under your highest equity. Reaching it closes your positions and marks this season's account REKT.`
-      : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_loss_amount ? `a fixed ${money(rules.max_loss_amount,0)} below` : `${rules.max_dd_pct}% below`} your highest end-of-day balance (${money(rules.dd_base ?? rules.peak_equity,0)}), capped at your original ${money(rules.drawdown_cap ?? rules.start_balance,0)}. It only moves after a higher session close (5pm New York), never on intraday profit spikes. Once the floor reaches the cap it stays there. Your season buffer is equity minus this floor; daily loss room is separate. Touching either limit closes your positions.`,
+      : `Your floor is ${money(rules.drawdown_floor, 0)}: ${rules.max_loss_amount ? `a fixed ${money(rules.max_loss_amount,0)} below` : `${rules.max_dd_pct}% below`} your highest end-of-day balance (${money(rules.dd_base ?? rules.peak_equity,0)}), capped at your original ${money(rules.drawdown_cap ?? rules.start_balance,0)}. It only moves after a higher session close (5pm New York), never on intraday profit spikes. Once the floor reaches the cap it stays there. Your season buffer is equity minus this floor. Touching this floor closes your positions.`,
     "meter-target": `Get funded: be at ${money(rules.target, 0)} (+10%) with at least ${rules.qualify_days} trading days (any session you open a trade). Hitting the target earlier earns 🎯 Target hit; you still need to be at +10% once the days are in. Funded is a game badge, with no real funding or cash payout. The same ${rules.qualify_days} days qualify you for the leaderboard.`,
   };
   return (
@@ -426,10 +429,11 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
 
     <details className="rule-summary compact-rules">
       <summary><span>Season loss buffer <b style={{ color: tone(dd) }}>{money(ddRoom, 0)}</b></span><span className="muted">Risk details ⌄</span></summary>
-      <div className="risk-strips" aria-hidden="true">{[["DAILY ROOM", df], ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded || rules.target_hit ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
+      <div className="risk-strips" aria-hidden="true">{[...(dailyEnabled ? [["DAILY ROOM", df]] : []), ["DRAWDOWN ROOM", dd], ["TARGET", rules.funded || rules.target_hit ? 1 : progress]].map(([label, value]) => <div key={String(label)}><span>{label}</span><i><b style={{ width: `${Math.max(0, Math.min(1, Number(value))) * 100}%`, background: label === "TARGET" ? "var(--lime)" : tone(Number(value)) }} /></i></div>)}</div>
       <div className="target-progress"><span>Profit target {Math.round(progress * 100)}% · {rules.trading_days}/{rules.qualify_days} days</span><progress max={1} value={rules.funded || rules.target_hit ? 1 : progress} /></div>
+      {!dailyEnabled && <p className="no-daily-limit" data-testid="no-daily-limit">No daily loss limit</p>}
       <div className="meters">
-        {m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
+        {dailyEnabled && m("Daily loss limit", dailyRoom, df, rules.daily_loss_pct, "meter-daily")}
         {m("Max loss limit", ddRoom, dd, rules.max_dd_pct, "meter-dd")}
       </div>
       <button type="button" className="target-meter" data-testid="meter-target" aria-expanded={expanded === "meter-target"} aria-controls="rule-explainer"
@@ -521,7 +525,6 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
     window.addEventListener("blur", off);
     return () => { document.removeEventListener("visibilitychange", off); window.removeEventListener("blur", off); };
   }, []);
-  const livePx = game.quote(game.state.market)?.price ?? null;
   const btn = (side: Side) => {
     const label = side === "long" ? "BUY" : "SELL";
     return (
@@ -532,7 +535,6 @@ function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: bo
         onKeyUp={(e) => { if ((e.key === "Enter" || e.key === " ") && game.state.pending) game.armTaps(done(side)); }}
         data-testid={side === "long" ? "go-long" : "go-short"} id={side === "long" ? "go-long" : "go-short"}>
         <span className="spam-label">{label}</span>
-        <span className="spam-price mono" data-testid={side === "long" ? "buy-price" : "sell-price"}>{livePx ? px(livePx, digits(game.state.market)) : "—"}</span>
       </button>
     );
   };

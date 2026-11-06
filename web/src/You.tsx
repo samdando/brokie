@@ -1,5 +1,8 @@
 import { haptic, hapticsOn, orderEffect, saveEffect } from "./effects";
 import { nativeApp } from "./config";
+import { FillRow } from "./FillRow";
+import { accountBubbles, groupFills } from "./tradeActivity";
+import type { Market } from "./types";
 import { Avatar } from "./Avatar";
 import { AvatarShop } from "./AvatarShop";
 import { DailyRecap, TradeReview } from "./TradeReview";
@@ -24,6 +27,7 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
   const unrealized = me.positions.reduce((s, p) => { const q = game.quote(p.market)?.price; return s + (p.market === "prediction" ? pnlOf(p, 0) : q ? pnlOf(p, q) : 0); }, 0);
   const wins = me.trades.filter((t) => t.pnl > 0).length;
   const base = me.rules?.start_balance ?? 100000;
+  const receipts = (Object.keys(MARKETS) as Market[]).flatMap(m => groupFills(accountBubbles(me,m,[]).filter(b => b.state === "closed"),m)).sort((a,b) => Date.parse(b.fills[0].at)-Date.parse(a.fills[0].at));
   useEffect(() => { void game.refreshLifetime(); }, []);
   return (
     <div className="stack you-screen secondary-screen" style={{ gap: 32 }}>
@@ -53,8 +57,6 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       </div></details>
       </section>
       <PoolCard />
-      <DonateCard />
-      <RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} />
 
       </> : <LifetimeCard />}
       <Sheet open={settings} onClose={() => setSettings(false)}><div className="stack"><div className="row between"><h3 className="h3">Account settings</h3><button className="text-action" onClick={() => setSettings(false)}>Done</button></div><button className="text-action" onClick={() => { setSettings(false); setEdit(true); }}>Edit handle</button><OppositeSetting /><OrderEffectsSetting /><FramesSetting /><BackupRow /><a className="muted" style={{ fontSize: 11 }} href="./tradingview-NOTICE.txt" target="_blank" rel="noopener noreferrer">TradingView Lightweight Charts · legal notice ↗</a></div></Sheet>
@@ -62,23 +64,18 @@ export function YouScreen({ toast, onFeedback }: { toast: (m: string) => void; o
       <DailyRecap />
       <div id="receipts" className="stack you-receipts" style={{ gap: 12 }}>
         <div className="row between"><h2 className="h2">Your trades</h2><span className="section-caption">Latest 50 · tap to review</span></div>
-        {me.trades.length === 0 && <div className="quiet-empty"><span aria-hidden="true">↗</span><b>A fresh start.</b><p>Your closed trades will land here.<br />Every entry has something to teach you.</p></div>}
-        {(allReceipts ? me.trades : me.trades.slice(0,6)).map((t) => (
-          <button key={t.id} className="panel row receipt-ticket" style={{ textAlign: "left" }} onClick={() => setCard(t)} data-testid="receipt">
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 600 }}>{t.prediction_question ?? MARKETS[t.market].title} · {t.prediction_outcome?.toUpperCase() ?? (t.side === "long" ? "Long" : "Short")} · {t.quantity} {t.market === "prediction" ? "shares" : t.quantity === 1 ? "micro" : "micros"}</div>
-              <div className="mono muted" style={{ fontSize: 10, marginTop: 5 }}>{px(t.entry_price)} → {px(t.exit_price)}</div><div className="receipt-meta muted">{new Date(t.closed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}{t.reason !== "closed" && <span>Closed: {t.reason.replace(/_/g, " ")}</span>}</div></div>
-            <span className={`mono ${t.pnl >= 0 ? "lime" : "red"}`} style={{ fontSize: 13, fontWeight: 700 }}>{signedMoney(t.pnl)}</span>
-            <span className="muted" style={{ fontSize: 12 }}>↗</span>
-          </button>
-        ))}
-        {me.trades.length > 6 && <button className="quiet-action receipts-more" onClick={() => setAllReceipts(!allReceipts)}>{allReceipts ? "Show fewer trades" : `View all ${me.trades.length} trades`}</button>}
+        {me.trades.length === 0 && <div className="quiet-empty"><span aria-hidden="true">↗</span><b>No closed trades yet.</b><p>Your entries and exits will appear here.</p></div>}
+        {(allReceipts ? receipts : receipts.slice(0,6)).map(group => <FillRow key={group.key} group={group} quote={null} showMarket testId="receipt" onReview={id => setCard(me.trades.find(t => t.id === id) ?? null)} />)}
+        {receipts.length > 6 && <button className="quiet-action receipts-more" onClick={() => setAllReceipts(!allReceipts)}>{allReceipts ? "Show fewer trades" : `View all ${me.trades.length} fills`}</button>}
       </div>
+      {period === "season" && <details className="quiet-disclosure profile-rank-disclosure"><summary><span>Season rank</span><small>View progress ⌄</small></summary><RankCard r={{ return_pct: (me.cash + unrealized - base) / base * 100, status: me.rules?.status, funded: me.rules?.funded, trading_days: me.rules?.trading_days, qualified: me.rules ? me.rules.trading_days >= (me.rules.qualify_days || 5) : undefined }} /></details>}
       <button className="profile-customize" onClick={() => setLook(true)}><Avatar handle={me.handle} /><span><b>Make it yours</b><small>Your face on the trading floor.</small></span><span aria-hidden="true">↗</span></button>
 
       <div className="you-quiet" data-testid="you-quiet">
         <button className="text-action settings-entry" onClick={onFeedback} data-testid="feedback-btn">Help shape Brokie <span>Send feedback ↗</span></button>
         <InstallTip />
       </div>
+      {!nativeApp && <details className="quiet-disclosure support-disclosure"><summary><span>Support Brokie</span><small>Optional ⌄</small></summary><DonateCard /></details>}
       <HandleSheet open={edit} onClose={() => setEdit(false)} toast={toast} />
       <TradeCardSheet key={card?.id ?? "closed"} trade={card} handle={me.handle} onClose={() => setCard(null)} />
     </div>

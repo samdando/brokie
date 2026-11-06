@@ -20,3 +20,17 @@ export function accountBubbles(me: MyState, market: Market, social: Bubble[], cr
   }
   return [...fills.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
+
+export interface FillGroup { key: string; market: Market; fills: Bubble[]; quantity: number }
+/** Same entry/exit event can have several real legs. Present it once, while
+ * keeping every receipt accessible and preserving its actual fill prices. */
+export function groupFills(bubbles: Bubble[], market: Market): FillGroup[] {
+  const groups = new Map<string, FillGroup>();
+  for (const b of bubbles) {
+    const key = JSON.stringify([market,b.handle,b.side,b.state,b.prediction_id,b.prediction_outcome,b.prediction_question,b.entry_price,b.exit_price,Number.isFinite(Date.parse(b.opened_at)) ? Math.floor(Date.parse(b.opened_at)/60000) : b.id,Math.floor(Date.parse(b.at)/(b.state === "closed" ? 1000 : 60000)),b.reason]);
+    const group = groups.get(key);
+    if (group) { group.fills.push(b); group.quantity += b.quantity; }
+    else groups.set(key, { key, market, fills: [b], quantity: b.quantity });
+  }
+  return [...groups.values()];
+}

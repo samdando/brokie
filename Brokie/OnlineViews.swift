@@ -275,7 +275,7 @@ struct OnlineSquadScreen: View {
                 .opacity(row.qualified == false ? 0.7 : 1).grayscale(row.status == "blown" ? 0.8 : 0)
                 if index < game.leaderboard.count - 1 { Rectangle().fill(Ink.line).frame(height: 1) }
             }
-            Text("Prop rules: 5% daily loss, 10% trailing drawdown, +10% to get funded. 5 trading days to qualify (faded rows haven't yet).")
+            Text("Season rules: no daily loss limit, a capped end-of-day loss floor, and +10% to get funded. 5 trading days to qualify (faded rows haven't yet).")
                 .font(.system(size: 10)).foregroundStyle(Ink.muted).padding(.top, 12).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

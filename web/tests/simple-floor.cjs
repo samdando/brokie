@@ -13,7 +13,7 @@ const assert = require('node:assert/strict');
    const { game } = await import('/src/game.ts'); window.testGame = game;
    const q = game.quote('btc').price, now = game.now();
    const fill = (id, handle, side, entry, exit) => ({ id, handle, is_you: handle === 'sam', state: 'closed', side, quantity: 10, entry_price: q + entry, exit_price: q + exit, pnl: (exit-entry) * (side === 'long' ? 1 : -1) * .1, opened_at: new Date(now-25*60000).toISOString(), at: new Date(now-10*60000).toISOString(), reason:'closed', size_pct:null, dd_floor:null, equity:null });
-   game.set({ bubbles: [...game.state.bubbles, fill('mate-close','bum','short',80,-50), fill('quiet-close','quiet','long',-70,10)], candleSeconds:60 });
+   game.set({ bubbles: [...game.state.bubbles, fill('mate-close','bum','short',80,-50), fill('quiet-close','quiet','long',-70,10)], candleSeconds:60, me:{...game.state.me,rules:{...game.state.me.rules,daily_loss_enabled:false,daily_loss_pct:0,daily_loss_amount:null,daily_floor:0}} });
  });
  await page.getByTestId('simple-floor').waitFor();
  await page.waitForFunction(() => document.querySelectorAll('[data-testid="tape-trade"]').length === 5);
@@ -25,7 +25,7 @@ const assert = require('node:assert/strict');
  assert.match(await page.locator('[data-trade-id="receipt"]').innerText(), /Exit · closed/);
  assert.equal(await page.getByTestId('style-switch').count(), 0, 'candles controls fullscreen only');
  for (const [width,height] of [[320,568],[393,852],[430,932]]) {
-   await page.setViewportSize({ width,height }); await page.evaluate(() => scrollTo(0,0)); await page.waitForTimeout(200);
+   await page.setViewportSize({ width,height }); await page.waitForTimeout(250); await page.evaluate(() => scrollTo(0,0)); await page.waitForTimeout(100);
    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal overflow');
    const buy = await page.getByTestId('go-long').boundingBox(), tabs = await page.locator('.tabs').boundingBox();
    assert(buy.y + buy.height <= tabs.y + 1, 'orders above tabs');
@@ -48,7 +48,10 @@ const assert = require('node:assert/strict');
  await page.waitForFunction(() => document.querySelectorAll('[data-testid="trade-path"]').length >= 205);
  assert(await page.locator('.tm.cluster').count() > 0, 'crowded entries stay grouped');
  await page.keyboard.press('Escape');
- assert.equal(await page.getByTestId('tape-trade').count(),205,'no shared fill cap hides quiet traders');
+ assert.equal(await page.getByTestId('tape-trade').count(),6,'one compact row groups 200 busy fills');
+ const busy=page.locator('[data-testid="tape-trade"][data-fill-count="200"]');
+ await busy.getByRole('button',{name:'Show 200 fills',exact:true}).click();
+ assert.equal(await busy.getByTestId('fill-breakdown').locator('[data-trade-id]').count(),200,'every grouped receipt remains accessible');
  assert(await page.locator('[data-trade-id="quiet-close"]').count());
  await page.evaluate(() => window.testGame.set({bubbles:window.originalBubbles}));
  // A swipe neither navigates nor closes a trade.
@@ -70,6 +73,11 @@ const assert = require('node:assert/strict');
  assert.match(await page.locator('[data-trade-id="closed-now"]').innerText(),/Exit · closed/);
  await page.getByTestId('tab-you').click(); await page.getByTestId('tab-trade').click();
  await page.locator('[data-trade-id="closed-now"]').waitFor();
+ await page.getByTestId('account-disclosure').click();
+ await page.locator('.compact-rules > summary').click();
+ assert.equal(await page.getByTestId('meter-daily').count(),0,'no daily meter after server removal');
+ assert(await page.getByTestId('no-daily-limit').isVisible());
+ await page.getByTestId('account-sheet').getByRole('button',{name:'Done',exact:true}).click();
  // A fresh account response reconstructs our receipts without social history.
  await page.evaluate(async()=>{const {accountBubbles}=await import('/src/tradeActivity.ts');const g=window.testGame;const reloaded=JSON.parse(JSON.stringify(g.state.me));if(!accountBubbles(reloaded,'btc',[]).some(b=>b.id==='closed-now'&&b.exit_price!=null))throw Error('Reload lost own receipt');});
  // Legacy RPC compatibility, visible errors, and stale-response isolation.

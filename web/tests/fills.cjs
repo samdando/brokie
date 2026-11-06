@@ -1,0 +1,17 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),ts=require('../node_modules/typescript');
+const exports_={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(require('node:path').join(__dirname,'../src/tradeActivity.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:exports_});
+const {groupFills,accountBubbles}=exports_;
+const trade={id:'a',market:'nas',side:'short',quantity:100,entry_price:28214,exit_price:28251.5,pnl:-7500,reason:'daily_limit',opened_at:'2026-11-05T12:46:02Z',closed_at:'2026-11-05T13:28:00Z'};
+const me={handle:'sam',positions:[],trades:[trade,{...trade,id:'b',opened_at:'2026-11-05T12:46:08Z'}]};
+const fills=accountBubbles(me,'nas',[]),g=groupFills(fills,'nas');assert.equal(g.length,1);assert.equal(g[0].quantity,200);assert.equal(g[0].fills.length,2);assert.equal(g[0].fills.reduce((s,t)=>s+t.pnl,0),-15000);
+assert.equal(groupFills([...fills,{...fills[0],id:'other',handle:'someone'}],'nas').length,2,'players stay separate');
+assert.equal(groupFills([...fills,{...fills[0],id:'exit',exit_price:28252}],'nas').length,2,'different fills retain their prices');
+assert.equal(groupFills([...fills,{...fills[0],id:'later',at:'2026-11-05T14:28:00Z'}],'nas').length,2,'distinct exits stay separate');
+assert.equal(groupFills([...fills,{...fills[0],id:'side',side:'long'}],'nas').length,2,'hedges stay separate');
+const social=[{...fills[0],is_you:true,id:'old'},{...fills[0],is_you:false,id:'mate'},{...fills[0],state:'open',id:'stale'}];
+assert.equal(accountBubbles(me,'nas',social).length,4,'older own fills survive the account 50 limit and stale opens disappear');
+assert.equal(accountBubbles(me,'nas',social,false).length,3,'crowd preference never hides own receipts');
+assert.equal(accountBubbles(me,'gold',[]).length,0,'market scope is respected');
+assert.equal(groupFills([{...fills[0],prediction_id:'yes-a'},{...fills[1],prediction_id:'yes-b'}],'prediction').length,2,'different prediction instruments stay separate');
+assert.equal(groupFills(fills.map(f=>({...f,opened_at:''})),'nas').length,2,'unknown entry times do not create fake groups');
+console.log('PASS fills: duplicate legs group with correct size/result, all IDs retained, players/hedges/prices/exits stay separate, account receipts survive social failure');

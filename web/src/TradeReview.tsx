@@ -66,5 +66,5 @@ export function DailyRecap() {
     void load(); const timer = setInterval(load, 15000);
     return () => { live = false; clearInterval(timer); };
   }, []);
-  return data ? <section className="panel stack daily-recap" style={{ padding: 18, gap: 10 }}><div className="row between"><b>Today's recap</b><small className="muted">Session {data.day}</small></div><strong className={data.pnl >= 0 ? "lime" : "red"}>{signedMoney(data.pnl)}</strong><span className="muted">{data.wins} wins · {data.losses} losses · {data.trades} closed trades</span></section> : null;
+  return data && data.trades > 0 ? <section className="panel stack daily-recap" style={{ padding: 18, gap: 10 }}><div className="row between"><b>Today's recap</b><small className="muted">Session {data.day}</small></div><strong className={data.pnl >= 0 ? "lime" : "red"}>{signedMoney(data.pnl)}</strong><span className="muted">{data.wins} wins · {data.losses} losses · {data.trades} closed trades</span></section> : null;
 }

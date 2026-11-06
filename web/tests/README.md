@@ -1,5 +1,9 @@
 # Trading floor verification
 
+6 November risk/receipt cleanup: `node tests/fills.cjs` checks same-event leg grouping without merging different players, directions, prices, exits or instrument identities. `node tests/screen-cleanup.cjs` reproduces the supplied NAS/DLL screens with a synthetic account, verifying grouped totals and individual reviews, no oversized flat card, a compact dock at 320/393/430px, fullscreen safe areas, and no empty recap. Screenshots use `/tmp/brokie-cleanup-*.png`. `simple-floor.cjs` now also checks the absence of a daily meter when the server disables DLL and preserves access to all 200 grouped fills.
+
+`backend/remove_daily_loss.sql` is applied in production; apply it last in other environments after the capped floor/bracket migrations. `node backend/tests/no-daily-loss.mjs` from the repo root tests no DLL for existing/future/restarted accounts and guarded owner-only resets. Historical DLL receipts remain unchanged.
+
 6 November simple-floor pass: Trade opens with the live price, an entry comparison for each open direction, and a chronological list of your and your selected squad’s fills. Candles, timeframe controls, indicators and pan/zoom live in fullscreen. Closed fills and entry-to-exit lines show by default. Navigation and closing use buttons; Learn and the page/close swipe handlers are removed from this flow.
 
 Run `node tests/simple-floor.cjs` against an isolated local Vite server on port 5179 (or set `BASE_URL`). It covers 320/393/430px, fullscreen fit and exits, explicit close success/refusal, own receipts after navigation and fresh account state, 200 overlapping closes without hiding quiet traders, legacy RPC compatibility, errors and stale-response isolation. Use the `PLAYWRIGHT_MODULE` setting described below if Playwright is supplied by a bundled runtime. Screenshots go to `/tmp/brokie-simple-*.png`.

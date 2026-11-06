@@ -12,7 +12,7 @@ struct RuleMeters: View {
         let df = dailyMax > 0 ? dailyRoom / dailyMax : 0, dd = ddMax > 0 ? ddRoom / ddMax : 0
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                meter("DAILY LEFT · \(Int(rules.dailyLossPct))%", money(dailyRoom, decimals: 0), df, tone(df)).accessibilityIdentifier("meter-daily")
+                if rules.dailyLossPct > 0 { meter("DAILY LEFT · \(Int(rules.dailyLossPct))%", money(dailyRoom, decimals: 0), df, tone(df)).accessibilityIdentifier("meter-daily") }
                 meter("DD LEFT · \(Int(rules.maxDdPct))%", money(ddRoom, decimals: 0), dd, tone(dd)).accessibilityIdentifier("meter-dd")
                 meter("TO FUNDED", rules.funded ? "🏆 Done" : "\(Int(progress * 100))%", rules.funded ? 1 : progress, Ink.gold)
             }
@@ -74,13 +74,13 @@ struct RuleStatusCard: View {
                     Button {
                         busy = true
                         Task {
-                            do { try await game.buyBack(); notify("Back in. Tighter rules: 4% daily, 8% drawdown.") }
+                            do { try await game.buyBack(); notify("Back in. Fresh funds and no daily loss limit.") }
                             catch { notify(error.localizedDescription) }
                             busy = false
                         }
                     } label: {
                         ZStack {
-                            Text("Use your one buy-back (4% / 8% rules)").opacity(busy ? 0 : 1)
+                            Text("Use your one buy-back").opacity(busy ? 0 : 1)
                             if busy { ProgressView().tint(Ink.background) }
                         }
                         .font(.system(size: 14, weight: .bold)).frame(maxWidth: .infinity).frame(height: 48)
