@@ -40,6 +40,7 @@ const assert=require('node:assert/strict');
  await page.evaluate(()=>{window.closeCalls=[];window.g.closeStack=async(ids)=>{window.closeCalls.push(ids);return new Promise(resolve=>window.finishClose=resolve);};});
  await page.getByTestId('close-position').click();
  assert(await page.getByTestId('close-position').isDisabled());assert.match(await page.getByTestId('close-position').innerText(),/Closing/);
+ assert(await page.getByTestId('go-long').isDisabled());assert(await page.getByTestId('go-short').isDisabled(),'orders wait for the close result');
  await page.getByTestId('close-position').dispatchEvent('click');assert.equal(await page.evaluate(()=>window.closeCalls.length),1,'repeated taps cannot close twice');
  await page.evaluate(()=>window.finishClose({error:'Close refused',pnl:9000}));
  await page.getByTestId('close-position').waitFor();assert.equal(await page.getByTestId('trade-success').count(),0,'refused close has no result');

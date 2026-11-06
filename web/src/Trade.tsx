@@ -183,7 +183,7 @@ export function TradeScreen({ toast, goSquad, goHistory }: { toast: (m: string) 
       {big && <div className="execution-interval"><SelectionRail label="Chart timeframe" value={st.candleSeconds} options={st.frames.map(f=>({value:f,label:frameLabel(f)}))} onChange={f=>game.setCandleSeconds(f)} testId="timeframe-rail" itemPrefix="timeframe"/></div>}
       <div className="quantity-selector" role="group" aria-label="Order size in micros" data-testid="micro-rail" onKeyDown={e=>{if(!["ArrowLeft","ArrowRight"].includes(e.key)||st.pending||game.ordersInFlight>0)return;e.preventDefault();const values=[1,10,100],i=values.indexOf(st.qty);game.setQty(values[Math.max(0,Math.min(2,i+(e.key === "ArrowRight"?1:-1)))]);}}><span>Size · micros</span>{[1,10,100].map(q=><button type="button" key={q} aria-pressed={st.qty === q} aria-label={`${q} micro${q===1?"":"s"}`} disabled={!!st.pending||game.ordersInFlight>0} onClick={()=>{game.setQty(q);haptic(8);}} data-testid={`size-${q}`}>{q}</button>)}</div>
     </div>
-    <SpamPad toast={toast} disabled={rules?.status === "blown"||(dailyLimit && rules?.status === "locked")||!open}/>
+    <SpamPad toast={toast} disabled={!!closing||rules?.status === "blown"||(dailyLimit && rules?.status === "locked")||!open}/>
   </div>;
 
 
@@ -454,7 +454,7 @@ function Meters({ rules, equity }: { rules: Rules; equity: number }) {
 
 const buzz = haptic;
 
-/** Tap and hold retain the server's batching, partial and hedge rules. */
+/** Tap and hold retain batching and reduce the opposite position. */
 function SpamPad({ toast, disabled }: { toast: (m: string) => void; disabled: boolean }) {
   const st = useGame();
   const legs = (st.me?.positions ?? []).filter((p) => p.market === st.market);
